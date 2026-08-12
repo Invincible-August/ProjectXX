@@ -1,0 +1,311 @@
+# =====================================================================
+# 用途：统一战斗/生活属性注册表（ATTR-D01）
+# 加载时机：build_combat_attrs / 角色面板 / ADM combat_attrs
+# 纪律：M13 只改数字与系数，不改机读键名；公式未开键仅展示
+# =====================================================================
+
+schema_version: 2
+
+defaults:
+  speed: 10
+  mp: 0
+  phys_atk: 0
+  phys_def: 0
+  magic_atk: 0
+  magic_def: 0
+  hit: 0
+  dodge: 0
+  breath_efficiency: 1.0
+
+# 旧键 → 新键（迁移期强制）
+aliases:
+  atk: phys_atk
+  defense: phys_def
+  base_atk: base_phys_atk
+
+# 主键 → 战斗键映射系数（占位全 0，避免改现行战力数字；M13 填数）
+primary_map:
+  strength:
+    phys_atk: 0.0
+    phys_def: 0.0
+  agility:
+    speed: 0.0
+    dodge: 0.0
+    hit: 0.0
+  intelligence:
+    magic_atk: 0.0
+    mp: 0.0
+  comprehension: {}
+  bone_root:
+    hp: 0.0
+    phys_def: 0.0
+
+attrs:
+  hp:
+    label_zh: 生命
+    help_zh: 棋盘最大生命；归零阵亡；大阵为阵眼耐久
+    engine: true
+    panel: true
+    category: combat_core
+    default: 1
+  phys_atk:
+    label_zh: 物理攻击
+    help_zh: 物理普攻/武器威力底；旧键 atk 别名
+    engine: true
+    panel: true
+    category: combat_core
+    default: 0
+  phys_def:
+    label_zh: 物理防御
+    help_zh: 减伤基底（公式未开时仅展示占位）
+    engine: false
+    panel: true
+    formula_enabled: false
+    category: combat_core
+    default: 0
+  magic_atk:
+    label_zh: 法术攻击
+    help_zh: 法术/神通威力底（公式未开时仅展示）
+    engine: false
+    panel: true
+    formula_enabled: false
+    category: combat_core
+    default: 0
+  magic_def:
+    label_zh: 法术防御
+    help_zh: 法术减伤基底（公式未开时仅展示）
+    engine: false
+    panel: true
+    formula_enabled: false
+    category: combat_core
+    default: 0
+  speed:
+    label_zh: 速度
+    help_zh: 先攻排序底；与骰子结合
+    engine: true
+    panel: true
+    category: combat_core
+    default: 10
+  mp:
+    label_zh: 法力
+    help_zh: 施法资源；无技能时可显示 0
+    engine: true
+    panel: true
+    category: combat_core
+    default: 0
+  hit:
+    label_zh: 命中
+    help_zh: 命中公式开后启用
+    engine: false
+    panel: true
+    formula_enabled: false
+    category: combat_core
+    default: 0
+  dodge:
+    label_zh: 闪避
+    help_zh: 闪避公式开后启用
+    engine: false
+    panel: true
+    formula_enabled: false
+    category: combat_core
+    default: 0
+  resist_metal:
+    label_zh: 金抗
+    help_zh: 元素抗性点（公式未开仅展示）
+    engine: false
+    panel: true
+    formula_enabled: false
+    category: resist
+    default: 0
+  resist_wood:
+    label_zh: 木抗
+    help_zh: 元素抗性点（公式未开仅展示）
+    engine: false
+    panel: true
+    formula_enabled: false
+    category: resist
+    default: 0
+  resist_water:
+    label_zh: 水抗
+    help_zh: 元素抗性点（公式未开仅展示）
+    engine: false
+    panel: true
+    formula_enabled: false
+    category: resist
+    default: 0
+  resist_fire:
+    label_zh: 火抗
+    help_zh: 元素抗性点（公式未开仅展示）
+    engine: false
+    panel: true
+    formula_enabled: false
+    category: resist
+    default: 0
+  resist_earth:
+    label_zh: 土抗
+    help_zh: 元素抗性点（公式未开仅展示）
+    engine: false
+    panel: true
+    formula_enabled: false
+    category: resist
+    default: 0
+  resist_wind:
+    label_zh: 风抗
+    help_zh: 元素抗性点（公式未开仅展示）
+    engine: false
+    panel: true
+    formula_enabled: false
+    category: resist
+    default: 0
+  resist_thunder:
+    label_zh: 雷抗
+    help_zh: 元素抗性点（公式未开仅展示）
+    engine: false
+    panel: true
+    formula_enabled: false
+    category: resist
+    default: 0
+  strength:
+    label_zh: 力量
+    help_zh: 根基；经 primary_map 映射物攻/物防
+    engine: false
+    panel: true
+    category: primary
+    default: 0
+  agility:
+    label_zh: 敏捷
+    help_zh: 根基；经 primary_map 映射速度/闪避/命中
+    engine: false
+    panel: true
+    category: primary
+    default: 0
+  intelligence:
+    label_zh: 智力
+    help_zh: 根基；经 primary_map 映射法攻/法力
+    engine: false
+    panel: true
+    category: primary
+    default: 0
+  comprehension:
+    label_zh: 悟性
+    help_zh: 跨栏：生活侧功法领悟；战斗映射默认可关
+    engine: false
+    panel: true
+    category: primary
+    default: 0
+  bone_root:
+    label_zh: 根骨
+    help_zh: 根基；经 primary_map 映射生命/物防
+    engine: false
+    panel: true
+    category: primary
+    default: 0
+  stamina:
+    label_zh: 体力
+    help_zh: 行动次数相关资源，非棋盘生命
+    engine: false
+    panel: true
+    category: life
+    default: 0
+  resist_heart_demon:
+    label_zh: 心魔抗性
+    help_zh: 心魔事件、走火检定
+    engine: false
+    panel: true
+    category: life
+    default: 0
+  resist_tribulation:
+    label_zh: 天劫抗性
+    help_zh: 渡劫检定侧
+    engine: false
+    panel: true
+    category: life
+    default: 0
+  breath_efficiency:
+    label_zh: 吐纳效率
+    help_zh: 修炼/吐纳收益乘区权重
+    engine: false
+    panel: true
+    category: life
+    default: 1.0
+  endurance:
+    label_zh: 耐力
+    help_zh: 体修向
+    engine: false
+    panel: true
+    category: life
+    default: 0
+  craft_dexterity:
+    label_zh: 灵巧
+    help_zh: 炼器相关
+    engine: false
+    panel: true
+    category: life
+    default: 0
+  precision:
+    label_zh: 精密
+    help_zh: 符箓、傀儡相关
+    engine: false
+    panel: true
+    category: life
+    default: 0
+  temperament:
+    label_zh: 心性
+    help_zh: 炼丹相关
+    engine: false
+    panel: true
+    category: life
+    default: 0
+  formation_power:
+    label_zh: 阵威
+    help_zh: 宗门大阵对敌压制底
+    engine: false
+    panel: false
+    category: formation
+    default: 0
+  formation_stability:
+    label_zh: 阵稳
+    help_zh: 抗破阵
+    engine: false
+    panel: false
+    category: formation
+    default: 0
+  formation_cover:
+    label_zh: 护宗覆盖
+    help_zh: 友方侧乘区（开战 side_mod）
+    engine: false
+    panel: false
+    category: formation
+    default: 0
+
+entity_profiles:
+  player:
+    use_categories: [combat_core, resist, primary, life, growth]
+  avatar:
+    use_categories: [combat_core, resist, primary]
+  pet:
+    use_categories: [combat_core, resist, primary]
+  puppet:
+    use_categories: [combat_core, resist]
+  npc:
+    use_categories: [combat_core, resist]
+  monster:
+    use_categories: [combat_core, resist]
+  boss:
+    use_categories: [combat_core, resist]
+  sect_formation:
+    use_categories: [combat_core, resist, formation]
+
+channels:
+  equipment:
+    enabled: false
+    label_zh: 装备
+  pill_buff:
+    enabled: false
+    label_zh: 丹药时效
+  puppet:
+    enabled: false
+    label_zh: 傀儡养成
+  sect_formation:
+    enabled: false
+    label_zh: 宗门大阵开战修正
