@@ -476,6 +476,19 @@ export const useTradeStore = defineStore('trade', () => {
     faceSession.value = null
   }
 
+  /**
+   * Hot-update face session peer_online from presence push.
+   *
+   * @param characterId - Peer character id
+   * @param online - New flag
+   */
+  function applyPresence(characterId: number, online: boolean): void {
+    const s = faceSession.value
+    if (!s) return
+    if (Number(s.peer_id) !== Number(characterId)) return
+    faceSession.value = { ...s, peer_online: online }
+  }
+
   return {
     listings,
     auctions,
@@ -499,5 +512,6 @@ export const useTradeStore = defineStore('trade', () => {
     confirmFace,
     cancelFace,
     clearFaceSession,
+    applyPresence,
   }
 })

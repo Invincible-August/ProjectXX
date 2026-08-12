@@ -24,7 +24,9 @@ import { isChannelJoinNotice } from '../utils/chatRealmNameColor'
 import { subscribeChannel, unsubscribeChannel } from '../ws/channels'
 import { WsType } from '../ws/protocol'
 import { useCharacterStore } from './character'
+import { useFriendsStore } from './friends'
 import { useHeritageStore } from './heritage'
+import { useTradeStore } from './trade'
 import { useWsStore } from './ws'
 
 /**
@@ -447,6 +449,19 @@ export const useChatStore = defineStore('chat', () => {
       useHeritageStore().applyPush(envelope)
       return
     }
+    if (envelope.type === WsType.PRESENCE_CHANGED) {
+      const p = envelope.payload as {
+        character_id?: number
+        online?: boolean
+      }
+      const cid = Number(p.character_id)
+      if (!cid) return
+      const online = Boolean(p.online)
+      applyPartyPresence(cid, online)
+      useFriendsStore().applyPresence(cid, online)
+      useTradeStore().applyPresence(cid, online)
+      return
+    }
     if (
       envelope.type === WsType.PARTY_INVITE ||
       envelope.type === WsType.PARTY_UPDATE
@@ -491,6 +506,22 @@ export const useChatStore = defineStore('chat', () => {
       )
       void refreshChannels()
     }
+  }
+
+  /**
+   * Hot-update party member online dots from presence push.
+   *
+   * @param characterId - Member character id
+   * @param online - New flag
+   */
+  function applyPartyPresence(characterId: number, online: boolean): void {
+    const p = party.value
+    if (!p?.members?.length) return
+    const cid = Number(characterId)
+    const nextMembers = p.members.map((m) =>
+      Number(m.character_id) === cid ? { ...m, online } : m,
+    )
+    party.value = { ...p, members: nextMembers }
   }
 
   function startPollingFallback(): void {

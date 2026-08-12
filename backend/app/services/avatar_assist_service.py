@@ -87,20 +87,16 @@ class AvatarAssistService:
 
     def _is_owner_online(self, owner_character_id: int) -> bool:
         """
-        Owner online gate for assist invites.
+        Owner online gate for assist invites (Presence ``assist`` purpose).
 
-        ``assist_dev_assume_online`` (friends.yaml override or avatar.yaml) only
-        applies in development — forces online so accept must be manual.
+        Offline → auto-accept borrow; online → pending invite.
         """
-        settings = get_settings()
-        friends_cfg = get_game_config().friends
-        assume = self._assist_cfg().assist_dev_assume_online
-        override = getattr(friends_cfg, "assist_dev_assume_online", None)
-        if override is not None:
-            assume = bool(override)
-        if assume and settings.app_env == "development":
-            return True
-        return get_ws_hub().is_character_online(int(owner_character_id))
+        from app.services.presence_service import PresencePurpose, get_presence
+
+        return get_presence().is_online_for(
+            PresencePurpose.ASSIST,
+            int(owner_character_id),
+        )
 
     async def _expire_stale_invites(self) -> None:
         """Lazily mark overdue invited rows as expired."""

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- **玩家在线状态（Presence）**：统一 `PresenceService`（WS 鉴权连接 + 可配 `grace_sec`）；组队/道友/面交/助战/赛会改接 `is_online_for`；上线/离线推送 `presence.changed`（道友+队友）；设计见 [`玩家在线状态设计.md`](./玩家在线状态设计.md)；多 worker → **PRESENCE-R01**（2026-08-12）
+
+- **修复前端 `npm run build` 类型错误**：`GmSetCharacterPayload` 补 `open_dao_contest_now`；WS RSVP 超时结果改用对象承载避免 TS2367；去掉 `contestBattleReport` 未使用变量 `flipped`（2026-08-12）
+
 - **独立队伍页 `/party`**：建队 / 队长邀请与踢人 / 离队 / 队友公开摘要（境界·状态·在线·攻防·功法·体质装备）；ChatDock 去掉建队/邀请/离队，待邀仅角标与「去队伍页」；道友「组队」跳转 `/party?invite=`；大厅入口与规则文案同步；`party_action` 增 `kick`、邀请仅队长；单测 `test_party_kick_and_leader_only_invite`（2026-08-12）
 
 - **聊天在线全频道收信**：世界频向所有在线连接直推正文；前端订齐可进聊天房且切页不退订；进玩法壳即 `startSessionListening`（坞未开也收）；打开窗口可见本会话在线期间各频缓存（2026-08-12）

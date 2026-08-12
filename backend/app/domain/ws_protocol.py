@@ -55,6 +55,9 @@ TYPE_HERITAGE_EXPIRED = "heritage.expired"
 # —— 道友化身助战 ——
 TYPE_AVATAR_ASSIST_INVITE = "avatar.assist.invite"
 
+# —— 角色在线状态 ——
+TYPE_PRESENCE_CHANGED = "presence.changed"
+
 
 def utc_now_iso() -> str:
     """UTC ISO 时间戳。"""

@@ -29,15 +29,18 @@ async function promptContestRsvp(opts: {
   const remaining = (): number =>
     Math.max(0, Math.ceil((endsMs - Date.now()) / 1000))
 
-  let settled: 'accept' | 'decline' | 'timeout' | 'dismiss' | null = null
+  // 用对象承载结果，避免 await 期间定时器写入不被 TS 控制流分析识别
+  const outcome: {
+    settled: 'accept' | 'decline' | 'timeout' | 'dismiss' | null
+  } = { settled: null }
   const timer = window.setInterval(() => {
     const left = remaining()
     const el = document.querySelector('.el-message-box__message')
     if (el) {
       el.textContent = `${baseMsg}\n\n剩余 ${left} 秒（超时视为${opts.isLord ? '快照应战' : '弃权'}）`
     }
-    if (left <= 0 && settled == null) {
-      settled = 'timeout'
+    if (left <= 0 && outcome.settled == null) {
+      outcome.settled = 'timeout'
       ElMessageBox.close()
     }
   }, 250)
@@ -55,18 +58,20 @@ async function promptContestRsvp(opts: {
         closeOnPressEscape: false,
       },
     )
-    settled = 'accept'
+    outcome.settled = 'accept'
   } catch (e) {
-    if (settled === 'timeout') {
+    if (outcome.settled === 'timeout') {
       // already set by timer
     } else if (e === 'cancel') {
-      settled = 'decline'
+      outcome.settled = 'decline'
     } else {
-      settled = 'dismiss'
+      outcome.settled = 'dismiss'
     }
   } finally {
     window.clearInterval(timer)
   }
+
+  const settled = outcome.settled
 
   if (settled == null) {
     return remaining() <= 0 ? 'timeout' : 'dismiss'

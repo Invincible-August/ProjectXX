@@ -161,6 +161,19 @@ export const useFriendsStore = defineStore('friends', () => {
     }
   }
 
+  /**
+   * Apply WS ``presence.changed`` to friend list dots.
+   *
+   * @param characterId - Peer character id
+   * @param online - New online flag
+   */
+  function applyPresence(characterId: number, online: boolean): void {
+    const cid = Number(characterId)
+    friends.value = friends.value.map((f) =>
+      Number(f.peer_character_id) === cid ? { ...f, online } : f,
+    )
+  }
+
   return {
     friends,
     incoming,
@@ -175,5 +188,6 @@ export const useFriendsStore = defineStore('friends', () => {
     accept,
     reject,
     remove,
+    applyPresence,
   }
 })

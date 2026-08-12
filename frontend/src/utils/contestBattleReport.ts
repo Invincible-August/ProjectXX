@@ -212,13 +212,11 @@ export function contestReportToBattleResult(
   const engineWinner = base.report.winner
   const attackerWon = engineWinner === 'attacker'
 
-  let flipped = false
   let events = base.report.events
   let result: 'win' | 'lose' = attackerWon ? 'win' : 'lose'
   let displayWinner: 'attacker' | 'defender' = engineWinner === 'defender' ? 'defender' : 'attacker'
 
   if (view.viewerIsSideB) {
-    flipped = true
     events = flipBattleEventsForDefender(events)
     // 翻转后「下方=原守方」视为 attacker 语义给播放器：胜负对本人取反
     result = attackerWon ? 'lose' : 'win'

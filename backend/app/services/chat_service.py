@@ -905,10 +905,7 @@ class ChatService:
 
     def is_character_online_for_party(self, character_id: int) -> bool:
         """
-        Online gate for party invite.
-
-        Uses WsHubService; in development, ``chat.yaml`` ``party_dev_assume_online``
-        may force True so local/tests work without a live WS socket.
+        Online gate for party invite (Presence facade).
 
         Args:
             character_id: Character primary key.
@@ -916,18 +913,9 @@ class ChatService:
         Returns:
             True if considered online for invite purposes.
         """
-        cfg = self._cfg()
-        settings = get_settings()
-        # 开发环境 + party_dev_assume_online：无 WS 也视为在线
-        if (
-            bool(getattr(cfg, "party_dev_assume_online", False))
-            and str(getattr(settings, "app_env", "") or "") == "development"
-        ):
-            return True
-        try:
-            return get_ws_hub().is_character_online(int(character_id))
-        except Exception:  # noqa: BLE001
-            return False
+        from app.services.presence_service import PresencePurpose, get_presence
+
+        return get_presence().is_online_for(PresencePurpose.PARTY, int(character_id))
 
     async def _expire_stale_party_invites(self) -> None:
         """Lazily mark pending invites past expires_at as expired."""

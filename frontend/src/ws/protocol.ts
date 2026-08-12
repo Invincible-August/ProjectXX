@@ -27,6 +27,7 @@ export const WsType = {
   CHAT_RECALL: 'chat.recall',
   PARTY_INVITE: 'party.invite',
   PARTY_UPDATE: 'party.update',
+  PRESENCE_CHANGED: 'presence.changed',
   HERITAGE_CREATED: 'heritage.created',
   HERITAGE_CLAIMED: 'heritage.claimed',
   HERITAGE_EXPIRED: 'heritage.expired',

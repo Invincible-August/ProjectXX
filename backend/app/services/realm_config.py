@@ -1496,6 +1496,17 @@ class DaoLordConfig:
 
 
 @dataclass(frozen=True)
+class PresenceConfig:
+    """角色在线状态（presence.yaml）。"""
+
+    grace_sec: int
+    # 仅 development：全局假定在线
+    dev_assume_online: bool
+    # 用途覆盖；空则回落业务 YAML 遗留键
+    dev_assume_by_purpose: dict[str, bool]
+
+
+@dataclass(frozen=True)
 class WorldEventsConfig:
     """世界 Boss / 秘境骨架（world_events.yaml）。"""
 
@@ -1561,6 +1572,7 @@ class GameConfigBundle:
     dao_restraint: DaoRestraintConfig
     dao_lord: DaoLordConfig
     world_events: WorldEventsConfig
+    presence: PresenceConfig
 
 
 def _load_yaml(filename: str) -> dict[str, Any]:
@@ -3752,6 +3764,21 @@ def _parse_dao_lord(raw: dict[str, Any]) -> DaoLordConfig:
     )
 
 
+def _parse_presence(raw: dict[str, Any]) -> PresenceConfig:
+    """解析 presence.yaml。"""
+    purpose_raw = raw.get("dev_assume_by_purpose") or {}
+    if not isinstance(purpose_raw, dict):
+        raise ValueError("presence.yaml dev_assume_by_purpose 须为 mapping")
+    purpose: dict[str, bool] = {
+        str(k): bool(v) for k, v in purpose_raw.items() if str(k).strip()
+    }
+    return PresenceConfig(
+        grace_sec=max(0, int(raw.get("grace_sec") or 0)),
+        dev_assume_online=bool(raw.get("dev_assume_online", False)),
+        dev_assume_by_purpose=purpose,
+    )
+
+
 def _parse_world_events(raw: dict[str, Any]) -> WorldEventsConfig:
     """解析 world_events.yaml。"""
     events: dict[str, dict[str, Any]] = {}
@@ -3916,6 +3943,7 @@ def load_game_config() -> GameConfigBundle:
     dao_restraint = _parse_dao_restraint(_load_yaml("dao_restraint.yaml"))
     dao_lord = _parse_dao_lord(_load_yaml("dao_lord.yaml"))
     world_events = _parse_world_events(_load_yaml("world_events.yaml"))
+    presence = _parse_presence(_load_yaml("presence.yaml"))
     # 开道门槛须落在境界链
     min_open = str(dao.open.get("min_major_realm") or "true_immortal")
     if min_open not in realms:
@@ -3990,6 +4018,7 @@ def load_game_config() -> GameConfigBundle:
         dao_restraint=dao_restraint,
         dao_lord=dao_lord,
         world_events=world_events,
+        presence=presence,
     )
 
 

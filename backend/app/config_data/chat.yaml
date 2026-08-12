@@ -25,7 +25,7 @@ dm_require_friend: false
 party_require_friend: true
 # 组队邀请过期秒数（0=不过期；读时惰性过期）
 party_invite_expire_sec: 120
-# 仅 development：无 WS 时假定双方在线，便于本地/单测邀请门闸
+# 仅 development：无 WS 时假定双方在线（经 PresenceService 读取）
 party_dev_assume_online: true
 # 频道中文名（玩家可见）
 labels_zh:

@@ -54,6 +54,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await AdminConfigService(session).load_published_into_store()
 
     RuntimeConfigReloader.reload(reason="boot")
+    # Presence：Hub 上线/离线钩子 → presence.changed
+    from app.services.presence_service import ensure_presence_hub_hook
+
+    ensure_presence_hub_hook()
     yield
     await engine.dispose()
 

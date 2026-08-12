@@ -137,20 +137,10 @@ class DaoContestService:
         return open_at <= now < close_at
 
     def _is_online(self, character_id: int) -> bool:
-        """在线判定；dev_assume_online 仅 development 生效，生产强制看 WS。"""
-        cfg = self._contest_cfg()
-        settings = get_settings()
-        if (
-            cfg.dev_assume_online
-            and settings.app_env == "development"
-        ):
-            return True
-        try:
-            from app.services.ws_hub_service import get_ws_hub
+        """在线判定；经 Presence 门面（contest DEV 假定仅 development）。"""
+        from app.services.presence_service import PresencePurpose, get_presence
 
-            return get_ws_hub().is_character_online(character_id)
-        except Exception:  # noqa: BLE001
-            return False
+        return get_presence().is_online_for(PresencePurpose.CONTEST, int(character_id))
 
     async def _get_by_cycle(self, cycle_date: str) -> DaoContest | None:
         result = await self._session.execute(

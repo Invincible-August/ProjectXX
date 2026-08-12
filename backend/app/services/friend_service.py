@@ -262,18 +262,15 @@ class FriendService:
         }
 
     def _is_peer_online(self, character_id: int) -> bool:
-        """在线判定：配置关则恒 false；dev_assume_online 仅 development。"""
+        """在线判定：配置关则恒 false；经 Presence 门面（含 DEV 假定）。"""
         cfg = self._cfg()
         if not bool(getattr(cfg, "include_online", False)) and not bool(
             getattr(cfg, "include_online_stub", False),
         ):
             return False
-        settings = get_settings()
-        if bool(getattr(cfg, "dev_assume_online", False)) and settings.app_env == "development":
-            return True
-        from app.services.ws_hub_service import get_ws_hub
+        from app.services.presence_service import PresencePurpose, get_presence
 
-        return get_ws_hub().is_character_online(character_id)
+        return get_presence().is_online_for(PresencePurpose.FRIENDS, int(character_id))
 
     async def _assist_available(self, peer: Character) -> bool:
         """对方化身是否可供助战（已凝练 + 开关 + 非 disabled + 无忙碌会话）。"""

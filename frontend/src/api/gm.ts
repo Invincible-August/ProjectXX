@@ -74,6 +74,8 @@ export interface GmSetCharacterPayload {
   set_dao_lord?: string
   /** 强制挑战开窗（进程标志） */
   open_dao_challenge_window?: boolean
+  /** M6-D06：立刻开赛（进程标志） */
+  open_dao_contest_now?: boolean
   /** 清空挑战冷却 */
   clear_dao_challenge_cooldown?: boolean
   /** 经 WS 推一条 world.env */

@@ -1120,24 +1120,15 @@ class TradeService:
         """
         Whether a character counts as online for face trade.
 
-        Uses ``face_dev_assume_online`` only when ``app_env == development``.
-
         Args:
             character_id: Character primary key.
 
         Returns:
             True if online (or assumed online in development).
         """
-        cfg = self._cfg()
-        settings = get_settings()
-        if bool(cfg.face_dev_assume_online) and settings.app_env == "development":
-            return True
-        try:
-            from app.services.ws_hub_service import get_ws_hub
+        from app.services.presence_service import PresencePurpose, get_presence
 
-            return get_ws_hub().is_character_online(character_id)
-        except Exception:  # noqa: BLE001
-            return False
+        return get_presence().is_online_for(PresencePurpose.FACE, int(character_id))
 
     async def _resolve_peer(
         self,

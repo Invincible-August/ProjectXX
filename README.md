@@ -36,13 +36,16 @@
 | [M7宗门社交与经济设计.md](./M7宗门社交与经济设计.md) | **M7** 宗门/交易/邮件/多频道聊天/传承/师徒/双修/商业化壳；竖切 **L1～L8**；**v1.0**（2026-08-11） |
 | [M7前端目录与路由设计.md](./M7前端目录与路由设计.md) | **M7** `/sect` `/market` `/social` `/friends` `/party` `/dual-cultivation` `/shop` + ChatDock；**v1.0**（2026-08-11） |
 | [ATTR战斗属性占位设计.md](./ATTR战斗属性占位设计.md) | **ATTR-D01**：棋子统一 `CombatAttrBlock`、叠层、面板拆解；**M13=填数不改键**；**v1.0**（2026-08-11） |
+| [玩家在线状态设计.md](./玩家在线状态设计.md) | **Presence**：WS 鉴权在线 / grace / 组队·面交·助战门闸；**v1.0**（2026-08-12） |
 | [核验与超级密码设计](./docs/superpowers/specs/2026-07-28-verification-super-password-design.md) | 注册核验 / verification API / 超级密码（**已实现**，2026-07-28） |
 | [核验与超级密码实现计划](./docs/superpowers/plans/2026-07-28-verification-super-password.md) | 分任务实现清单 |
 | [CHANGELOG.md](./CHANGELOG.md) | 变更记录 |
 
 ## 当前进度
 
+- **前端生产构建**：`cd frontend && npm ci && npm run build`（`vue-tsc -b && vite build`）在 2026-08-12 已通过类型检查修复后可完整产出 `dist/`
 - **ATTR 占位设计已开（2026-08-11）**：[`ATTR战斗属性占位设计.md`](./ATTR战斗属性占位设计.md) **v1.0**——统一战斗属性 schema；**M13 = 填正式曲线，不重设计字段**；实现可与 M7 并行
+- **玩家在线状态 Presence 已落地（2026-08-12）**：[`玩家在线状态设计.md`](./玩家在线状态设计.md) **v1.0**——`PresenceService` + Hub 索引/grace；组队/面交/助战/道友/赛会共用；`presence.changed` 推送；多 worker → **PRESENCE-R01**
 - **M7 L1～L8 已落地（2026-08-11）**：宗门 + 道友/交易 + 邮件/赠送 + 五频道聊天/ChatDock + **机缘**（原聊天红包）+ 师徒/真引渡 + 双修/四榜 + 会员/天道商店沙盒；`scripts/smoke_m7.py`；设计见 [`M7宗门社交与经济设计.md`](./M7宗门社交与经济设计.md)；延后见 [`后续待完成.md`](./后续待完成.md) **CHAT-D03** / **M7-D***
 - **M7 前端**：`/sect` `/market` `/friends` `/party` `/social` `/dual-cultivation` `/shop`；创角必选性别；ChatDock（默认世界频、机缘背包点选；组队管理在队伍页）；`HallSocialGate`
 - **M6 大道 / 道主 / WS + 打磨包已收口（2026-08-11）**：W1～W6 + **M6-D06** + 收尾包；延后见 **M6-D01～D05、D07**
