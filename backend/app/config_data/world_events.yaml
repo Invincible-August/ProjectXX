@@ -1,0 +1,28 @@
+# =====================================================================
+# 用途：世界 Boss / 道主秘境房间骨架（无完整波次数值）
+# 成型 → M6-D05 / M11
+# 开窗：骨架样本全日开放，便于 WORLD_EVENTS_ENABLED 联调；生产可收窄小时窗
+# =====================================================================
+
+enabled: false
+
+events:
+  world_boss_sample:
+    kind: world_boss
+    label_zh: 世界 Boss（骨架）
+    summary: 定时开房、须 WS 在场；本阶段无完整波次与掉落。
+    windows:
+      - start_hour: 0
+        end_hour: 24
+        tz: UTC
+    placeholder_reward: {}
+  secret_realm_sample:
+    kind: secret_realm
+    label_zh: 道主秘境（骨架）
+    summary: 道主特权开启占位；不参加不挡主线。
+    windows:
+      - start_hour: 0
+        end_hour: 24
+        tz: UTC
+    requires_lord_privilege: true
+    placeholder_reward: {}

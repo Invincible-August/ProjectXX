@@ -1,0 +1,30 @@
+# =====================================================================
+# 用途：邮件与赠送（M7 L3）
+# 后台域：mail（content）
+# =====================================================================
+
+# 邮件保留天数（超过且已领可清理；未领走 expire_unclaimed）
+retain_days: 30
+# 未领附件过期策略：return_sender | destroy
+expire_unclaimed: return_sender
+# 单封附件物品行上限
+max_attachment_lines: 8
+# 单封附件灵石上限（0=不限）
+max_attachment_spirit_stones: 1000000
+# 玩家信正文最大字数
+max_body_len: 500
+# 列表默认条数
+list_limit: 50
+
+# 赠送（D9）
+gift:
+  # 日次数上限
+  daily_count_cap: 20
+  # 日灵石估价上限（物品按占位单价 spirit_value 累加 + 现金灵石）
+  daily_spirit_value_cap: 50000
+  # 物品缺省估价（无配置 spirit_value 时）
+  default_item_spirit_value: 10
+  # 是否要求道友（L3 宗门友好度阈值延后，仅道友）
+  require_friend: true
+  # 赠送成功是否给发送方回执系统信
+  receipt_to_sender: true

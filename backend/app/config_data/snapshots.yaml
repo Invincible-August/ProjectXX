@@ -1,0 +1,22 @@
+# =====================================================================
+# 用途：防守快照版本、手动更新冷却、每日惰性补刷、PVP 占位奖励
+# 加载时机：M3 防守快照写入/刷新；攻打他人快照结算奖励
+# =====================================================================
+
+# 快照结构版本号（写入 payload，供后续演进比对）
+schema_version: 1
+
+# 手动更新冷却（秒）；可被 SNAPSHOT_MANUAL_COOLDOWN_SECONDS 覆盖
+manual_cooldown_seconds: 3600
+
+# 每日定点惰性补刷钟点（UTC 小时）；请求路径检测，不引入 APScheduler
+daily_refresh_hours_utc: [2, 10, 18]
+
+# PVP 攻打快照的占位奖励（荣誉系统后置，先回流少量资源）
+pvp_rewards:
+  attacker_win:                   # 进攻方胜利
+    cultivation_points: 40
+    spirit_stones: 30
+  attacker_lose:                  # 进攻方失败
+    cultivation_points: 0
+    spirit_stones: 0

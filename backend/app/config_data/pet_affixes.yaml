@@ -1,0 +1,98 @@
+# =====================================================================
+# 用途：灵宠词条类型库、品级权重、数值区间、数值洗炼费用（PET-D01）
+# 加载时机：捕获填槽 / 升阶追加 / 数值洗炼 / 战斗面板叠加
+# 运营：后台域 pet_affixes；与体质词条分表，禁止混用
+# =====================================================================
+
+# 词条品级权重（捕获/升阶 roll 类型后的品级）
+tier_weights:
+  common: 55
+  rare: 28
+  epic: 14
+  legendary: 3
+
+# 类型抽取权重（热插拔：加类型只改本表）
+type_weights:
+  flat_atk: 22
+  flat_hp: 22
+  flat_speed: 14
+  pct_atk: 14
+  pct_hp: 14
+  pct_speed: 10
+  # passive_ref 占槽但不进面板结算（被动玩法 → PET-D03）
+  passive_ref_probe: 4
+
+# 数值洗炼：cost = base * (1+grow)^(k-1)；k 为该槽第几次洗炼（从 1 起）
+value_reroll:
+  spirit_stones_base: 50
+  grow: 0.1
+
+# 词条类型定义：kind 驱动面板叠加；tier_ranges 单位见 kind
+# - flat_* : 整数平铺
+# - pct_*  : 百分比点数（3 = +3%）
+# - passive_ref : 引用被动 id 占位，不改 atk/hp/speed
+types:
+  flat_atk:
+    name: 锋锐
+    kind: flat_atk
+    tier_ranges:
+      common: { min: 8, max: 12 }
+      rare: { min: 13, max: 18 }
+      epic: { min: 19, max: 28 }
+      legendary: { min: 29, max: 40 }
+
+  flat_hp:
+    name: 厚甲
+    kind: flat_hp
+    tier_ranges:
+      common: { min: 20, max: 35 }
+      rare: { min: 36, max: 55 }
+      epic: { min: 56, max: 80 }
+      legendary: { min: 81, max: 120 }
+
+  flat_speed:
+    name: 疾步
+    kind: flat_speed
+    tier_ranges:
+      common: { min: 2, max: 4 }
+      rare: { min: 5, max: 7 }
+      epic: { min: 8, max: 11 }
+      legendary: { min: 12, max: 16 }
+
+  pct_atk:
+    name: 杀意
+    kind: pct_atk
+    tier_ranges:
+      common: { min: 2, max: 3 }
+      rare: { min: 3, max: 5 }
+      epic: { min: 5, max: 8 }
+      legendary: { min: 9, max: 15 }
+
+  pct_hp:
+    name: 血脉
+    kind: pct_hp
+    tier_ranges:
+      common: { min: 2, max: 4 }
+      rare: { min: 4, max: 6 }
+      epic: { min: 6, max: 10 }
+      legendary: { min: 10, max: 16 }
+
+  pct_speed:
+    name: 迅影
+    kind: pct_speed
+    tier_ranges:
+      common: { min: 1, max: 2 }
+      rare: { min: 2, max: 4 }
+      epic: { min: 4, max: 6 }
+      legendary: { min: 7, max: 12 }
+
+  passive_ref_probe:
+    name: 灵觉残响
+    kind: passive_ref
+    passive_id: passive_probe_sense
+    # passive_ref：rolled_value 仅作展示占位，区间固定
+    tier_ranges:
+      common: { min: 1, max: 1 }
+      rare: { min: 1, max: 1 }
+      epic: { min: 1, max: 1 }
+      legendary: { min: 1, max: 1 }

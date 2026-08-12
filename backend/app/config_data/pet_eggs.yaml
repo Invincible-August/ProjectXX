@@ -1,0 +1,30 @@
+# =====================================================================
+# 用途：灵兽蛋孵化（N5 / M4-D04b）；egg_id 与 inventory 道具 id 对齐
+# 运营：加蛋 = 本表 + inventory 道具 + 物种 acquire_tags 含 egg_hatch
+# =====================================================================
+
+# 可选：同时进行的孵化会话上限（0=不限）
+max_concurrent: 3
+
+eggs:
+  egg_fox_trial:
+    name: 试炼灵狐蛋
+    species_id: test_pet_fox
+    # 0 秒便于联调/单测立刻领取；正式服可调高
+    hatch_seconds: 0
+    spirit_stones: 0
+    # 缺省时用 pets.capture_test_grade_weights
+    grade_weights:
+      1: 70
+      2: 25
+      3: 5
+
+  egg_crane_qing:
+    name: 青羽鹤蛋
+    species_id: pet_crane_qing
+    hatch_seconds: 5
+    spirit_stones: 50
+    grade_weights:
+      1: 50
+      2: 40
+      3: 10

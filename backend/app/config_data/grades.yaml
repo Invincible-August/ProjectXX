@@ -1,0 +1,62 @@
+# =====================================================================
+# 用途：跨境突破品阶权重、属性乘区、神识格位奖励
+# 加载时机：M2 跨境突破掷骰；M5 品阶可映射渡劫威力/次数档
+# =====================================================================
+
+# 品阶列表：weight 为相对权重；后续条目字段同第一条
+grades:
+  # —— 字段说明 ——
+  # id            品阶 id（代码键）
+  # name          展示名
+  # weight        掷骰相对权重（越大越常见）
+  # atk_mul       攻击属性乘区
+  # hp_mul        生命属性乘区
+  # divine_slots  额外神识/神通格位占位
+  - id: inferior
+    name: 劣质
+    weight: 5
+    atk_mul: 0.95
+    hp_mul: 0.95
+    divine_slots: 0
+  # 以下品阶字段同上
+  - id: mortal
+    name: 凡品
+    weight: 40
+    atk_mul: 1.0
+    hp_mul: 1.0
+    divine_slots: 0
+  - id: good
+    name: 良品
+    weight: 25
+    atk_mul: 1.03
+    hp_mul: 1.03
+    divine_slots: 1
+  - id: superior
+    name: 上品
+    weight: 15
+    atk_mul: 1.06
+    hp_mul: 1.06
+    divine_slots: 1
+  - id: peerless
+    name: 极品
+    weight: 10
+    atk_mul: 1.1
+    hp_mul: 1.1
+    divine_slots: 2
+  - id: immortal
+    name: 仙品
+    weight: 4
+    atk_mul: 1.15
+    hp_mul: 1.15
+    divine_slots: 2
+  - id: heavenly
+    name: 天道
+    weight: 1
+    atk_mul: 1.2
+    hp_mul: 1.2
+    divine_slots: 3
+
+# 体质对品阶权重的占位修正（掷骰前加到 weight）
+constitution_weight_bonus:
+  per_main_affix: 2           # 每条主词条增加的权重
+  per_base_attr_point: 0.01   # 每点体质基础属性增加的权重

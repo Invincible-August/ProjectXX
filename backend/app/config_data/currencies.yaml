@@ -1,0 +1,31 @@
+# =====================================================================
+# 用途：六币种目录（M7 L8 · 展示与禁转规则）
+# 后台域：currencies（content）
+# 说明：灵石余额字段沿用 spirit_stones；流水 currency 列写机读键
+# =====================================================================
+
+currencies:
+  spirit_stones:
+    label_zh: 灵石
+    player_transfer: true
+    note_zh: 玩家间可转（交易/邮件/赠送）
+  sect_contrib:
+    label_zh: 宗门贡献
+    player_transfer: false
+    note_zh: 仅本宗任务/商店；流水在宗门账本
+  alliance_contrib:
+    label_zh: 盟贡献
+    player_transfer: false
+    note_zh: 占位
+  honor:
+    label_zh: 荣誉
+    player_transfer: false
+    note_zh: 占位
+  reincarnation_point:
+    label_zh: 轮回点
+    player_transfer: false
+    note_zh: 不可直转；角色字段 reincarnation_points
+  tiandao_point:
+    label_zh: 天道点
+    player_transfer: false
+    note_zh: 不可玩家直转；沙盒加点 / 开通会员

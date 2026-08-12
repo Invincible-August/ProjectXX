@@ -1,0 +1,21 @@
+# =====================================================================
+# 用途：世界区域占位（ADM-6 / 对齐 M9）
+# 加载时机：区域列表预览、灵宠遭遇 region_id 外键校验预留
+# 真地图玩法 → M9；本表先登记 default 区供捕获/遭遇占位引用
+# =====================================================================
+
+# 默认区域（与 weather.yaml regions.default 对齐）
+regions:
+  # —— 字段说明 ——
+  # name           展示名
+  # weather_region 天气池键（通常同 id）
+  # summary        玩家可见简介
+  # connections    邻接 region_id 列表（占位）
+  default:
+    name: 新手洲
+    weather_region: default
+    summary: 教学与日常挂机默认区域
+    connections: []
+
+# 势力着色元数据占位（M9 填）
+factions: {}

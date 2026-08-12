@@ -1,0 +1,151 @@
+# =====================================================================
+# 用途：雷劫触发门槛、威力/次数四档、品阶映射、准备格与法宝/遮天规则
+# 加载时机：M5 渡劫会话（prep / begin / settle）；突破分流 needs_tribulation
+# 规则（2026-08-06）：仅「跨大境界」渡劫；同境内小境界（层/期）进阶不渡劫
+# =====================================================================
+
+# 首次强制渡劫的最低境界门槛（达到该境「跨境」才开渡）
+require_from:
+  major: yuanying
+  stage: peak                   # peak=大圆满阶段
+
+# 首劫成功后：之后每一次「跨大境界」均渡劫（小境界仍走普通突破）
+always_after_first: true
+
+# 层/期进阶默认双维（仅 GM 强制开渡等非正常分流场景可能用到；正常小境界不进渡劫）
+layer_mapping:
+  default:
+    power: mercy                # 威力档 id
+    count: nine                 # 次数档 id
+  huashen:
+    power: normal
+    count: hundred
+
+# 威力四档；后续档字段同 mercy
+power_tiers:
+  # label=展示名；base_weight=名义伤权重；cloud_radius=劫云半径档（格）
+  mercy:
+    label: 天道怜悯
+    base_weight: 0.000001
+    cloud_radius: 0
+  normal:
+    label: 普通
+    base_weight: 0.000002
+    cloud_radius: 1
+  jealousy:
+    label: 天妒
+    base_weight: 0.000003
+    cloud_radius: 2
+  apocalypse:
+    label: 灭世
+    base_weight: 0.000004
+    cloud_radius: 3
+
+# 次数四档；后续档字段同 nine
+# 注意：strikes / strikes_per_batch 必须是正整数（≥1）；写成小数会被 int() 截成 0 → 每批结算 0 道雷 → 自动结算空转死循环
+count_tiers:
+  # strikes=总雷击数；strikes_per_batch=每批自动结算几道雷（只影响结算节奏，不是伤害）
+  nine:
+    label: 九劫难天雷
+    strikes: 9
+    strikes_per_batch: 3
+  hundred:
+    label: 百劫天雷
+    strikes: 100
+    strikes_per_batch: 20
+  thousand:
+    label: 千劫天雷
+    strikes: 1000
+    strikes_per_batch: 100
+  myriad:
+    label: 万劫天雷
+    strikes: 10000
+    strikes_per_batch: 500
+
+# 跨境品阶 → 威力+次数双维映射
+grade_to_tribulation:
+  inferior: { power: mercy, count: nine }
+  mortal: { power: mercy, count: nine }
+  good: { power: normal, count: hundred }
+  superior: { power: normal, count: hundred }
+  peerless: { power: jealousy, count: thousand }
+  immortal: { power: jealousy, count: thousand }
+  heavenly: { power: apocalypse, count: myriad }
+
+prep_slots_default: 6                      # 默认准备格数量（按序消耗）
+guardian_proc_chance: 0.35                 # 灵宝护主触发概率
+guardian_hp_restore_ratio: 0.20            # 护主回血比例（相对 max HP）
+mercy_after_guardian_damage_mult: 0.01     # 护主后怜悯档伤害乘区（极低）
+in_existing_cloud_damage_mult: 2.0         # 已在劫云内开渡：基础伤 ×2
+cloud_radius_bonus_on_myriad: 1            # 万劫时劫云半径额外 +N
+artifact_base_shatter_chance: 0.03         # 法宝基础一击破坏率
+artifact_durability_cost_per_strike: 1     # 每雷消耗法宝耐久
+reroll_grade_on_win: false                 # 渡劫成功是否重掷品阶
+
+# 气运对威力乘区（轴 A）：低气运更痛，高气运更缓
+fate_luck_power_mult:
+  low: 1.15
+  mid: 1.0
+  high: 0.85
+# 魔性对威力乘区：魔性越高越痛
+demonic_nature_power_mult:
+  low: 1.0
+  mid: 1.1
+  high: 1.35
+
+# 遮天：成功降一档；失败按 fail_effects 权重抽副作用（M5-D10）
+veil:
+  success_chance: 0.4                      # 遮天成功概率
+  # 兼容旧键：当 fail_effects 缺省/空时回落为 raise + cloud_double
+  fail_raise_power_tier: true
+  fail_force_cloud_double: true
+  # 失败副作用加权表（走 dice_rules.weighted_pick）
+  fail_effects:
+    - id: raise_power
+      weight: 35
+      raise_power_tier: true
+      force_cloud_double: false
+      hp_damage_ratio: 0.0
+      label: 雷势反噬（威力升档）
+    - id: force_cloud_double
+      weight: 25
+      raise_power_tier: false
+      force_cloud_double: true
+      hp_damage_ratio: 0.0
+      label: 劫云加临（云内伤害翻倍）
+    - id: raise_and_cloud
+      weight: 20
+      raise_power_tier: true
+      force_cloud_double: true
+      hp_damage_ratio: 0.0
+      label: 遮天反噬（升档+云倍）
+    - id: severe_wound
+      weight: 15
+      raise_power_tier: false
+      force_cloud_double: false
+      hp_damage_ratio: 0.25                 # 按 hp_max 扣当前 HP
+      label: 重伤（折损气血）
+    - id: wound_and_raise
+      weight: 5
+      raise_power_tier: true
+      force_cloud_double: false
+      hp_damage_ratio: 0.15
+      label: 重伤并抬势
+
+# 渡劫失败：hp<=0 默认陨落进待引渡
+# true  → 极端失败：phase=fallen，status=awaiting_ferry（验收「进待引渡」）
+# false → 普通失败：phase=failed，status=normal（验收「失败有惩罚」；惩罚细则占位）
+fall_on_hp_zero: true
+
+# —— 验收：强制极端失败（不改代码时）——
+# 1) DEV GM「强制渡劫结局=fallen」最快；或
+# 2) 空准备格 + 一键结算：怜悯档名义伤按 hp_max 缩放，空准备易陨落；
+# 3) 临时把下方 realm_scale.default 调到 3.0+ 再开渡，更易 HP 清零。
+# 验收「失败有惩罚」：把 fall_on_hp_zero 改为 false 后同样空准备一键结算 → failed。
+# 验收「成功进阶」：准备格塞满减伤物 / 或 GM「强制渡劫结局=won」。
+
+# 目标境界缩放：名义总伤 ≈ base_weight * realm_scale_factor * hp_max
+# （再按雷击数均分）；怜悯空准备时约可陨落，便于冒烟
+realm_scale:
+  default: 1.2
+  huashen: 1.5

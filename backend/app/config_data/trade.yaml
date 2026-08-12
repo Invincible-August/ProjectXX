@@ -1,0 +1,38 @@
+# =====================================================================
+# 用途：交易行 / 拍卖 / 面交（M7 L2）
+# 后台域：trade（balance）
+# =====================================================================
+
+# 交易行一口价：卖方所得扣百分比手续费 → 系统回收
+listing_fee_pct: 0.05
+# 以物易物：按上架者大境界档收固定灵石手续费（高于常规）
+barter_fee_by_realm:
+  body_tempering: 50
+  qi_refining: 80
+  foundation: 120
+  jindan: 200
+  yuanying: 350
+  huashen: 500
+  true_immortal: 800
+barter_fee_default: 100
+
+# 拍卖
+auction_duration_sec: 3600
+auction_min_increment_pct: 0.05
+auction_fee_pct: 0.05
+# 结拍失败（流拍）退回：inventory=直回背包；mail=系统邮件（L3 默认）
+auction_unsold_refund: mail
+
+# 面交
+face_timeout_sec: 120
+# 面交单次两侧物品行数上限
+face_max_item_lines: 8
+# 发起面交须为道友
+face_require_friend: true
+# 发起面交须双方在线（WsHub）
+face_require_online: true
+# 仅 development：跳过 WsHub 在线检查（单测/本地无 WS 时）
+face_dev_assume_online: true
+
+# 系统回收账户展示名（流水 character_id 为空）
+recycle_label_zh: 天道回收池

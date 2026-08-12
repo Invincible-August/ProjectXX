@@ -1,0 +1,54 @@
+# =====================================================================
+# 用途：神识池容量、化身/灵宠占用、软硬上限、阶梯衰减与反噬表（M4-D03）
+# 加载时机：开战/快照衰减、化身挂机反噬、GET /avatar/sense
+# 运营：改 bands/table 热插；DIVINE_SENSE_STRICT 仅 DEV 门控是否套战斗衰减
+# =====================================================================
+
+# 基础神识容量
+base_capacity: 10
+
+# 达到对应大境界后的容量加成（键=major_realm id）
+per_realm_bonus:
+  qi_refining: 2
+  foundation: 3
+  jindan: 5
+  yuanying: 8
+
+# 各类单位占用的神识点数（宠可被物种 divine_sense_cost 覆盖）
+costs:
+  avatar: 5
+  pet: 3
+
+# soft_cap = capacity × soft_ratio（≤ 软上限 = 舒适区，战斗乘区 1.0）
+soft_ratio: 1.0
+# hard_cap = capacity × hard_ratio（> 硬上限 → 反噬）
+hard_ratio: 1.5
+
+# 兼容旧配置：无 overload_bands 时用线性混成（勿再当正式曲线）
+overload_stat_mult: 0.7
+# 兼容旧配置：无 backlash_table 命中时的挂机乘区
+backlash_idle_mult: 0.5
+
+# 阶梯衰减：按 load/capacity 取首个 max_load_ratio >= 比值的档（null=兜底）
+# 舒适区仍以 soft_cap 为准：load ≤ soft_cap → combat_stat_mult=1.0
+overload_bands:
+  - max_load_ratio: 1.0
+    combat_stat_mult: 1.0
+    zone: comfort
+  - max_load_ratio: 1.25
+    combat_stat_mult: 0.85
+    zone: overload
+  - max_load_ratio: 1.5
+    combat_stat_mult: 0.7
+    zone: overload
+  - max_load_ratio: null
+    combat_stat_mult: 0.5
+    zone: critical
+
+# 反噬表：when=over_hard 表示 load > hard_cap
+backlash_table:
+  - id: over_hard
+    when: over_hard
+    idle_mult: 0.5
+    set_flag: true
+    summary: 严重超载·化身修炼减速

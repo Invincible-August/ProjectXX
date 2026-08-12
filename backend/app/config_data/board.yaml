@@ -1,0 +1,103 @@
+# =====================================================================
+# 用途：棋盘尺寸、三区、默认可部署区、回合/伤害/命中、棋子种类与默认面板
+# 加载时机：M3 自走棋战斗引擎（布阵校验、演算、命中与伤害公式）
+# =====================================================================
+# 坐标系：左下角为 (0,0)；x 向右增大、y 向上增大；均为进攻方视角。
+# 防守方半区由引擎做 x 镜像（x' = 6 - x）。
+
+# 棋盘边长（7×7）
+size: 7
+
+# 三区划分（进攻方视角，沿 x 轴）
+zones:
+  own_x: [0, 1, 2]        # 己方半区
+  neutral_x: [3]          # 中立列（默认禁止落子）
+  enemy_x: [4, 5, 6]      # 敌对半区
+
+# 无阵法时的默认可部署矩形（进攻方；防守方由引擎镜像）
+default_deploy:
+  x_min: 0
+  x_max: 1
+  y_min: 2
+  y_max: 4
+
+# 默认最大上阵数（与默认区 6 格一致；含本体）
+default_max_units: 6
+
+# 无预设开战时本体的默认落点锚
+default_anchor_unit: { x: 0, y: 3 }
+
+# 回合上限与超时判定：超过 max_rounds 双方均存活时防守方胜
+max_rounds: 30
+timeout_winner: defender
+
+# DND 对抗掷骰（先攻 / 环境对抗 / 伤害骰共用面数）
+dnd:
+  dice_sides: 20
+
+# 默认 AI 行动参数（每先攻回合 2 AP；移动/攻击各耗 1 AP）
+default_ai:
+  ap_per_turn: 2
+  land_move_points: 2      # 陆地单位一次移动行动最多走 2 格（正交）
+  fly_move_points: 4       # 飞行单位一次移动行动最多走 4 格
+
+# 四类攻击的基础命中率（§7.3.3）
+hit_rates:
+  ranged_physical: 0.75    # 远程物理
+  ranged_magic: 0.85       # 远程法术
+  melee_physical: 0.90     # 近战物理
+  melee_magic: 0.95        # 近战法术
+
+# 伤害公式（§7.3.2；数值占位进配置）：
+#   damage = max(damage_floor, P * C_atk * (Dice / dice_normalizer) - D * C_def)
+# dice_normalizer 取骰面数一半时期望伤害 ≈ 攻击威力 P（d20 → 0.1x～2.0x 波动）
+damage_floor: 0
+damage_dice_normalizer: 10
+
+# 上阵上限随大境界收紧（不得超过当前合法部署格数）
+max_units_by_major_realm:
+  body_tempering: 3        # 锻体教学期
+  qi_refining: 4
+  foundation: 6
+  jindan: 6
+
+# 棋子种类闸门（枚举全预留；未开放种类返回 40043）
+# unique=同场唯一；required=必须上场；enabled=是否开放
+unit_kinds:
+  main:   { unique: true,  required: true,  enabled: true }
+  puppet: { unique: false, required: false, enabled: true }   # M3 试炼木傀 + M4 真傀儡
+  pet:    { unique: false, required: false, enabled: true }   # M4 灵宠
+  avatar: { unique: false, required: false, enabled: true }  # M4 化身
+  prop:   { unique: false, required: false, enabled: false }  # 后置
+
+# 各类棋子的战斗面板默认值（本体 atk/hp 由 build_combat_stats 权威提供）
+# speed=先攻相关；can_fly=可否飞行；attack_range=射程格数；attack_kind=攻击类型
+# atk_ratio/hp_ratio=相对本体面板的比例（非本体种类用）
+unit_defaults:
+  main:
+    speed: 8
+    can_fly: false
+    attack_range: 1
+    attack_kind: melee_physical
+  # 以下种类字段同上（含比例）
+  puppet:
+    speed: 5
+    can_fly: false
+    attack_range: 1
+    attack_kind: melee_physical
+    atk_ratio: 0.5
+    hp_ratio: 0.6
+  avatar:
+    speed: 8
+    can_fly: false
+    attack_range: 1
+    attack_kind: melee_physical
+    atk_ratio: 1.0
+    hp_ratio: 1.0
+  pet:
+    speed: 12
+    can_fly: false
+    attack_range: 1
+    attack_kind: melee_physical
+    atk_ratio: 1.0
+    hp_ratio: 1.0

@@ -1,0 +1,111 @@
+# =====================================================================
+# 用途：灵宠主动技能定义与物种技能池（PET-D02 热插拔）
+# 加载时机：捕获默认装 / 装备栏 / 对战选招（PET-D05）
+# 运营：后台域 pet_skills；加技能只改本表，禁止改代码
+# =====================================================================
+
+equip_slots: 4
+
+# 主动技能定义
+skills:
+  skill_basic_scratch:
+    name: 抓挠
+    power: 30
+    accuracy: 100
+    category: physical
+    priority: 0
+    pp: 35
+    mutex_tags: []
+
+  skill_fox_bite:
+    name: 狐咬
+    power: 45
+    accuracy: 95
+    category: physical
+    priority: 0
+    pp: 25
+    mutex_tags: [bite]
+
+  skill_fox_tail:
+    name: 狐尾扫
+    power: 0
+    accuracy: 100
+    category: status
+    priority: 0
+    pp: 20
+    mutex_tags: []
+
+  skill_crane_peck:
+    name: 鹤啄
+    power: 40
+    accuracy: 100
+    category: physical
+    priority: 1
+    pp: 25
+    mutex_tags: []
+
+  skill_crane_gale:
+    name: 清风羽
+    power: 50
+    accuracy: 90
+    category: special
+    priority: 0
+    pp: 15
+    mutex_tags: [wind]
+
+  skill_centipede_sting:
+    name: 蜈蚣刺
+    power: 35
+    accuracy: 95
+    category: physical
+    priority: 0
+    pp: 25
+    mutex_tags: [poison]
+
+  skill_centipede_toxin:
+    name: 阴毒雾
+    power: 0
+    accuracy: 90
+    category: status
+    priority: 0
+    pp: 15
+    mutex_tags: [poison]
+
+  skill_universal_guard:
+    name: 护体诀
+    power: 0
+    accuracy: 100
+    category: status
+    priority: 4
+    pp: 20
+    mutex_tags: []
+
+  skill_beast_roar:
+    name: 兽族咆哮
+    power: 55
+    accuracy: 90
+    category: special
+    priority: 0
+    pp: 10
+    mutex_tags: [roar]
+
+# 物种技能池（species.skill_pool_id 外键）
+pools:
+  pool_fox:
+    name: 灵狐技能池
+    skill_ids: [skill_basic_scratch, skill_fox_bite, skill_fox_tail, skill_universal_guard]
+    # 捕获时默认已学 / 已装备（不足 4 槽补 null）
+    default_learned: [skill_basic_scratch, skill_fox_bite]
+    default_equipped: [skill_fox_bite, skill_basic_scratch]
+
+  pool_crane:
+    name: 仙鹤技能池
+    skill_ids: [skill_basic_scratch, skill_crane_peck, skill_crane_gale, skill_universal_guard]
+    default_learned: [skill_basic_scratch, skill_crane_peck]
+    default_equipped: [skill_crane_peck, skill_basic_scratch]
+
+  pool_centipede:
+    name: 蜈蚣技能池
+    skill_ids: [skill_basic_scratch, skill_centipede_sting, skill_centipede_toxin, skill_universal_guard]
+    default_learned: [skill_basic_scratch, skill_centipede_sting]
+    default_equipped: [skill_centipede_sting, skill_basic_scratch]

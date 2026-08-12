@@ -1,0 +1,29 @@
+:root {
+  color-scheme: light;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --adm-bg: #f3f0e8;
+  --adm-panel: #fffdf8;
+  --adm-ink: #1c1914;
+  --adm-accent: #0f6b5c;
+  --adm-border: #d9d2c4;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  background: radial-gradient(circle at top left, #e8f2ef 0%, var(--adm-bg) 45%, #ebe4d6 100%);
+  color: var(--adm-ink);
+}
+
+a {
+  color: var(--adm-accent);
+  text-decoration: none;
+}

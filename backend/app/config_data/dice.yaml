@@ -1,0 +1,117 @@
+# =====================================================================
+# 用途：修为检定骰 — 境界默认上下限表、通道、突破/战斗用途
+# 加载时机：突破判定、战斗先攻/伤害/阵法、DiceService 预览
+# 公式：lo/hi = 查表 base ± Σ通道修正，再 clamp；详见 骰子系统设计.md
+# =====================================================================
+
+# 无角色境界时回落（怪、空上下文）
+fallback_bounds:
+  min: 1
+  max: 20
+
+# 怪物默认区间（PVE 防守侧）
+monster_default:
+  min: 1
+  max: 20
+
+# 全局钳制
+clamp:
+  absolute_min: 1                 # 实际下限不低于此
+  absolute_max: 200               # 实际上限不高于此
+
+# 突破：用 breakthrough.yaml 的 success_rate 映射阈值
+breakthrough:
+  use_legacy_success_rate: true
+
+# 战斗伤害：因子 = roll / mid(lo,hi)；false 则回落 board.damage_dice_normalizer
+combat:
+  use_midpoint_normalizer: true
+
+# 用途清单（文档/校验用；未列也可调用）
+purposes:
+  - breakthrough
+  - combat_initiative
+  - combat_damage
+  - formation
+  - dual_cultivation
+  - generic
+
+# 修正通道（无实例则修正为 0）
+bonus_channels:
+  technique:
+    enabled: true                 # 功法 dice_mods
+  body_track:
+    enabled: true                 # 体修功法 + body_realm_bonus
+  item:
+    enabled: false                # 延后 DICE-R02
+  equipment:
+    enabled: false                # 延后 DICE-R01
+  fate_luck:
+    enabled: true                 # 气运分档
+
+# 气运分档：角色 fate_luck 落入 [min_luck,max_luck] 时加修正
+fate_luck_tiers:
+  - { min_luck: 0, max_luck: 19, min_bonus: 0, max_bonus: 0 }
+  - { min_luck: 20, max_luck: 49, min_bonus: 0, max_bonus: 1 }
+  - { min_luck: 50, max_luck: 79, min_bonus: 1, max_bonus: 1 }
+  - { min_luck: 80, max_luck: 100, min_bonus: 1, max_bonus: 2 }
+
+# 体修道：按大境界+小境界对体修相关检定额外加减（占位可全 0）
+body_realm_bonus:
+  body_tempering:
+    1: { min_bonus: 0, max_bonus: 0 }
+    2: { min_bonus: 0, max_bonus: 1 }
+    3: { min_bonus: 0, max_bonus: 1 }
+    4: { min_bonus: 1, max_bonus: 1 }
+    5: { min_bonus: 1, max_bonus: 1 }
+    6: { min_bonus: 1, max_bonus: 2 }
+    7: { min_bonus: 1, max_bonus: 2 }
+    8: { min_bonus: 2, max_bonus: 2 }
+    9: { min_bonus: 2, max_bonus: 2 }
+    10: { min_bonus: 2, max_bonus: 3 }
+
+# 境界默认上下限（权威表；调数值只改这里）
+# 语义占位：大境锁 max 波段，小境抬 min
+realm_bounds:
+  body_tempering:
+    1: { min: 1, max: 10 }
+    2: { min: 2, max: 10 }
+    3: { min: 3, max: 10 }
+    4: { min: 4, max: 10 }
+    5: { min: 5, max: 10 }
+    6: { min: 6, max: 10 }
+    7: { min: 7, max: 10 }
+    8: { min: 8, max: 10 }
+    9: { min: 9, max: 10 }
+    10: { min: 10, max: 10 }
+  qi_refining:
+    1: { min: 11, max: 20 }
+    2: { min: 12, max: 20 }
+    3: { min: 13, max: 20 }
+    4: { min: 14, max: 20 }
+    5: { min: 15, max: 20 }
+    6: { min: 16, max: 20 }
+    7: { min: 17, max: 20 }
+    8: { min: 18, max: 20 }
+    9: { min: 19, max: 20 }
+    10: { min: 20, max: 20 }
+  foundation:
+    1: { min: 21, max: 30 }       # early
+    2: { min: 23, max: 30 }       # middle
+    3: { min: 26, max: 30 }       # late
+    4: { min: 28, max: 30 }       # perfection
+  jindan:
+    1: { min: 31, max: 40 }
+    2: { min: 33, max: 40 }
+    3: { min: 36, max: 40 }
+    4: { min: 38, max: 40 }
+  yuanying:
+    1: { min: 41, max: 50 }
+    2: { min: 43, max: 50 }
+    3: { min: 46, max: 50 }
+    4: { min: 48, max: 50 }
+  huashen:
+    1: { min: 51, max: 60 }
+    2: { min: 53, max: 60 }
+    3: { min: 56, max: 60 }
+    4: { min: 58, max: 60 }

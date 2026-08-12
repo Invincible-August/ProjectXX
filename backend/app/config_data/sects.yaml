@@ -1,0 +1,112 @@
+# =====================================================================
+# 用途：宗门玩法（M7 L1）+ 全站设施开关
+# 加载时机：SectService / 设施预览 API / 灵兽宗改词条类型闸
+# 后台域：sects（facility 风险）；须双写可配（§0.0 / §0.0.1）
+# =====================================================================
+
+# 设施总闸：后台改 enabled 发布后玩家服预览即时反映
+facilities:
+  # —— 字段说明 ——
+  # enabled   是否对玩家开放入口（false 时 API 返回未开放）
+  # note      玩家可见说明（§0.7）
+  spirit_beast_sect:
+    enabled: true
+    note: 灵兽宗改词条类型（PET-D06）；费用见 pet_sect_reroll
+  sect_hall:
+    enabled: true
+    note: 宗门大厅（M7 L1）：拜入 / 自建 / 摘要
+  sect_shop:
+    enabled: true
+    note: 宗门贡献商店（M7 L1）
+  sect_tasks:
+    enabled: true
+    note: 宗门任务（含化身独立接交 · M4-D06）
+
+# 建宗费用（灵石）；有钱即可，无修为门槛（D2）
+create_cost_spirit_stones: 100000
+
+# 相对散修的入宗挂机修为乘区占位（显性展示，§0.7）
+idle_bonus_vs_wanderer: 1.05
+
+# 轮回时本宗贡献是否归零（D4）
+contribution_zero_on_reincarnation: true
+
+# 宗门名 / 箴言长度上限
+max_name_len: 12
+max_motto_len: 48
+
+# 祖师大境界 → 已解锁功能键（宗主≠祖师；功能读祖师进度 D3）
+features_by_founder_realm:
+  body_tempering: [shop_basic, quests_basic]
+  qi_refining: [shop_basic, quests_basic]
+  foundation: [shop_basic, quests_basic]
+  jindan: [shop_basic, quests_basic, pet_exchange]
+  yuanying: [shop_basic, quests_basic, pet_exchange]
+  huashen: [shop_basic, quests_basic, pet_exchange]
+  lianxu: [shop_basic, quests_basic, pet_exchange, secret_realm_hook]
+  heti: [shop_basic, quests_basic, pet_exchange, secret_realm_hook]
+  dacheng: [shop_basic, quests_basic, pet_exchange, secret_realm_hook]
+  true_immortal: [shop_basic, quests_basic, pet_exchange, secret_realm_hook]
+
+# NPC 宗门表（禁止代码写死宗门 id）
+npc_sects:
+  lingshou_zong:
+    label_zh: 灵兽宗
+    summary: 善御灵兽；贡献可兑宠；散修可拜入
+    join_min_realm: jindan
+    join_cost_spirit_stones: 0
+    motto: 万兽听令，灵契长存
+    idle_bonus_vs_wanderer: 1.08
+  qingyun_zong:
+    label_zh: 青云宗
+    summary: 正统修仙宗门样本；入门门槛较低
+    join_min_realm: qi_refining
+    join_cost_spirit_stones: 500
+    motto: 青云直上，道心不移
+    idle_bonus_vs_wanderer: 1.05
+
+# 宗门兑宠（V6）：贡献兑换白名单物种
+sect_exchange:
+  enabled: true
+  # 须同时在 pets.yaml 物种 acquire_tags 含 sect_exchange
+  whitelist_species:
+    - test_pet_fox
+  cost_contribution: 500
+  grade: 1
+
+# 贡献商店样本（扣贡献，发灵石/占位道具）
+shop_items:
+  contrib_stone_pack:
+    label_zh: 贡献灵石包
+    summary: 用宗门贡献兑换少量灵石（占位）
+    cost_contribution: 100
+    reward_spirit_stones: 200
+    require_feature: shop_basic
+  contrib_quest_token:
+    label_zh: 任务加速符（占位）
+    summary: 占位道具；仅记流水，不进真背包键亦可
+    cost_contribution: 50
+    reward_spirit_stones: 0
+    require_feature: shop_basic
+
+# 宗门任务样本（含化身可独立接交 · M4-D06）
+quests:
+  daily_patrol:
+    label_zh: 宗门巡山
+    summary: 本体或化身均可接；完成后获贡献
+    assignee_modes: [body, avatar]
+    reward_contribution: 30
+    require_feature: quests_basic
+  avatar_herb_gather:
+    label_zh: 化身采药
+    summary: 仅化身可接；失败不牵连本体陨落
+    assignee_modes: [avatar]
+    reward_contribution: 45
+    require_feature: quests_basic
+
+# 旧模板占位（设施预览/兼容；正式玩法以 npc_sects 为准）
+sects:
+  placeholder_spirit_beast:
+    name: 灵兽宗（占位）
+    facilities: [spirit_beast_sect]
+    summary: 改灵宠词条类型；玩法已开，配置契约保留

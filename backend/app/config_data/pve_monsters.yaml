@@ -1,0 +1,88 @@
+# =====================================================================
+# 用途：PVE 怪物面板、多棋子编队、胜负奖励与体力消耗
+# 加载时机：M3 PVE 开战布怪与结算；无 units 时回退单体锚点
+# =====================================================================
+# - 无 units 的旧式单体怪：引擎回退为单棋子落在防守锚点 (6,3)
+# - 有 units 的怪：坐标须在敌对半区 x ∈ {4,5,6}
+# - stamina_cost 缺省时取 stamina.yaml costs.battle_pve
+
+monsters:
+  # —— 字段说明（以下怪物共用）——
+  # name              展示名
+  # atk / hp          兼容字段：无坐标回退时用；有 units 时以单位为准
+  # max_rounds        本场回合上限（可覆盖 board 默认）
+  # stamina_cost      （可选）开战体力消耗
+  # rewards_on_win    胜利奖励
+  # rewards_on_lose   失败奖励
+  # units             （可选）多棋子：unit_uid/name/x/y/atk/hp/speed/attack_range/attack_kind/can_fly
+  tutorial_slime:
+    name: 教学妖兽·浊气蛙
+    atk: 8
+    hp: 80
+    max_rounds: 20
+    rewards_on_win:
+      cultivation_points: 30
+      spirit_stones: 20
+    rewards_on_lose:
+      cultivation_points: 0
+      spirit_stones: 0
+    # 故意不写 units：验证旧式单体怪回退路径（本体 (0,3) vs 怪 (6,3)）
+
+  # 字段同上；本条示范多单位编队
+  wild_wolves:
+    name: 荒原双狼
+    atk: 10            # 兼容字段：无坐标回退时使用（正常走 units）
+    hp: 90
+    max_rounds: 30
+    stamina_cost: 6
+    rewards_on_win:
+      cultivation_points: 60
+      spirit_stones: 40
+    rewards_on_lose:
+      cultivation_points: 0
+      spirit_stones: 5
+    units:
+      - { unit_uid: wolf_1, name: 妖狼, x: 5, y: 2, atk: 10, hp: 90, speed: 6, attack_range: 1, attack_kind: melee_physical, can_fly: false }
+      - { unit_uid: wolf_2, name: 妖狼王, x: 6, y: 4, atk: 14, hp: 120, speed: 7, attack_range: 3, attack_kind: ranged_magic, can_fly: false }
+
+  # M3-D06 样本：前排护关嘲讽 + 后排输出（验收强制目标优先于更近敌人）
+  taunt_guardian:
+    name: 护关嘲讽妖
+    atk: 12
+    hp: 100
+    max_rounds: 30
+    stamina_cost: 5
+    rewards_on_win:
+      cultivation_points: 50
+      spirit_stones: 30
+    rewards_on_lose:
+      cultivation_points: 0
+      spirit_stones: 0
+    units:
+      # 前排近战嘲讽者（正交邻接光环）
+      - {
+          unit_uid: guard,
+          name: 护关木傀,
+          x: 5,
+          y: 3,
+          atk: 8,
+          hp: 200,
+          speed: 4,
+          attack_range: 1,
+          attack_kind: melee_physical,
+          can_fly: false,
+          taunt_aura_id: ortho_guard,
+        }
+      # 后排输出：无光环；approach 往往更优，用于证明嘲讽短路
+      - {
+          unit_uid: backline,
+          name: 后排妖法,
+          x: 6,
+          y: 3,
+          atk: 20,
+          hp: 60,
+          speed: 8,
+          attack_range: 3,
+          attack_kind: ranged_magic,
+          can_fly: false,
+        }

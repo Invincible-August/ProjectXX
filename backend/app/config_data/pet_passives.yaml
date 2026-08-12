@@ -1,0 +1,80 @@
+# =====================================================================
+# 用途：灵宠被动与种族天赋（PET-D03）；与词条分表
+# 运营：加被动只改本表；种族 racial_talent_id / 物种 passive_pool_id 外键校验
+# effect_domain: combat → 进战斗面板；life / cultivation → 本期仅展示
+# =====================================================================
+
+passives:
+  talent_beast_hide:
+    name: 厚皮
+    kind: racial_talent
+    effect_domain: combat
+    effects:
+      flat_hp: 5
+    summary: 种族天赋：额外生命
+
+  talent_avian_wind:
+    name: 羽风
+    kind: racial_talent
+    effect_domain: combat
+    effects:
+      flat_speed: 3
+    summary: 种族天赋：额外速度
+
+  talent_insect_toxin:
+    name: 虫毒
+    kind: racial_talent
+    effect_domain: combat
+    effects:
+      flat_atk: 2
+    summary: 种族天赋：额外攻击
+
+  passive_beast_rage:
+    name: 兽怒
+    kind: independent
+    effect_domain: combat
+    effects:
+      pct_atk: 5
+    summary: 独立被动：攻击百分比
+
+  passive_avian_focus:
+    name: 鹤眸
+    kind: independent
+    effect_domain: combat
+    effects:
+      flat_atk: 2
+      flat_speed: 1
+    summary: 独立被动：攻速微调
+
+  passive_insect_shell:
+    name: 甲壳
+    kind: independent
+    effect_domain: combat
+    effects:
+      flat_hp: 4
+    summary: 独立被动：额外生命
+
+  # 词条 passive_ref_probe 引用；生活域 → 本期不进战斗面板
+  passive_probe_sense:
+    name: 神识微光
+    kind: independent
+    effect_domain: life
+    effects: {}
+    summary: 生活域占位（不进战斗面板）
+
+# 独立被动池：empty_weight 表示「抽空」；可与有权项并存
+pools:
+  pool_beast_passives:
+    empty_weight: 40
+    weights:
+      passive_beast_rage: 60
+
+  pool_avian_passives:
+    empty_weight: 50
+    weights:
+      passive_avian_focus: 50
+
+  pool_insect_passives:
+    empty_weight: 55
+    weights:
+      passive_insect_shell: 45

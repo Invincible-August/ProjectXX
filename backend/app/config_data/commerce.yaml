@@ -1,0 +1,64 @@
+# =====================================================================
+# 用途：会员档 / 天道商店 / 沙盒（M7 L8）
+# 后台域：commerce（balance）
+# =====================================================================
+
+# 轮回是否保留付费会员（默认不保留）
+keep_membership_on_reincarnation: false
+
+# 会员档（开通耗天道点）
+membership_tiers:
+  free:
+    label_zh: 散修（免费）
+    idle_cap_hours: 12
+    tiandao_cost: 0
+    duration_days: 0
+    cultivation_bonus_pct: 0
+    breakthrough_bonus_pct: 0
+  tier1:
+    label_zh: 会员·一
+    idle_cap_hours: 18
+    tiandao_cost: 100
+    duration_days: 30
+    cultivation_bonus_pct: 2
+    breakthrough_bonus_pct: 1
+  tier2:
+    label_zh: 会员·二
+    idle_cap_hours: 24
+    tiandao_cost: 280
+    duration_days: 30
+    cultivation_bonus_pct: 5
+    breakthrough_bonus_pct: 2
+
+# 天道商店货架（禁止售卖指定本命道）
+shop:
+  boundary_zh: 天道商店不出售指定本命大道；真支付渠道未开放，当前为沙盒加点。
+  forbidden_item_types:
+    - appointed_dao
+    - fate_dao
+    - designated_dao
+  items:
+    membership_tier1:
+      label_zh: 开通会员·一（三十日）
+      kind: membership
+      membership_tier: tier1
+      tiandao_cost: 100
+      enabled: true
+    membership_tier2:
+      label_zh: 开通会员·二（三十日）
+      kind: membership
+      membership_tier: tier2
+      tiandao_cost: 280
+      enabled: true
+    spirit_stone_pouch:
+      label_zh: 灵石锦囊（沙盒）
+      kind: spirit_stones
+      spirit_stones_grant: 500
+      tiandao_cost: 50
+      enabled: true
+
+# 沙盒加点上限（单次 / 日）
+sandbox:
+  max_grant_per_request: 10000
+  max_grant_per_day: 50000
+  default_grant: 500

@@ -1,0 +1,35 @@
+# =====================================================================
+# 用途：灵宠回合制对战规则（PET-D05）；与自走棋 board 无关
+# 加载时机：/pets/duel/* 
+# 运营：后台域 pet_duel
+# =====================================================================
+
+max_rounds: 40
+# 伤害：floor(atk * power / damage_divisor * roll)；至少 1
+damage_divisor: 50
+damage_roll_min: 0.85
+damage_roll_max: 1.0
+# 命中检定：roll 1～100 <= accuracy
+accuracy_enabled: true
+# 同速时：seed 奇偶决定先手（可复现）
+speed_tie_break: seed_parity
+
+# 未装备技能时的默认指令（挣扎）
+default_struggle:
+  skill_id: skill_struggle
+  name: 挣扎
+  power: 25
+  accuracy: 100
+  category: physical
+  priority: 0
+  pp: 99
+
+# NPC 模板（玩家 vs NPC 验收）
+npc_templates:
+  npc_trial_fox:
+    name: 试炼狐影
+    species_id: test_pet_fox
+    grade: 1
+    level: 1
+    # 若空则用物种池 default_equipped
+    skill_ids: [skill_fox_bite, skill_basic_scratch]

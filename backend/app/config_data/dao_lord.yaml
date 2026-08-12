@@ -1,0 +1,60 @@
+# =====================================================================
+# 用途：道主达标门槛、挑战时段、冷却、特权占位、道主之争赛会日程
+# =====================================================================
+
+claim_min_level: 1
+challenge_min_level: 1
+
+# 挑战冷却（秒）
+cooldown:
+  win_seconds: 300
+  lose_seconds: 600
+  abort_seconds: 180
+
+# 挑战者断线宽限
+reconnect_grace_seconds: 45
+
+# 无有效防守快照时：reject | weak_npc
+missing_snapshot_policy: reject
+
+# 特权占位（就任时写入；轮回清空）
+privileges_default:
+  heavenly_skill_unlocked: false
+  can_open_secret_realm: false
+
+# 时段：每日 UTC 小时窗（过渡兼容；赛会以 contest 为准）
+windows:
+  - start_hour: 0
+    end_hour: 24
+    tz: UTC
+    label_zh: 全天开放（样本）
+
+# 同一道主同时仅允许一个进行中挑战（过渡单挑）
+single_challenge_per_dao: true
+
+# M6-D06 P1 + 擂台分阶段：道主之争报名 / 开打（DEV 友好：几乎全天可报）
+contest:
+  tz: Asia/Shanghai
+  registration_start: "00:00"
+  registration_end: "23:50"
+  fight_at: "23:55"
+  live_round_kinds:
+    - semi
+    - final
+    - lord
+  # 半决起：锁阵后短提示 + 对战直播（DEV 略缩短便于联调）
+  live_prep_seconds: 5
+  live_playback_seconds: 60
+  live_tick_base_ms: 350
+  live_dramatic_pause_ms: 800
+  log_retain_until_next_contest: true
+  both_offline_policy: earlier_entrant_advances
+  # DEV 联调：立刻开赛时无 WS 也按在线演算；仅 app_env=development 时生效，生产忽略
+  dev_assume_online: true
+  # 擂台分阶段（关闭则回退为「瞬间算完」旧路径，仅应急）
+  staging_enabled: true
+  rsvp_seconds: 60
+  arena_first_round_countdown_seconds: 30
+  round_gap_seconds: 30
+  live_adjust_seconds: 60
+  leave_during_playback_forfeit: true

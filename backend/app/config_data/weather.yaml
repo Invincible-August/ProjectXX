@@ -1,0 +1,199 @@
+# =====================================================================
+# 用途：区域天气池滚动、展示名/catalog、挂机/工坊/渡劫乘区与标签乘区
+# 加载时机：M5 天气服务、挂机/工坊/开战锁天气、渡劫压力；劫云不进日常池
+# =====================================================================
+# tribulation_cloud 不进日常滚动池，仅渡劫 begin 写入 overlay
+#
+# 【录入说明】新增一种天气时请同步维护：
+#   labels.<id>              展示名
+#   regions.*.pool.<id>      滚动权重（劫云勿进池）
+#   modifiers.*              数值乘区（结算用）
+#   catalog.<id>.*           玩家可见说明（修炼区/顶栏/工坊）
+#   tag_modifiers.*          灵根/功法标签额外乘区（可空）
+
+# 区域天气池：键=区域 id；default 为全局默认区
+regions:
+  default:
+    pool:                             # 天气 id → 滚动权重（相对）
+      clear: 30
+      overcast: 20
+      rain: 15
+      hurricane: 10
+      storm: 15
+      thunderstorm: 10
+    roll_interval_seconds: 180        # 重新掷天气的间隔（秒）
+
+# 天气 id → 展示名
+labels:
+  clear: 晴
+  overcast: 阴
+  rain: 雨
+  hurricane: 飓风
+  storm: 暴雨
+  thunderstorm: 雷暴
+  tribulation_cloud: 劫云
+
+# 玩家可见说明目录；后续天气字段同 clear
+catalog:
+  # summary / idle_note / spawn_bias_note / craft_notes.* / tribulation_note
+  clear:
+    summary: "晴空万里，灵气澄澈"
+    idle_note: "基础修炼速度略升"
+    spawn_bias_note: "阳属妖兽出没略增；阴属略减（占位）"
+    craft_notes:
+      alchemy: "炼丹效率正常"
+      smithing: "炼器效率略升"
+      talisman: "制符正常"
+      puppet: "傀儡正常"
+      array: "阵法正常"
+    tribulation_note: "渡劫压力略缓"
+  overcast:
+    summary: "阴云低垂，灵气沉滞"
+    idle_note: "基础修炼速度标准"
+    spawn_bias_note: "妖兽出没平常（占位）"
+    craft_notes:
+      alchemy: "炼丹正常"
+      smithing: "炼器正常"
+      talisman: "制符略便"
+      puppet: "傀儡正常"
+      array: "阵法正常"
+    tribulation_note: "渡劫压力平常"
+  rain:
+    summary: "细雨连绵，水灵充盈"
+    idle_note: "基础修炼速度略降"
+    spawn_bias_note: "水族/湿润地带妖兽权重略升（占位）"
+    craft_notes:
+      alchemy: "炼丹效率提升"
+      smithing: "炼器略难（火候受潮）"
+      talisman: "制符正常"
+      puppet: "傀儡正常"
+      array: "阵法正常"
+    tribulation_note: "渡劫压力略升"
+  hurricane:
+    summary: "狂风呼啸，灵气散乱"
+    idle_note: "基础修炼速度下降"
+    spawn_bias_note: "飞行/风属妖兽出没增多（占位）"
+    craft_notes:
+      alchemy: "炼丹不稳"
+      smithing: "炼器略难"
+      talisman: "制符受扰"
+      puppet: "傀儡正常"
+      array: "阵法不稳"
+    tribulation_note: "渡劫压力明显抬高"
+  storm:
+    summary: "暴雨倾盆，水势凶猛"
+    idle_note: "基础修炼速度略降"
+    spawn_bias_note: "水属凶兽出没风险上升（占位）"
+    craft_notes:
+      alchemy: "炼丹受潮"
+      smithing: "炼器略难"
+      talisman: "制符正常"
+      puppet: "傀儡正常"
+      array: "阵法正常"
+    tribulation_note: "渡劫压力较高"
+  thunderstorm:
+    summary: "雷霆交加，天威临世"
+    idle_note: "基础修炼速度略降"
+    spawn_bias_note: "雷属妖兽出没显著增多（占位）"
+    craft_notes:
+      alchemy: "炼丹效率下降（忌雷暴）"
+      smithing: "炼器略难"
+      talisman: "制符需避雷"
+      puppet: "傀儡正常"
+      array: "阵法略便（雷纹）"
+    tribulation_note: "渡劫压力大幅抬高"
+  tribulation_cloud:
+    summary: "劫云笼罩，天劫将至（表现天气）"
+    idle_note: "劫云下挂机受扰（占位）"
+    spawn_bias_note: "普通妖兽退避；异常生灵可能出现（占位）"
+    craft_notes:
+      alchemy: "炼丹大受干扰"
+      smithing: "炼器受扰"
+      talisman: "制符受扰"
+      puppet: "傀儡受扰"
+      array: "阵法受扰"
+    tribulation_note: "结算仍按开渡前锁定天气；此处仅为表现"
+
+# 数值乘区（结算用）
+modifiers:
+  idle_cultivation:                   # 挂机修炼：天气 → 乘区
+    clear: 1.05
+    overcast: 1.0
+    rain: 0.98
+    hurricane: 0.92
+    storm: 0.95
+    thunderstorm: 0.95
+    tribulation_cloud: 0.8
+  battle_cultivation:                 # 开战奖励修为：天气 → 乘区（锁定开战天气）
+    clear: 1.0                        # 晴天基线 1.0，避免教学奖励被默认乘破
+    overcast: 1.0
+    rain: 0.98
+    hurricane: 0.92
+    storm: 0.95
+    thunderstorm: 0.95
+    tribulation_cloud: 0.9
+  craft:                              # 工坊：分支 → 天气 → 乘区（缺省天气=1.0）
+    alchemy:
+      clear: 1.0
+      rain: 1.1
+      thunderstorm: 0.85
+    smithing:
+      clear: 1.05
+      rain: 0.95
+      thunderstorm: 0.9
+    talisman:
+      clear: 1.0
+      overcast: 1.05
+    puppet:
+      clear: 1.0
+    array:
+      clear: 1.0
+      thunderstorm: 1.05
+  tribulation_pressure:               # 渡劫压力乘区（越高越痛）
+    clear: 0.9
+    overcast: 1.0
+    rain: 1.05
+    hurricane: 1.15
+    storm: 1.2
+    thunderstorm: 1.25
+    tribulation_cloud: 1.0
+  breakthrough_success:               # 突破成功乘区
+    clear: 1.05
+    overcast: 1.0
+    rain: 0.98
+    hurricane: 0.9
+    storm: 0.95
+    thunderstorm: 0.92
+  # 妖兽出没权重占位（PVE 怪池；未接完时可只作文案）
+  spawn_bias:
+    clear:
+      yang_beast: 1.1
+    rain:
+      water_beast: 1.15
+    thunderstorm:
+      thunder_beast: 1.25
+    night_like: {}
+
+# 灵根/功法标签 × 天气额外乘区
+# 结构：by_weather.<天气>.<tag_id> = 乘区
+tag_modifiers:
+  idle_cultivation:
+    by_weather:
+      thunderstorm:
+        thunder_root: 1.15
+        water_root: 0.95
+        thunder_art: 1.1
+      rain:
+        water_root: 1.1
+        water_art: 1.08
+      clear:
+        yang_root: 1.06
+        fire_root: 1.04
+      hurricane:
+        wind_root: 1.12
+        wind_art: 1.08
+
+# 环境总乘区钳制上下限
+clamp:
+  min: 0.5
+  max: 1.5

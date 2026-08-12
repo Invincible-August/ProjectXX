@@ -1,0 +1,16 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Local secrets & runtime data
+.env
+*.db
+logs/
+xiuxian.db
+
+# IDE
+.idea/
+.vscode/

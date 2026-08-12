@@ -1,0 +1,137 @@
+# =====================================================================
+# 用途：灵宠持有上限、种族/品阶注册表、物种面板与升级消耗（N4 热插拔）
+# 加载时机：灵兽园 / 图鉴 / 测试捕获 / 战斗上阵
+# 运营：后台域 pets；加物种只改本表或覆盖层，禁止改代码
+# =====================================================================
+
+hold_cap: 5
+level_stat_bonus: 0.05
+
+# 种族注册表（race_id → 定义）；物种.race 必须落在此表
+races:
+  beast:
+    name: 灵兽
+    racial_talent_id: talent_beast_hide
+    base_capture_rate: 0.35
+  avian:
+    name: 灵禽
+    racial_talent_id: talent_avian_wind
+    base_capture_rate: 0.32
+  insect:
+    name: 灵虫
+    racial_talent_id: talent_insect_toxin
+    base_capture_rate: 0.30
+
+# 个体品阶 → 词条槽 / 灵兽宗可改类型槽 / 基础属性乘区（词条结算 → PET-D01）
+grades:
+  1:
+    name: 凡品
+    affix_slots: 3
+    type_reroll_slots: 1
+    base_mult: 1.0
+  2:
+    name: 灵品
+    affix_slots: 4
+    type_reroll_slots: 1
+    base_mult: 1.08
+  3:
+    name: 玄品
+    affix_slots: 5
+    type_reroll_slots: 2
+    base_mult: 1.16
+  4:
+    name: 地品
+    affix_slots: 6
+    type_reroll_slots: 2
+    base_mult: 1.24
+  5:
+    name: 天品
+    affix_slots: 7
+    type_reroll_slots: 3
+    base_mult: 1.32
+  6:
+    name: 仙品
+    affix_slots: 8
+    type_reroll_slots: 3
+    base_mult: 1.40
+  7:
+    name: 神品
+    affix_slots: 9
+    type_reroll_slots: 4
+    base_mult: 1.50
+
+# 测试捕获：按物种稀有度加权（仅 acquire_tags 含 capture_test 的物种入池）
+capture_test_weights:
+  common: 70
+  rare: 25
+  epic: 5
+  legendary: 0
+
+# 测试捕获：个体品阶加权
+capture_test_grade_weights:
+  1: 55
+  2: 30
+  3: 12
+  4: 3
+
+# 升阶（grade-up）费用：升到目标品阶时扣灵石
+# cost = spirit_stones_base * (1+grow)^(target_grade-2)；升到 2 时为 base
+grade_up:
+  spirit_stones_base: 200
+  grow: 0.25
+  # 最高可升到的品阶（不得超过 grades 表最大键）
+  max_grade: 7
+
+# 物种表（热插拔主键 species_id）
+species:
+  test_pet_fox:
+    name: 试炼灵狐
+    race: beast
+    rarity: common
+    roles: [dps]
+    acquire_tags: [capture_test, gm_grant, egg_hatch, wild_capture, sect_exchange]
+    skill_pool_id: pool_fox
+    passive_pool_id: pool_beast_passives
+    base_atk: 8
+    base_hp: 40
+    base_speed: 12
+    growth: { atk: 1.0, hp: 1.0, speed: 1.0 }
+    upgrade_cost:
+      spirit_stones: 100
+      materials:
+        - { item_id: pet_food_basic, quantity: 1 }
+
+  pet_crane_qing:
+    name: 青羽仙鹤
+    race: avian
+    rarity: rare
+    roles: [dps]
+    acquire_tags: [capture_test, gm_grant, egg_hatch, wild_capture]
+    divine_sense_cost: 4
+    skill_pool_id: pool_crane
+    passive_pool_id: pool_avian_passives
+    base_atk: 10
+    base_hp: 32
+    base_speed: 16
+    growth: { atk: 1.0, hp: 1.0, speed: 1.05 }
+    upgrade_cost:
+      spirit_stones: 150
+      materials:
+        - { item_id: pet_food_basic, quantity: 2 }
+
+  pet_centipede_yin:
+    name: 阴煞蜈蚣
+    race: insect
+    rarity: common
+    roles: [control]
+    acquire_tags: [capture_test, gm_grant, wild_capture]
+    skill_pool_id: pool_centipede
+    passive_pool_id: pool_insect_passives
+    base_atk: 7
+    base_hp: 36
+    base_speed: 11
+    growth: { atk: 1.0, hp: 1.05, speed: 1.0 }
+    upgrade_cost:
+      spirit_stones: 120
+      materials:
+        - { item_id: pet_food_basic, quantity: 1 }

@@ -1,0 +1,104 @@
+# =====================================================================
+# 用途：大境界链、小层/阶段门槛与战力占位（atk/hp）
+# 加载时机：M1+ 角色境界显示、突破门槛、战力面板；M5 扩至元婴/化神
+# =====================================================================
+# stage_mode=layers：1～9 层 + perfection=10
+# stage_mode=phases：early/middle/late/perfection ↔ 1～4
+
+major_realms:
+  # —— 大境界字段 ——
+  # name           展示名
+  # stage_mode     layers | phases
+  # next_major     下一境 id；终点为 null
+  # stages[]       小层列表（字段见首条 stage）
+  #   stage                 编号
+  #   label                 层标签（layer_N / early / …）
+  #   cultivation_required  升到本层所需累计修为门槛
+  #   base_atk / base_hp    战力占位基础值
+  body_tempering:
+    name: 锻体
+    stage_mode: layers
+    next_major: qi_refining
+    stages:
+      - { stage: 1, label: layer_1, cultivation_required: 100, base_atk: 10, base_hp: 100 }
+      # 同境后续层字段同上
+      - { stage: 2, label: layer_2, cultivation_required: 200, base_atk: 12, base_hp: 120 }
+      - { stage: 3, label: layer_3, cultivation_required: 350, base_atk: 15, base_hp: 150 }
+      - { stage: 4, label: layer_4, cultivation_required: 500, base_atk: 18, base_hp: 180 }
+      - { stage: 5, label: layer_5, cultivation_required: 700, base_atk: 22, base_hp: 220 }
+      - { stage: 6, label: layer_6, cultivation_required: 950, base_atk: 26, base_hp: 260 }
+      - { stage: 7, label: layer_7, cultivation_required: 1250, base_atk: 30, base_hp: 300 }
+      - { stage: 8, label: layer_8, cultivation_required: 1600, base_atk: 35, base_hp: 350 }
+      - { stage: 9, label: layer_9, cultivation_required: 2000, base_atk: 40, base_hp: 400 }
+      - { stage: 10, label: perfection, cultivation_required: 2500, base_atk: 48, base_hp: 480 }
+
+  # 以下大境界字段同上
+  qi_refining:
+    name: 炼气
+    stage_mode: layers
+    next_major: foundation
+    stages:
+      - { stage: 1, label: layer_1, cultivation_required: 3000, base_atk: 55, base_hp: 550 }
+      - { stage: 2, label: layer_2, cultivation_required: 3600, base_atk: 62, base_hp: 620 }
+      - { stage: 3, label: layer_3, cultivation_required: 4300, base_atk: 70, base_hp: 700 }
+      - { stage: 4, label: layer_4, cultivation_required: 5100, base_atk: 78, base_hp: 780 }
+      - { stage: 5, label: layer_5, cultivation_required: 6000, base_atk: 88, base_hp: 880 }
+      - { stage: 6, label: layer_6, cultivation_required: 7000, base_atk: 98, base_hp: 980 }
+      - { stage: 7, label: layer_7, cultivation_required: 8200, base_atk: 110, base_hp: 1100 }
+      - { stage: 8, label: layer_8, cultivation_required: 9600, base_atk: 122, base_hp: 1220 }
+      - { stage: 9, label: layer_9, cultivation_required: 11200, base_atk: 135, base_hp: 1350 }
+      - { stage: 10, label: perfection, cultivation_required: 13000, base_atk: 150, base_hp: 1500 }
+
+  foundation:
+    name: 筑基
+    stage_mode: phases
+    next_major: jindan
+    stages:
+      - { stage: 1, label: early, cultivation_required: 16000, base_atk: 180, base_hp: 1800 }
+      - { stage: 2, label: middle, cultivation_required: 20000, base_atk: 210, base_hp: 2100 }
+      - { stage: 3, label: late, cultivation_required: 25000, base_atk: 250, base_hp: 2500 }
+      - { stage: 4, label: perfection, cultivation_required: 32000, base_atk: 300, base_hp: 3000 }
+
+  # M4 金丹：凝练化身门槛
+  jindan:
+    name: 金丹
+    stage_mode: phases
+    next_major: yuanying
+    stages:
+      - { stage: 1, label: early, cultivation_required: 40000, base_atk: 350, base_hp: 3500 }
+      - { stage: 2, label: middle, cultivation_required: 50000, base_atk: 400, base_hp: 4000 }
+      - { stage: 3, label: late, cultivation_required: 65000, base_atk: 480, base_hp: 4800 }
+      - { stage: 4, label: perfection, cultivation_required: 80000, base_atk: 550, base_hp: 5500 }
+
+  # M5 元婴：跨入无雷劫；大圆满→化神首劫
+  yuanying:
+    name: 元婴
+    stage_mode: phases
+    next_major: huashen
+    stages:
+      - { stage: 1, label: early, cultivation_required: 100000, base_atk: 650, base_hp: 6500 }
+      - { stage: 2, label: middle, cultivation_required: 130000, base_atk: 750, base_hp: 7500 }
+      - { stage: 3, label: late, cultivation_required: 170000, base_atk: 880, base_hp: 8800 }
+      - { stage: 4, label: perfection, cultivation_required: 220000, base_atk: 1000, base_hp: 10000 }
+
+  # M5 化神：首次渡劫目标（元婴→化神跨境）；同境内初/中/后/圆满进阶不渡劫
+  huashen:
+    name: 化神
+    stage_mode: phases
+    next_major: true_immortal
+    stages:
+      - { stage: 1, label: early, cultivation_required: 280000, base_atk: 1200, base_hp: 12000 }
+      - { stage: 2, label: middle, cultivation_required: 350000, base_atk: 1400, base_hp: 14000 }
+      - { stage: 3, label: late, cultivation_required: 450000, base_atk: 1650, base_hp: 16500 }
+      - { stage: 4, label: perfection, cultivation_required: 580000, base_atk: 2000, base_hp: 20000 }
+
+  # M6 真仙：开道门槛（化神圆满跨境或 GM 抬境）
+  true_immortal:
+    name: 真仙
+    stage_mode: phases
+    next_major: null
+    stages:
+      - { stage: 1, label: early, cultivation_required: 700000, base_atk: 2400, base_hp: 24000 }
+      - { stage: 2, label: middle, cultivation_required: 900000, base_atk: 2800, base_hp: 28000 }
+      - { stage: 3, label: late, cultivation_required: 1200000, base_atk: 3300, base_hp: 33000 }
+      - { stage: 4, label: perfection, cultivation_required: 1600000, base_atk: 4000, base_hp: 40000 }

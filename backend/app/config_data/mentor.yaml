@@ -1,0 +1,41 @@
+# =====================================================================
+# 用途：师徒关系（M7 L6）
+# 后台域：mentor（content）
+# =====================================================================
+
+# 师傅最多同时收徒
+max_apprentices: 3
+# 徒弟同时只能有一位师傅
+max_masters_per_apprentice: 1
+# 师傅相对徒弟至少高出几个大境界档（0=不限）
+min_realm_gap: 1
+# 申请过期秒（0=不过期）
+request_expire_sec: 86400
+# 解除/叛师后冷却秒
+dissolve_cooldown_sec: 3600
+# 轮回是否保留师徒键
+keep_on_reincarnation: true
+# 解除后师承频历史：readonly | deny
+history_after_dissolve: readonly
+
+# 传功占位：徒弟修为池（cultivation_points）小加成
+pass_cultivation:
+  apprentice_spirit_pool_gain: 30
+  master_spirit_stone_cost: 20
+  daily_cap_per_bond: 3
+
+# 师徒任务样本（至少 1 条）
+quests:
+  first_lesson:
+    name: 初传心法
+    description: 完成一次传功或计次修习
+    target_count: 1
+    # 出师前须完成
+    required_for_graduate: true
+    reward_apprentice_spirit_pool: 80
+    reward_master_spirit_stones: 50
+
+# 出师奖励（额外，徒弟加 cultivation_points）
+graduate:
+  apprentice_spirit_pool: 100
+  master_spirit_stones: 100

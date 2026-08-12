@@ -1,0 +1,286 @@
+# =====================================================================
+# 用途：阵法目录（地形/环境/天气/效果层）与三层克制表 + 四象载荷目录
+# 加载时机：M3 开战选阵、布阵可部署区与环境对抗结算
+# 部署契约 / force_shifts：见「阵法部署与自研设计.md」（M3-D08）
+# 禁制 / 环境·天气 combat：见「四象禁制与环境天气载荷设计.md」（M3-D07）
+# =====================================================================
+# 地形坐标一律按「施法方己方半区、进攻方视角」书写（x ∈ 0..2）；
+# 防守方施放时由引擎做 x 镜像。
+# 环境 / 天气 / 效果三层各自独立按 DND 对抗结算。
+# force_shifts 的 from/to 一律进攻方视角下的「敌对半区」坐标（x ∈ 4..6）。
+# 玩家可见名走 label_zh（开发计划 §0.0.2）；战报禁止裸打英文 id。
+
+formations:
+  # —— 字段说明（以下阵法共用）——
+  # name / level              展示名与等级
+  # unlocked_by_default       创角是否默认解锁
+  # required_array_level      （可选）需要阵法钻研等级
+  # deploy                    部署契约（缺省 mode=default，兼容旧行为）
+  # terrain_layout            地形布局元数据（缺省按 terrain 推断）
+  # terrain[]                 地形：x/y/type/subtype（obstacle|ravine|seal 等）
+  # force_shifts              开战强制移位（可选）
+  # environment / weather / effect  三层之一可为 null；force_apply=强制落地
+  # 无阵：默认干净盘
+  none:
+    name: 无阵
+    level: 0
+    unlocked_by_default: true
+    deploy:
+      mode: default
+    terrain_layout:
+      mode: none
+    terrain: []
+    force_shifts: []
+    environment: null
+    weather: null
+    effect: null
+
+  # 左拒马阵：己方半区放一个可破坏障碍 + 轻微守势效果（部署仍为默认区）
+  stone_wall_left:
+    name: 左拒马阵
+    level: 1
+    unlocked_by_default: true
+    deploy:
+      mode: default
+    terrain_layout:
+      mode: fixed
+    terrain:
+      # subtype（可破/不可破）对敌方开战前不可见
+      - { x: 2, y: 3, type: obstacle, subtype: destructible }
+    force_shifts: []
+    environment: null
+    weather: null
+    effect:
+      id: guarded             # 效果 id → effect_catalog
+      force_apply: false      # false=走对抗；true=强制
+      atk_mul: 0.98           # 攻击乘区
+      hp_mul: 1.05            # 生命乘区
+
+  # 迷雾境：环境层 + combat 远程命中乘区（见 environment_catalog.mist）
+  mist_domain:
+    name: 迷雾境
+    level: 2
+    unlocked_by_default: true
+    deploy:
+      mode: default
+    terrain_layout:
+      mode: none
+    terrain: []
+    force_shifts: []
+    environment:
+      id: mist
+      force_apply: false
+      counter_group: fog       # 克制分组键
+    weather: null
+    effect: null
+
+  # 沟壑阵：己方半区放一条禁飞深渊（探路揭晓样本）
+  ravine_trap:
+    name: 沟壑阵
+    level: 1
+    unlocked_by_default: true
+    deploy:
+      mode: default
+    terrain_layout:
+      mode: fixed
+    terrain:
+      - { x: 1, y: 3, type: ravine, subtype: no_fly }
+    force_shifts: []
+    environment: null
+    weather: null
+    effect: null
+
+  # 强制雷暴：天气层 force_apply + magic_damage_mul（见 weather_catalog）
+  storm_force:
+    name: 强制雷暴
+    level: 1
+    unlocked_by_default: false
+    required_array_level: 1
+    deploy:
+      mode: default
+    terrain_layout:
+      mode: none
+    terrain: []
+    force_shifts: []
+    environment: null
+    weather:
+      id: thunderstorm
+      force_apply: true
+    effect: null
+
+  # —— M3-D07 禁制样本 ——
+  # 金锁障：禁远程物理帘（己方前列三格）
+  seal_phys_curtain:
+    name: 金锁障
+    level: 1
+    unlocked_by_default: true
+    deploy:
+      mode: default
+    terrain_layout:
+      mode: fixed
+    terrain:
+      - { x: 2, y: 2, type: seal, subtype: ranged_physical }
+      - { x: 2, y: 3, type: seal, subtype: ranged_physical }
+      - { x: 2, y: 4, type: seal, subtype: ranged_physical }
+    force_shifts: []
+    environment: null
+    weather: null
+    effect: null
+
+  # 咒缄幕：禁远程法术
+  seal_spell_curtain:
+    name: 咒缄幕
+    level: 1
+    unlocked_by_default: true
+    deploy:
+      mode: default
+    terrain_layout:
+      mode: fixed
+    terrain:
+      - { x: 2, y: 3, type: seal, subtype: ranged_magic }
+    force_shifts: []
+    environment: null
+    weather: null
+    effect: null
+
+  # 万缄障：禁全部远程（单测 / 教学）
+  seal_all_curtain:
+    name: 万缄障
+    level: 2
+    unlocked_by_default: true
+    deploy:
+      mode: default
+    terrain_layout:
+      mode: fixed
+    terrain:
+      - { x: 2, y: 3, type: seal, subtype: ranged_all }
+    force_shifts: []
+    environment: null
+    weather: null
+    effect: null
+
+  # —— M3-D08 样本 ——
+  # 宽锋阵：默认区再追加两格（仍限己方半区；不与地形冲突）
+  wide_front:
+    name: 宽锋阵
+    level: 1
+    unlocked_by_default: true
+    deploy:
+      mode: default
+      add_cells: [[2, 2], [2, 4]]
+    terrain_layout:
+      mode: none
+    terrain: []
+    force_shifts: []
+    environment: null
+    weather: null
+    effect: null
+
+  # 流云散锋：己方半区任意摆，只限数量（free_own）
+  cloud_drift:
+    name: 流云散锋
+    level: 2
+    unlocked_by_default: true
+    deploy:
+      mode: free_own
+      max_units: 4
+      allow_neutral: false
+    terrain_layout:
+      mode: none
+    terrain: []
+    force_shifts: []
+    environment: null
+    weather: null
+    effect:
+      id: drift_guard
+      force_apply: false
+      atk_mul: 1.0
+      hp_mul: 1.02
+
+  # 左翼掩码阵：仅 mask 指定格可部署
+  left_wing_mask:
+    name: 左翼掩码阵
+    level: 1
+    unlocked_by_default: true
+    deploy:
+      mode: mask
+      cells:
+        - [0, 0]
+        - [0, 1]
+        - [0, 2]
+        - [0, 3]
+        - [1, 0]
+        - [1, 1]
+        - [1, 2]
+      max_units: 4
+    terrain_layout:
+      mode: none
+    terrain: []
+    force_shifts: []
+    environment: null
+    weather: null
+    effect: null
+
+  # 拨云移位：开战把敌方 (4,3) 挪到 (5,3)（源空则 noop）
+  shift_gust:
+    name: 拨云移位
+    level: 2
+    unlocked_by_default: true
+    deploy:
+      mode: default
+    terrain_layout:
+      mode: none
+    terrain: []
+    force_shifts:
+      - from: [4, 3]
+        to: [5, 3]
+    environment: null
+    weather: null
+    effect: null
+
+# ---------------------------------------------------------------------
+# 四象内容目录（M3-D07）：对抗 id → 中文名 + 可选 combat 载荷
+# 阵法层只写 id；载荷禁止在阵法行内复制，避免漂移
+# ---------------------------------------------------------------------
+environment_catalog:
+  mist:
+    label_zh: 迷雾
+    summary: 雾气弥漫，远程命中下降
+    combat:
+      ranged_hit_mul: 0.85
+  fire_field:
+    label_zh: 火域
+    summary: 灼热场域（克制表示意）
+    combat:
+      physical_damage_mul: 1.05
+  # 单测/对抗示意用（无特殊载荷）
+  rocky:
+    label_zh: 岩阵
+    summary: 占位环境（对抗示意）
+    combat: {}
+
+weather_catalog:
+  thunderstorm:
+    label_zh: 雷暴
+    summary: 雷霆加持，法术伤害上升
+    combat:
+      magic_damage_mul: 1.10
+
+effect_catalog:
+  guarded:
+    label_zh: 守势
+    summary: 略降攻、略升生命
+  fury:
+    label_zh: 狂怒
+    summary: 攻击乘区提升（测试用）
+  drift_guard:
+    label_zh: 流云守
+    summary: 轻微生命乘区
+
+# ---------------------------------------------------------------------
+# 克制表：A 克 B → A 对 B 的 counter_mul；无记录 = 1.0
+# ---------------------------------------------------------------------
+environment_counters:
+  mist: { fire_field: 1.5 }   # 迷雾 vs 火域：乘区 1.5
+weather_counters: {}            # 天气层克制（空=暂无）
+effect_counters: {}             # 效果层克制（空=暂无）

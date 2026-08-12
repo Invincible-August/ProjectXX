@@ -1,0 +1,339 @@
+# =====================================================================
+# 用途：待引渡、轮回结算、永久加成、槽位/轮回袋、新生选角、轮回商店
+# 加载时机：M5 引渡/轮回玩法（ferry / reincarnation 服务与 API）
+# 数值平衡主入口：改本文件即可调「持续变强」节奏，禁止业务散落 magic number
+# =====================================================================
+
+# 进入 awaiting_ferry 后的倒计时秒数；到期未自救则强制入轮回
+ferry_countdown_seconds: 3600
+
+# 自救：在倒计时内花费灵石复活回 normal
+self_rescue:
+  spirit_stone_cost: 500
+  cooldown_seconds: 60
+
+# 社交引渡（M7 L6 · D15）：道友/同门救援，成本低于自救（救援者支付）
+social_rescue:
+  # M7 同图桩：true=好友/同门一律视为同区（真判定 → M9）
+  same_region_stub: true
+  friend:
+    spirit_stone_cost: 100
+    payer: rescuer
+  sect:
+    spirit_stone_cost: 150
+    payer: rescuer
+    # 救援者大境界须高于待救者
+    require_higher_realm: true
+
+# 入轮回时的保留/清空策略（carry 表）
+carry:
+  constitution: keep
+  realm_reset:
+    major: body_tempering
+    stage: 1
+  contribution_zero: true
+  avatar: dissolve
+  clear_pools: true
+  clear_spirit_stones_ratio: 1.0
+  keep_name: true
+  # 功法：仅 traits 含 reincarnatable 的可带入
+  techniques: reincarnatable_only
+  # 阵法预设：reset=清空并重种默认空阵（不保留前世布阵）
+  formation: reset
+  pet_carry:
+    enabled: false
+    max_count: 1
+    chance: 0.1
+
+# ---------------------------------------------------------------------
+# 轮回点：按历史最高大境界发基础点 × 路径倍率
+# forced=死亡/超时仅基础；self/altar=主动入轮回额外倍率
+# ---------------------------------------------------------------------
+points:
+  base_per_peak_major:
+    body_tempering: 2
+    qi_refining: 4
+    foundation: 8
+    jindan: 12
+    yuanying: 20
+    huashen: 40
+  # 兼容旧键（若业务仍读 per_peak_major，与 base 同表）
+  per_peak_major:
+    body_tempering: 2
+    qi_refining: 4
+    foundation: 8
+    jindan: 12
+    yuanying: 20
+    huashen: 40
+  path_multipliers:
+    forced: 1.0
+    self: 1.5
+    voluntary_ferry: 1.5
+    altar: 1.5
+
+# 成长属性占位（剧情/兼容；真数值走 character_reincarnation_bonuses）
+growth_attr_gain_placeholder: 1
+
+# ---------------------------------------------------------------------
+# 每次轮回结算自动叠加的永久加成（境界越高越高）
+# initial_attr / minor_growth / major_growth 为乘区累加；break_rate 为成功率加法
+# ---------------------------------------------------------------------
+permanent_bonus_on_settle:
+  per_peak_major:
+    body_tempering:
+      initial_attr: 0.01
+      minor_growth: 0.005
+      major_growth: 0.01
+      break_rate: 0.002
+    qi_refining:
+      initial_attr: 0.02
+      minor_growth: 0.008
+      major_growth: 0.015
+      break_rate: 0.004
+    foundation:
+      initial_attr: 0.03
+      minor_growth: 0.012
+      major_growth: 0.025
+      break_rate: 0.006
+    jindan:
+      initial_attr: 0.045
+      minor_growth: 0.018
+      major_growth: 0.035
+      break_rate: 0.008
+    yuanying:
+      initial_attr: 0.06
+      minor_growth: 0.024
+      major_growth: 0.045
+      break_rate: 0.012
+    huashen:
+      initial_attr: 0.08
+      minor_growth: 0.03
+      major_growth: 0.06
+      break_rate: 0.015
+  # 突破成功率最终钳制（base + break_rate_bonus）
+  break_rate_clamp:
+    min: 0.05
+    max: 0.95
+
+# ---------------------------------------------------------------------
+# 体质 / 灵根装配槽：初始 + 轮回次数免费 + 商店购买，总上限 total_max
+# free_by_count: reincarnation_count 达到键值时，免费槽变为该值（取最大达标）
+# ---------------------------------------------------------------------
+slots:
+  constitution:
+    initial: 1
+    free_by_count:
+      3: 2
+      10: 3
+    shop_max_buy: 2
+    total_max: 5
+  spirit_root:
+    initial: 1
+    free_by_count:
+      5: 2
+      15: 3
+    shop_max_buy: 2
+    total_max: 5
+
+# ---------------------------------------------------------------------
+# 储物袋：普通袋入轮回清空；轮回袋可带入，容量随轮回次数增大
+# ---------------------------------------------------------------------
+bags:
+  reincarnation:
+    base_slots: 4
+    slots_per_count: 1
+    max_slots: 24
+  normal:
+    clear_on_reincarnate: true
+
+# 祭坛：在 normal 状态下消耗灵石主动入轮回
+# 化神期以下禁止主动入轮回（待引渡自选/超时强制不受本门槛约束）
+altar:
+  spirit_stone_cost: 1000
+  require_status: normal
+  min_major_realm: huashen
+
+# 剧情 flag 在轮回时的处理
+story:
+  reset_mainline_progress: true
+  keep_experienced_nodes: true
+  clear_first_tribulation_done: true
+
+# ---------------------------------------------------------------------
+# 新生选角（轮回结算后 status=reincarnating）
+# 灵根免费槽已改由 slots.spirit_root 公式主导；下列作兼容回落
+# ---------------------------------------------------------------------
+newborn:
+  sticky_status: reincarnating
+  free_spirit_root_slots: 1
+  free_legacy_slots: 1
+  require_spirit_root: true
+  constitution_paths:
+    sturdy_body:
+      label: 磐石之体
+      summary: 偏厚重防守；与土灵根相性占位
+    tempered_flesh:
+      label: 百炼肉身
+      summary: 偏体修增长；与锻体印记呼应
+    ethereal_shell:
+      label: 空灵壳
+      summary: 偏法修感应；与杂灵根均衡占位
+
+# 可选灵根目录（写入 spirit_root_tags）
+spirit_roots:
+  thunder_root:
+    label: 雷灵根
+    summary: 雷属亲和；雷暴/雷劫相关乘区更易吃到
+  fire_root:
+    label: 火灵根
+    summary: 火属亲和；炼器等火候场景占位加成
+  water_root:
+    label: 水灵根
+    summary: 水属亲和；雨天炼丹等占位加成
+  wood_root:
+    label: 木灵根
+    summary: 木属亲和；生息/挂机占位
+  metal_root:
+    label: 金灵根
+    summary: 金属亲和；锋锐/炼器占位
+  earth_root:
+    label: 土灵根
+    summary: 土属亲和；厚重/防守占位
+  mixed_root:
+    label: 杂灵根
+    summary: 五行驳杂；均衡无突出乘区（占位）
+
+# 可选传承目录
+legacy_catalog:
+  memory_fragment_minor:
+    label: 残缺记忆碎片
+    summary: 下周目剧情「已历」略易触发（占位）
+  dao_echo_shard:
+    label: 道韵残片
+    summary: 新生挂机速度极小占位加成钩子
+  body_temper_seal:
+    label: 锻体印记
+    summary: 与保留体质呼应的传承印（占位）
+
+# ---------------------------------------------------------------------
+# 轮回商店：固定货架 + 随机商品池（可刷新）
+# 刷新消耗轮回点或仙缘（fate_luck）
+# ---------------------------------------------------------------------
+shop:
+  # 固定出售（始终可见）
+  fixed_items:
+    spirit_stones_pack_small:
+      label: 灵石袋·小
+      summary: 兑换 200 灵石
+      cost_points: 5
+      effect:
+        grant_spirit_stones: 200
+    spirit_stones_pack_mid:
+      label: 灵石袋·中
+      summary: 兑换 800 灵石
+      cost_points: 15
+      effect:
+        grant_spirit_stones: 800
+    extra_spirit_root_slot:
+      label: 额外灵根位
+      summary: 灵根装配槽 +1（受 total_max / shop_max_buy 限制）
+      cost_points: 10
+      effect:
+        buy_spirit_root_slot: 1
+    extra_constitution_slot:
+      label: 额外体质槽
+      summary: 体质装配槽 +1（受 total_max / shop_max_buy 限制）
+      cost_points: 12
+      effect:
+        buy_constitution_slot: 1
+    upgrade_initial_attr:
+      label: 根基强化
+      summary: 永久初始属性乘区 +0.02
+      cost_points: 15
+      effect:
+        upgrade_permanent:
+          initial_attr: 0.02
+    upgrade_minor_growth:
+      label: 小突破余韵
+      summary: 永久小突破成长 +0.01
+      cost_points: 14
+      effect:
+        upgrade_permanent:
+          minor_growth: 0.01
+    upgrade_major_growth:
+      label: 大突破余韵
+      summary: 永久大突破成长 +0.02
+      cost_points: 18
+      effect:
+        upgrade_permanent:
+          major_growth: 0.02
+    upgrade_break_rate:
+      label: 破障心得
+      summary: 永久突破成功率 +1%
+      cost_points: 16
+      effect:
+        upgrade_permanent:
+          break_rate: 0.01
+    legacy_memory_fragment:
+      label: 购入·残缺记忆碎片
+      summary: 获得一条传承：残缺记忆碎片
+      cost_points: 8
+      effect:
+        grant_legacy_id: memory_fragment_minor
+  # 兼容旧客户端：items 别名指向 fixed_items（解析时合并）
+  items: {}
+  random:
+    offer_count: 3
+    refresh_cost_points: 5
+    refresh_cost_fate_luck: 10
+    pool:
+      growth_initial_tier1:
+        label: 随机·根基残卷
+        summary: 永久初始属性 +0.015
+        weight: 10
+        cost_points: 12
+        effect:
+          upgrade_permanent:
+            initial_attr: 0.015
+        require:
+          min_reincarnation_count: 0
+      growth_break_rate_shard:
+        label: 随机·破障碎片
+        summary: 永久突破成功率 +0.8%
+        weight: 8
+        cost_points: 14
+        effect:
+          upgrade_permanent:
+            break_rate: 0.008
+        require:
+          min_reincarnation_count: 1
+      rare_extra_constitution_slot:
+        label: 随机·体质扩容符
+        summary: 体质槽 +1（稀有）
+        weight: 3
+        cost_points: 20
+        effect:
+          buy_constitution_slot: 1
+        require:
+          min_reincarnation_count: 3
+          min_peak_major: jindan
+      spirit_stones_pack_lucky:
+        label: 随机·灵石福袋
+        summary: 兑换 500 灵石
+        weight: 12
+        cost_points: 8
+        effect:
+          grant_spirit_stones: 500
+        require:
+          min_reincarnation_count: 0
+      major_growth_scroll:
+        label: 随机·大破卷轴
+        summary: 永久大突破成长 +0.025
+        weight: 5
+        cost_points: 22
+        effect:
+          upgrade_permanent:
+            major_growth: 0.025
+        require:
+          min_reincarnation_count: 2
+          min_peak_major: foundation

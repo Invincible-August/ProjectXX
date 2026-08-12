@@ -1,0 +1,37 @@
+# =====================================================================
+# 用途：聊天室内「机缘」红包（M7 L5；机读域仍为 chat_heritage）
+# 后台域：chat_heritage（balance）
+# 玩家可选：灵石 或 背包非绑定/非唯一/可交易物品（前端点选，禁止手填 id）
+# =====================================================================
+
+# 默认过期秒（可被环境变量 HERITAGE_EXPIRE_SEC 覆盖，>0 时优先生效）
+expire_sec: 86400
+# 单包份数上下限
+min_shares: 1
+max_shares: 50
+# 单包灵石上限（0=不限）
+max_spirit_stones: 1000000
+# 单包物品行上限
+max_item_lines: 8
+# 同人每包限领份数
+claims_per_character: 1
+# 日发送次数上限
+daily_send_cap: 20
+# 日发送灵石总额上限
+daily_spirit_cap: 200000
+# fixed 模式余数：last_share | recycle
+fixed_remainder: last_share
+# 过期未领退回：mail | inventory
+expire_refund: mail
+# 领取广播是否隐藏具体灵石数额（仅广播「已开缘」）
+claim_broadcast_hide_amount: false
+# 进行中列表条数
+active_list_limit: 30
+# 已抢完 / 已过期机缘：服务端列表时惰性物理删除；客户端本会话仍可展示已抢完，上限见下
+purge_closed_packets: true
+# 本会话（未退出/未关浏览器）保留已抢完机缘条数
+session_finished_keep: 20
+# 允许发机缘的频道：仅世界 / 宗门（私聊·队伍·师承只聊天不发机缘）
+allowed_channel_types:
+  - world
+  - sect

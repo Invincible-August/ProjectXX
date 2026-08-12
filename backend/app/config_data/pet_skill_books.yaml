@@ -1,0 +1,17 @@
+# =====================================================================
+# 用途：灵宠技能书（PET-D02）；scope 约束可学对象
+# 加载时机：POST /pets/{id}/skills/learn_book
+# 运营：后台域 pet_skill_books；与 pet_skills 分表
+# =====================================================================
+
+books:
+  book_universal_guard:
+    name: 技能书·护体诀
+    skill_id: skill_universal_guard
+    scope: universal
+
+  book_beast_roar:
+    name: 技能书·兽族咆哮
+    skill_id: skill_beast_roar
+    scope: race
+    race_id: beast

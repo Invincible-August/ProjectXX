@@ -1,0 +1,37 @@
+# =====================================================================
+# 用途：野外遭遇表（M4-D04c）；键 = region × shichen × weather
+# 运营：加表行即可；真地图 region → M9 替换占位 id
+# =====================================================================
+
+# 可进入捕获流程的遇敌类型
+capturable_types:
+  - spirit_beast
+
+# 无战后管线时允许直接捕获（占位区验收）
+skip_battle: true
+
+# 遭遇表：先精确匹配 region+shichen+weather，再回落 * 通配
+tables:
+  - region_id: default
+    shichen: "*"
+    weather: "*"
+    entries:
+      - type: spirit_beast
+        species_id: test_pet_fox
+        weight: 55
+        grade_weights:
+          1: 70
+          2: 25
+          3: 5
+      - type: spirit_beast
+        species_id: pet_crane_qing
+        weight: 25
+        grade_weights:
+          1: 60
+          2: 30
+          3: 10
+      - type: monster
+        # 不可捕；仅展示遭遇类型
+        species_id: ""
+        weight: 20
+        label: 散修/妖兽占位

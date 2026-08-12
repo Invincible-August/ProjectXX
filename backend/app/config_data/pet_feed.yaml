@@ -1,0 +1,44 @@
+# =====================================================================
+# 用途：灵宠丹药喂养（PET-D04）；防无脑堆药
+# 运营：加药 = 本表 + inventory 道具；上限可按品阶/物种覆盖
+# =====================================================================
+
+# 单宠累计喂养次数上限（所有丹药合计）；0=不限总量（仍受单药 per_item_cap）
+total_feed_cap: 12
+
+# 按品阶覆盖总量上限（缺省用 total_feed_cap）
+total_feed_cap_by_grade:
+  1: 8
+  2: 10
+  3: 12
+  4: 14
+  5: 16
+  6: 18
+  7: 20
+
+# 按物种覆盖（优先于品阶）
+# total_feed_cap_by_species:
+#   test_pet_fox: 10
+
+items:
+  pet_pill_atk_minor:
+    name: 小攻兽丹
+    # 与 inventory.items 主键对齐
+    per_item_cap: 5
+    effects:
+      flat_atk: 1
+    summary: 永久 +1 攻击
+
+  pet_pill_hp_minor:
+    name: 小血兽丹
+    per_item_cap: 5
+    effects:
+      flat_hp: 3
+    summary: 永久 +3 生命
+
+  pet_pill_speed_minor:
+    name: 小速兽丹
+    per_item_cap: 3
+    effects:
+      flat_speed: 1
+    summary: 永久 +1 速度

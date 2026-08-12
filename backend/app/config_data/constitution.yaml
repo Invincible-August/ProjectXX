@@ -1,0 +1,42 @@
+# =====================================================================
+# 用途：体质槽位默认、创角样本体质/词条道具
+# 加载时机：M2 创角发放体质；词条影响突破品阶权重等
+# =====================================================================
+
+# 默认可用格位数量
+slot_defaults:
+  main: 1                 # 主词条槽位数
+  sub: 2                  # 副词条槽位数
+
+# 体质/词条道具表；后续条目字段含义见同类首条
+items:
+  # kind=body：本体体质样本
+  sample_body_root:
+    name: 凡体·根基
+    kind: body            # body=体质本体 / main=主词条 / sub=副词条
+    quality: mortal       # 品质档
+    base_attrs:           # 基础属性点
+      vitality: 5         # 气血
+      defense: 3          # 防御
+  # kind=main：主词条样本
+  sample_main_affix_iron:
+    name: 主词条·铜皮
+    kind: main
+    grade: good           # 词条品阶
+    effects:
+      hp_bonus: 20        # 生命加成
+      # idle_mult: 1.1    # 可选：挂机速率钩子（体质通道 constitution_idle）
+  # kind=main：验收用临时主词条（可镶嵌，轮回应保留）
+  accept_main_affix_keep:
+    name: 验收·主词条·留命
+    kind: main
+    grade: good
+    effects:
+      hp_bonus: 30
+  # kind=sub：验收用临时副词条
+  accept_sub_affix_keep:
+    name: 验收·副词条·固本
+    kind: sub
+    grade: mortal
+    effects:
+      atk_bonus: 5

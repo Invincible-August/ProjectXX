@@ -1,0 +1,134 @@
+# =====================================================================
+# 用途：六时历法权威时钟、时辰展示名/说明、挂机与突破乘区、标签乘区
+# 加载时机：M5 世界时钟 /world/*、挂机 settle、突破检定叠加环境修正
+# =====================================================================
+# slot = floor((now - epoch) / slot_seconds) % 6
+#
+# 【录入说明】新增/改时辰时请同步维护：
+#   labels.*           展示名
+#   modifiers.*        数值乘区（结算用）
+#   catalog.<id>.*     玩家可见说明（修炼区/顶栏）
+#   tag_modifiers.*    灵根/功法标签额外乘区（可空，缺省 1.0）
+
+# 每个时辰槽位持续秒数（联调可缩短）
+slot_seconds: 60
+# 历法纪元起点（UTC）；与 slot_seconds 共同决定当前时辰
+epoch_utc: "2026-01-01T00:00:00Z"
+
+# 六个时辰的循环顺序（索引 0～5）
+shichen_order:
+  - dawn
+  - noon
+  - afternoon
+  - dusk
+  - night
+  - late_night
+
+# 时辰 id → 展示名
+labels:
+  dawn: 清晨
+  noon: 正午
+  afternoon: 晌午
+  dusk: 傍晚
+  night: 半夜
+  late_night: 深夜
+
+# 玩家可见说明：每个 shichen_id 一条；缺省时前端只显示 label + 乘区数字
+# 后续时辰字段同 dawn
+catalog:
+  # summary=总述；idle_note=修炼说明；spawn_bias_note=刷怪说明
+  # craft_notes.<branch>=工坊分支说明；breakthrough_note=突破说明
+  dawn:
+    summary: "晨曦初起，灵气初凝"
+    idle_note: "基础修炼速度略升"
+    spawn_bias_note: "晨间妖兽偏少，适合稳修（占位）"
+    craft_notes:
+      alchemy: "炼丹正常"
+      smithing: "炼器正常"
+    breakthrough_note: "突破检定正常"
+  noon:
+    summary: "日正当空，阳气最盛"
+    idle_note: "基础修炼速度标准"
+    spawn_bias_note: "阳属妖兽出没略增（占位）"
+    craft_notes:
+      alchemy: "炼丹正常"
+      smithing: "炼器略便"
+    breakthrough_note: "突破成功率略升"
+  afternoon:
+    summary: "日头偏西，灵气平稳"
+    idle_note: "基础修炼速度标准"
+    spawn_bias_note: "妖兽出没平常（占位）"
+    craft_notes:
+      alchemy: "炼丹正常"
+      smithing: "炼器正常"
+    breakthrough_note: "突破检定正常"
+  dusk:
+    summary: "暮色四合，灵气渐乱"
+    idle_note: "基础修炼速度略降"
+    spawn_bias_note: "黄昏妖兽开始活跃（占位）"
+    craft_notes:
+      alchemy: "炼丹略难"
+      smithing: "炼器正常"
+    breakthrough_note: "突破略险"
+  night:
+    summary: "夜幕深沉，阴灵汇聚"
+    idle_note: "基础修炼速度明显提升"
+    spawn_bias_note: "阴属/夜行妖兽出没增多（占位）"
+    craft_notes:
+      alchemy: "炼丹正常"
+      smithing: "炼器正常"
+    breakthrough_note: "突破略难"
+  late_night:
+    summary: "子时至极，天地闭藏"
+    idle_note: "基础修炼速度最高档（占位）"
+    spawn_bias_note: "稀有夜行妖兽权重略升（占位）"
+    craft_notes:
+      alchemy: "炼丹需谨慎"
+      smithing: "炼器正常"
+    breakthrough_note: "突破较难，宜择日"
+
+# 数值乘区（结算用）：键=时辰 id → 乘区（1.0=无修正）
+modifiers:
+  idle_cultivation:               # 挂机修炼速率
+    dawn: 1.05
+    noon: 1.0
+    afternoon: 1.0
+    dusk: 0.98
+    night: 1.08
+    late_night: 1.1
+  battle_cultivation:             # 开战奖励修为乘区（锁定开战时辰）
+    dawn: 1.05
+    noon: 1.0                         # 正午基线，教学联调默认不改奖励整数
+    afternoon: 1.0
+    dusk: 0.98
+    night: 1.05
+    late_night: 1.08
+  breakthrough_success:           # 突破成功概率乘区
+    dawn: 1.0
+    noon: 1.02
+    afternoon: 1.0
+    dusk: 0.98
+    night: 0.95
+    late_night: 0.92
+
+# 灵根/功法标签 × 时辰额外乘区（角色无对应 tag 则跳过）
+# 结构：by_shichen.<时辰>.<tag_id> = 乘区
+tag_modifiers:
+  idle_cultivation:
+    by_shichen:
+      night:
+        yin_root: 1.08
+        moon_art: 1.05
+      late_night:
+        yin_root: 1.12
+        moon_art: 1.08
+      noon:
+        yang_root: 1.06
+        sun_art: 1.04
+      dawn:
+        wood_root: 1.05
+
+# 环境总乘区钳制上下限（防止叠乘过爆）
+clamp:
+  min: 0.5
+  max: 1.5

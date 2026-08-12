@@ -1,0 +1,109 @@
+# =====================================================================
+# 用途：化身解锁、境界功能矩阵、互传折扣、体力/日行动、挂机速率
+# 加载时机：化身系统（凝练 / 双线程挂机 / 传功 / 独战闸 / 探索·任务桩）
+# 后台域：avatar（表格 + JSON 双写；见 admin_field_schema）
+# 定案：永久单化身 max_avatars=1（化身系统设计 v1.0）
+# =====================================================================
+
+unlock_major_realm: jindan        # 解锁所需最低大境界
+max_avatars: 1                    # 永久单化身；校验必须为 1，禁止改为 >1
+initial_stat_ratio: 0.5           # 凝练时继承本体属性比例
+material_mod_placeholder: 1.0     # 材料修正占位乘区
+condense_spirit_stone_cost: 1000  # 凝练消耗灵石
+
+# —— 功能解锁（本体大境界序号 ≥ min_major 序号则解锁，含更高境界继承）——
+feature_unlocks:
+  idle_spirit:
+    min_major: jindan
+    label_zh: 修灵挂机
+    summary: 化身可独立修炼修为
+  idle_body:
+    min_major: yuanying
+    label_zh: 炼体挂机
+    summary: 元婴起开放炼体方向
+  idle_crafting:
+    min_major: yuanying
+    label_zh: 制造业挂机
+    summary: 元婴起开放制造业方向
+  workshop_actor:
+    min_major: yuanying
+    label_zh: 化身工坊
+    summary: 可炼丹炼器等（actor=avatar）
+  deploy_with_main:
+    min_major: jindan
+    label_zh: 随本体上阵
+    summary: 金丹起可与本体同场
+  stamina:
+    min_major: yuanying
+    label_zh: 化身体力
+    summary: 元婴起独立体力与日行动
+  solo_battle:
+    min_major: huashen
+    label_zh: 化身独战
+    summary: 编成可不含本体
+  friend_assist:
+    min_major: huashen
+    label_zh: 道友助战
+    summary: 化神起允许道友借入化身助战（仅 PVE）
+  explore_proxy:
+    min_major: huashen
+    label_zh: 探索代理
+    summary: 本体挂机时化身在外（占位·接 M9）
+  quest_npc:
+    min_major: huashen
+    label_zh: NPC 任务
+    summary: 占位·接 M7（表定可改为炼虚）
+  quest_sect:
+    min_major: huashen
+    label_zh: 宗门任务
+    summary: 占位·接 M7
+  transfer_cultivation:
+    min_major: jindan
+    label_zh: 修为互传
+    summary: 受保留率约束
+
+# 化身挂机三向速率（独立于本体 idle.yaml；方向是否可选另看 feature_unlocks）
+idle:
+  spirit:
+    cultivation_per_tick: 6       # 灵修向每 tick 修为
+  body:
+    enabled: true                 # 体修向速率表是否启用（仍须功能解锁）
+    body_tempering_per_tick: 5    # 体修向每 tick 锻体点
+  crafting:
+    crafting_exp_per_tick: 6      # 制造向每 tick 经验
+
+# 化身每 tick 灵石消耗 = 本体同境界消耗 × 本比例
+spirit_stone_cost_per_tick_ratio: 0.8
+
+# —— 互传（仅修为；炼体/制造经验不可传）——
+transfer:
+  allow: [cultivation_points]                           # 允许传递的资源
+  deny: [body_tempering_points, crafting_exp]           # 禁止传递的资源
+  retention_ratio: 0.8                                  # 到账比例；1.0=不打折
+  retention_by_major: {}                                # 可选按本体大境界覆盖保留率
+  min_amount: 1                                         # 最小互传数量
+  summary: 互传修为到账按保留率结算，损耗不可逆
+
+# —— 体力（元婴起 stamina 功能解锁后生效）——
+stamina:
+  base_cap: 100
+  cap_by_major:
+    yuanying: 100
+    huashen: 120
+  daily_action_cap: 10
+  recovery:
+    per_hour: 5
+    summary: 每现实小时恢复 5 点（占位）
+  action_costs:
+    solo_battle: 10
+    assist_battle: 10
+    explore_step: 5
+    quest_accept: 2
+  allow_stamina_transfer: false
+
+# —— 道友化身助战（化神 friend_assist 解锁后）——
+friend_assist:
+  # 邀请过期秒数（0=不过期；读时惰性清理）
+  invite_expire_sec: 86400
+  # 仅 development：假定主人在线（须手动 accept）；关则离线自动 accept
+  assist_dev_assume_online: false

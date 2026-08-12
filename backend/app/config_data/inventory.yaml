@@ -1,0 +1,148 @@
+# =====================================================================
+# 用途：背包堆叠规则、物品类型枚举、物品目录（材料/消耗品等）
+# 加载时机：M4 背包与工坊材料校验、道具使用效果
+# 交易/机缘字段：tradable（默认 true）/ bound（默认 false）/ unique（默认 false，唯一物不可发机缘）
+# =====================================================================
+
+# 堆叠上限规则
+stack_rules:
+  default_max_stack: 99           # 未单独指定时的默认堆叠上限
+  by_item_type:                   # 按物品类型覆盖默认
+    consumable: 99
+    material: 999
+    talisman: 20
+    puppet: 10
+    skill_book: 20
+    pet_egg: 20
+
+# 系统识别的物品类型枚举
+item_types:
+  - consumable
+  - material
+  - talisman
+  - puppet
+  - skill_book
+  - pet_egg
+
+# 物品目录；后续条目字段同首条（消耗品可多 use_effect）
+items:
+  # —— 字段说明 ——
+  # name         展示名
+  # item_type    类型（须在 item_types 内）
+  # max_stack    堆叠上限
+  # bag_allowed  可放入的袋：normal / reincarnation；缺省仅 normal
+  # use_effect   （可选）使用效果：kind=效果类，amount=数值
+  herb_spirit_grass:
+    name: 灵草
+    item_type: material
+    max_stack: 999
+    bag_allowed: [normal, reincarnation]
+  # 以下材料字段同上
+  ore_iron_raw:
+    name: 粗铁矿
+    item_type: material
+    max_stack: 999
+    bag_allowed: [normal]
+  talisman_paper:
+    name: 符纸
+    item_type: material
+    max_stack: 999
+    bag_allowed: [normal, reincarnation]
+  array_fragment:
+    name: 阵法残片
+    item_type: material
+    max_stack: 99
+    bag_allowed: [normal, reincarnation]
+  wood_spirit:
+    name: 灵木
+    item_type: material
+    max_stack: 999
+    bag_allowed: [normal]
+  stamina_pill_minor:
+    name: 小体力丹
+    item_type: consumable
+    max_stack: 99
+    bag_allowed: [normal, reincarnation]
+    tradable: true
+    bound: false
+    use_effect:
+      kind: stamina           # 恢复体力
+      amount: 20              # 恢复点数
+  bound_spirit_token:
+    name: 绑定灵符（测试）
+    item_type: consumable
+    max_stack: 99
+    bag_allowed: [normal]
+    tradable: false
+    bound: true
+  ore_plate_t1:
+    name: 一级矿板
+    item_type: material
+    max_stack: 999
+    bag_allowed: [normal]
+  talisman_atk_t1:
+    name: 一级攻符
+    item_type: talisman
+    max_stack: 20
+    bag_allowed: [normal, reincarnation]
+  puppet_wood_v1:
+    name: 木傀·初
+    item_type: puppet
+    max_stack: 10
+    bag_allowed: [normal]
+  pet_food_basic:
+    name: 灵宠口粮
+    item_type: material
+    max_stack: 99
+    bag_allowed: [normal, reincarnation]
+  book_universal_guard:
+    name: 技能书·护体诀
+    item_type: skill_book
+    max_stack: 20
+    bag_allowed: [normal]
+    use_effect:
+      kind: pet_skill_book
+      book_id: book_universal_guard
+  book_beast_roar:
+    name: 技能书·兽族咆哮
+    item_type: skill_book
+    max_stack: 20
+    bag_allowed: [normal]
+    use_effect:
+      kind: pet_skill_book
+      book_id: book_beast_roar
+  egg_fox_trial:
+    name: 试炼灵狐蛋
+    item_type: pet_egg
+    max_stack: 20
+    bag_allowed: [normal]
+  egg_crane_qing:
+    name: 青羽鹤蛋
+    item_type: pet_egg
+    max_stack: 20
+    bag_allowed: [normal]
+  pet_pill_atk_minor:
+    name: 小攻兽丹
+    item_type: consumable
+    max_stack: 99
+    bag_allowed: [normal]
+  pet_pill_hp_minor:
+    name: 小血兽丹
+    item_type: consumable
+    max_stack: 99
+    bag_allowed: [normal]
+  pet_pill_speed_minor:
+    name: 小速兽丹
+    item_type: consumable
+    max_stack: 99
+    bag_allowed: [normal]
+  pet_lure_grass:
+    name: 诱灵草
+    item_type: material
+    max_stack: 99
+    bag_allowed: [normal]
+  pet_spirit_bag:
+    name: 灵兽袋
+    item_type: material
+    max_stack: 10
+    bag_allowed: [normal]

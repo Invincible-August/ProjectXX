@@ -1,0 +1,41 @@
+# =====================================================================
+# 用途：层进阶 / 跨境突破的成功率、灵石消耗与失败惩罚；异步真读条（M5-D05）
+# 加载时机：突破接口；跨境成功后可能分流 M5 渡劫（needs_tribulation）
+# 后台域：breakthrough（可覆盖发布）
+# =====================================================================
+
+# 同大境界内层/阶段进阶（如锻体 1→2）；筑基及以后使用本表灵石
+layer_advance:
+  success_rate: 0.85                    # 成功概率
+  spirit_stone_cost: 50                 # 筑基后每次尝试消耗灵石
+  fail_cultivation_keep_ratio: 0.7      # 失败后保留修为进度比例
+  fail_still_charge_stones: true        # 失败是否仍扣灵石
+
+# 跨境突破；「炼气圆满→筑基」使用本表灵石；锻体→炼气在 pre_foundation_free 下为 0
+major_advance:
+  success_rate: 0.7
+  spirit_stone_cost: 200
+  fail_cultivation_keep_ratio: 0.5
+  fail_still_charge_stones: true
+
+# 筑基前（锻体/炼气）突破不扣灵石；仅炼气圆满→筑基跨境扣 major_advance 费用
+# 与轮回次数无关；筑基起恢复按上表扣费
+pre_foundation_free: true
+
+# 成功率最终钳制（含轮回永久 break_rate_bonus 后）
+success_rate_clamp:
+  min: 0.05
+  max: 0.95
+
+# 异步真读条（M5-D05）：产品定案关闭——点击突破同步出结果，无读条
+# enabled=true 时仍走 /breakthrough/channel/*（运营可再开）；默认 false
+async_channel:
+  enabled: false
+  label_zh: 闭关突破
+  hint_zh: 突破需闭关片刻，期间无法开战或有效挂机。
+  # 权威时长（秒）；仅 enabled=true 时生效
+  duration_seconds:
+    layer_advance: 8
+    major_advance: 15
+  # 前端轮询建议间隔（毫秒；权威仍以 ends_at）
+  client_poll_ms: 500

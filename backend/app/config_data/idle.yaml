@@ -1,0 +1,80 @@
+# =====================================================================
+# 用途：本体挂机三向（灵修/体修/制造）速率、按境界基础表、加成通道与灵石消耗
+# 加载时机：M2 挂机 settle / idle_env 预览；tick_seconds 可被 IDLE_TICK_SECONDS 覆盖
+# 公式：effective = floor(base × channel_mult × env_mult)；详见 挂机速率与加成设计.md
+# =====================================================================
+
+# 每次挂机 tick 的墙钟秒数
+tick_seconds: 60
+
+# 每 tick 灵石消耗：按当前大境界覆盖（键=major_realm id）
+# 筑基前（锻体/炼气）不耗灵石；0 = 不限灵石可满 tick 结算
+spirit_stone_cost_by_realm:
+  body_tempering: 0
+  qi_refining: 0
+  foundation: 3
+  jindan: 4
+  yuanying: 5
+  huashen: 6
+
+# 三向互斥；同一时刻只能选一个 direction
+# *_per_tick：未在 gain_per_tick_by_realm 列出境界时的回落基础速率
+directions:
+  spirit:                             # 灵修向
+    enabled: true                     # 是否开放
+    cultivation_per_tick: 10          # 回落：每 tick 修为点
+  body:                               # 体修向
+    enabled: true
+    body_tempering_per_tick: 8        # 回落：每 tick 锻体点
+  crafting:                           # 制造向
+    enabled: true
+    crafting_exp_per_tick: 8          # 回落：每 tick 制造经验
+
+# 按大境界基础产出（占位曲线，可改；未列境界回落 directions 上表）
+gain_per_tick_by_realm:
+  spirit:
+    body_tempering: 10
+    qi_refining: 14
+    foundation: 20
+    jindan: 28
+    yuanying: 38
+    huashen: 50
+  body:
+    body_tempering: 8
+    qi_refining: 11
+    foundation: 16
+    jindan: 22
+    yuanying: 30
+    huashen: 40
+  crafting:
+    body_tempering: 8
+    qi_refining: 11
+    foundation: 16
+    jindan: 22
+    yuanying: 30
+    huashen: 40
+
+# 内部/外部加成通道（无实例或未启用则为 1.0；延后见 后续待完成 IDLE-R01～R04）
+bonus_channels:
+  constitution_idle:
+    enabled: true                     # 体质挂机钩子：读已装备词条 effects.idle_mult
+    default_mult: 1.0                 # 无 idle_mult 词条时
+  equipment_idle:
+    enabled: false                    # IDLE-R01 延后
+    default_mult: 1.0
+  buff_pill:
+    enabled: false                    # IDLE-R02 延后
+    default_mult: 1.0
+  buff_talisman:
+    enabled: false                    # IDLE-R02 延后
+    default_mult: 1.0
+  spirit_eye:
+    enabled: false                    # IDLE-R03 延后
+    default_mult: 1.0
+  cave:
+    enabled: false                    # IDLE-R04 延后
+    default_mult: 1.0
+
+# 通道总乘区钳制（仅作用于 bonus_channels 乘积；环境仍用 calendar/weather clamp）
+clamp_min: 0.5
+clamp_max: 2.0

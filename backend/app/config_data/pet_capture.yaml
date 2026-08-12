@@ -1,0 +1,52 @@
+# =====================================================================
+# 用途：野外捕获检定（M4-D04c）；全因子成功率 + 诱灵草/灵兽袋
+# 运营：改数热插；勿把 capture_test 当正式经济
+# =====================================================================
+
+lure_item_id: pet_lure_grass
+bag_item_id: pet_spirit_bag
+# true=必须持有至少 1 个灵兽袋（不消耗）；false=仅检查 hold_cap
+require_bag: true
+
+# 每日尝试上限（角色维度）；0=不限
+daily_attempt_cap: 30
+
+# 词条惩罚：品级 ≥ 此档计入 n_special_affix
+special_affix_min_tier: rare
+# 每条特殊词条减成
+pen_affix: 0.05
+
+# 品阶惩罚（高品更难捕）
+pen_grade:
+  1: 0.0
+  2: 0.03
+  3: 0.06
+  4: 0.10
+  5: 0.15
+  6: 0.20
+  7: 0.28
+
+# 修为差：player_index - beast_index；beast_index = grade * beast_stages_per_grade
+realm_diff:
+  beast_stages_per_grade: 8
+  per_stage: 0.015
+  clamp_min: -0.25
+  clamp_max: 0.25
+
+# 灵根亲和：root_tag → race_id → 加成（缺省 0）
+root_affinity: {}
+
+# 御兽功法加成：technique_id → 加成（缺省 0；首版可空）
+taming_tech_bonus: {}
+
+# 物种覆盖种族 base_capture_rate
+species_capture_override: {}
+
+# 批量/自动捕（探索一键）
+auto_capture:
+  enabled: true
+  # 单次自动最多遭遇轮数（找到可捕并尝试后停止，或耗尽）
+  max_rolls: 5
+
+# 遭遇时预估特殊词条数：按品阶槽 × rare+ 权重抽样（可审计）
+estimate_special_affixes: true

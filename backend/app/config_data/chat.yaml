@@ -1,0 +1,36 @@
+# =====================================================================
+# 用途：聊天五频道（M7 L4）
+# 后台域：chat（content / balance 限速）
+# =====================================================================
+
+# 历史保留条数（每频道；服务端仍落库，供审计/降级；玩家端默认不拉历史）
+history_limit: 100
+# 会话级清空：退出登录 / 关闭浏览器后客户端清空聊天展示；本会话仅见进房后新消息（不拉历史）
+session_ephemeral: true
+# 单条正文最大字数
+max_body_len: 200
+# 发言限速：滑动窗口秒 / 窗口内最多条
+rate_window_sec: 10
+rate_max_messages: 5
+# 敏感词占位（命中替换为 *）
+sensitive_words:
+  - 违禁词样例
+# 是否启用敏感词过滤
+sensitive_filter_enabled: true
+# 世界频道分线占位键
+world_line_id: default
+# 私聊是否要求道友（false=任意双方会话）
+dm_require_friend: false
+# 组队邀请是否要求道友（true=须已是道友）
+party_require_friend: true
+# 组队邀请过期秒数（0=不过期；读时惰性过期）
+party_invite_expire_sec: 120
+# 仅 development：无 WS 时假定双方在线，便于本地/单测邀请门闸
+party_dev_assume_online: true
+# 频道中文名（玩家可见）
+labels_zh:
+  world: 世界
+  sect: 宗门
+  dm: 私聊
+  mentor: 师承
+  party: 队伍

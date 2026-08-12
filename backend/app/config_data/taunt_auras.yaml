@@ -1,0 +1,34 @@
+# =====================================================================
+# 用途：嘲讽光环形状与展示文案（M3-D06 Phase A）
+# 加载时机：Bundle 启动；开战时把快照写入 setup.units[].taunt_aura
+# 单位挂载：pve_monsters / 傀儡等写 taunt_aura_id 外键引用本表
+# 细则：见仓库根目录「嘲讽光环设计.md」
+# =====================================================================
+
+schema_version: 1
+
+auras:
+  # —— 字段说明（以下光环共用）——
+  # label_zh / help_zh / summary   中文展示（§0.7 显性）
+  # shape                          ortho_adjacent | chebyshev | offsets
+  # radius                         仅 chebyshev
+  # cells                          仅 offsets：[{dx, dy}, ...]（进攻方视角相对偏移）
+  # include_self_cell              嘲讽者脚下是否计入掩码（默认 false）
+  # duration_rounds                null=直至死亡；Phase B 才读时长
+
+  ortho_guard:
+    label_zh: 护卫嘲讽
+    help_zh: 正交四邻进入即强制以本单位为目标
+    summary: 邻接四格
+    shape: ortho_adjacent
+    include_self_cell: false
+    duration_rounds: null
+
+  chebyshev_guard:
+    label_zh: 威压嘲讽
+    help_zh: 切比雪夫半径内进入即强制目标（含斜角）
+    summary: 切比雪夫半径 1
+    shape: chebyshev
+    radius: 1
+    include_self_cell: false
+    duration_rounds: null

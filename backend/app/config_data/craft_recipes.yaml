@@ -1,0 +1,80 @@
+# =====================================================================
+# 用途：制造业全局参数与五类配方（炼丹/炼器/制符/阵法/傀儡）
+# 加载时机：M4 工坊排队、结算、领取；环境 weather craft 乘区可叠加
+# =====================================================================
+
+# 本体制造向挂机时对工坊效率的加成乘区
+main_crafting_bonus: 1.25
+# 同一角色同时进行的工坊任务上限
+max_jobs_per_actor: 1
+
+# 配方表；后续配方字段同第一条
+recipes:
+  # —— 字段说明 ——
+  # branch            分支：alchemy/smithing/talisman/array/puppet
+  # name              展示名
+  # duration_seconds  制作耗时（墙钟秒）
+  # fail_chance       失败概率（失败通常不产出）
+  # spirit_stone_cost 灵石消耗
+  # stamina_cost      体力消耗（规则位）
+  # materials         材料列表：item_id + quantity
+  # outputs           产出：物品 或 grant_array_craft_level 等特殊授予
+  pill_stamina_minor:
+    branch: alchemy
+    name: 小体力丹
+    duration_seconds: 60
+    fail_chance: 0.05
+    spirit_stone_cost: 50
+    stamina_cost: 10
+    materials:
+      - { item_id: herb_spirit_grass, quantity: 2 }
+    outputs:
+      - { item_type: consumable, item_id: stamina_pill_minor, quantity: 1 }
+  # 以下配方字段同上
+  ore_plate_t1:
+    branch: smithing
+    name: 一级矿板
+    duration_seconds: 90
+    fail_chance: 0.08
+    spirit_stone_cost: 80
+    stamina_cost: 10
+    materials:
+      - { item_id: ore_iron_raw, quantity: 3 }
+    outputs:
+      - { item_type: material, item_id: ore_plate_t1, quantity: 1 }
+
+  talisman_atk_t1:
+    branch: talisman
+    name: 一级攻符
+    duration_seconds: 75
+    fail_chance: 0.1
+    spirit_stone_cost: 60
+    stamina_cost: 10
+    materials:
+      - { item_id: talisman_paper, quantity: 2 }
+    outputs:
+      - { item_type: talisman, item_id: talisman_atk_t1, quantity: 1 }
+
+  array_drill_1:
+    branch: array
+    name: 阵法钻研·一
+    duration_seconds: 120
+    fail_chance: 0.12
+    spirit_stone_cost: 100
+    stamina_cost: 10
+    materials:
+      - { item_id: array_fragment, quantity: 1 }
+    outputs:
+      - { grant_array_craft_level: 1 }   # 提升阵法钻研等级（非物品）
+
+  puppet_wood_v1:
+    branch: puppet
+    name: 木傀·初
+    duration_seconds: 100
+    fail_chance: 0.07
+    spirit_stone_cost: 70
+    stamina_cost: 10
+    materials:
+      - { item_id: wood_spirit, quantity: 2 }
+    outputs:
+      - { item_type: puppet, item_id: puppet_wood_v1, quantity: 1 }

@@ -1,0 +1,116 @@
+# =====================================================================
+# 用途：大道样本目录、开道规则、道值/经验曲线、战斗/工坊运用占位
+# 加载时机：M6 开道 / 道池 / 运用；后台域 dao
+# 完整 37 道 → M6-D01
+# =====================================================================
+
+open:
+  # 开道最低大境界（须与 realms.yaml 一致）
+  min_major_realm: true_immortal
+  picks: 3
+  lock_per_run: true
+  deny_reroll: true
+  # 开道会话过期秒数
+  session_ttl_seconds: 600
+
+pool:
+  endgame_enabled: false
+  endgame_min_count: 20
+
+resources:
+  initial_dao_qi: 100
+  # 升到 Lv2/3/4 所需累计道经验占位
+  level_curve: [0, 100, 250, 500]
+
+usage:
+  battle:
+    qi_cost: 10
+    damage_mul: 1.08
+    mitigation_mul: 1.05
+    dao_exp: 5
+    fail_exp_half: true
+  craft:
+    qi_cost: 15
+    fail_rate_delta: -0.05
+    bonus_affix_chance: 0.1
+    dao_exp: 8
+    fail_exp_half: true
+
+restraint_enabled: true
+
+# 大类中文名
+categories:
+  elemental: 基础属性
+  special: 特殊道
+  craft: 奇技
+  apex: 上位
+  void: 无本源
+
+# 稀有度中文
+rarities:
+  common: 凡品
+  uncommon: 灵品
+  rare: 玄品
+  epic: 地品
+  legendary: 天品
+
+# 道样本（8 道，含 1 组上位克制）
+entries:
+  dao_flame:
+    label_zh: 炎道
+    category: elemental
+    rarity: common
+    weight: 100
+    description: 掌御炎息的基础大道。
+  dao_frost:
+    label_zh: 霜道
+    category: elemental
+    rarity: common
+    weight: 100
+    description: 凝霜化雪的基础大道。
+  dao_thunder:
+    label_zh: 雷道
+    category: elemental
+    rarity: uncommon
+    weight: 80
+    description: 引动天雷；与雷天气叙事友好。
+  dao_body:
+    label_zh: 炼体道
+    category: special
+    rarity: uncommon
+    weight: 70
+    description: 淬炼肉身的特殊道。
+  dao_craft:
+    label_zh: 器道
+    category: craft
+    rarity: uncommon
+    weight: 70
+    description: 工坊运用友好的奇技道。
+  dao_array:
+    label_zh: 阵道
+    category: craft
+    rarity: rare
+    weight: 50
+    description: 布阵与棋盘叙事占位。
+  dao_flame_apex:
+    label_zh: 炎极道
+    category: apex
+    rarity: epic
+    weight: 25
+    description: 炎道之上位；克制炎道。
+  dao_void:
+    label_zh: 虚空道
+    category: void
+    rarity: legendary
+    weight: 10
+    description: 无本源稀有道。
+
+labels:
+  dao_flame: 炎道
+  dao_frost: 霜道
+  dao_thunder: 雷道
+  dao_body: 炼体道
+  dao_craft: 器道
+  dao_array: 阵道
+  dao_flame_apex: 炎极道
+  dao_void: 虚空道
