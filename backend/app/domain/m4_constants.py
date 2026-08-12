@@ -54,11 +54,12 @@ class AvatarFeature(StrEnum):
     TRANSFER_CULTIVATION = "transfer_cultivation"
 
 
-# 挂机方向 → 对应功能 id（none 无需功能）
+# 挂机方向 → 对应功能 id（none 无需功能；采矿复用修灵挂机解锁）
 IDLE_DIRECTION_FEATURE: dict[str, str] = {
     IdleDirection.SPIRIT: AvatarFeature.IDLE_SPIRIT,
     IdleDirection.BODY: AvatarFeature.IDLE_BODY,
     IdleDirection.CRAFTING: AvatarFeature.IDLE_CRAFTING,
+    "sect_mining": AvatarFeature.IDLE_SPIRIT,
 }
 
 

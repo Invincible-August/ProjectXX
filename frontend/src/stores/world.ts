@@ -100,7 +100,7 @@ export const useWorldStore = defineStore('world', () => {
   const shichen = computed(() => env.value?.shichen ?? null)
   const weather = computed(() => env.value?.weather ?? null)
   const nextShichenAt = computed(() => env.value?.next_shichen_at ?? null)
-  /** 世界挂机预览（无角色标签）；供本片预计前端实时计算 */
+  /** 世界挂机预览（无角色标签）；供本周天预计前端实时计算 */
   const idlePreview = computed(() => env.value?.idle_preview ?? null)
   const hints = computed<WorldEnvHints>(() => env.value?.hints ?? {})
   const countdownLabel = computed(() => {
@@ -110,7 +110,7 @@ export const useWorldStore = defineStore('world', () => {
 
   /**
    * 写入权威环境；天气变化时节流 toast。
-   * 挂机「本片预计」由前端用 idle_preview 实时计算，不再为此重拉角色。
+   * 挂机「本周天预计」由前端用 idle_preview 实时计算，不再为此重拉角色。
    *
    * @param next - 最新 env（已压平或原始）
    */

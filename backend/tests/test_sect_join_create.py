@@ -93,18 +93,24 @@ def test_sect_join_npc_and_create(tmp_path: Path) -> None:
                     user_b,
                     name="试炼小宗",
                     motto="有钱即可",
+                    specialty="beast",
                 )
                 await session.commit()
                 assert created["sect"]["in_sect"] is True
                 assert created["sect"]["role"] == "founder"
-                assert created["sect"]["role_label_zh"] == "祖师"
+                assert created["sect"]["role_label_zh"] == "创派祖师"
 
                 # 灵石不足建宗
                 user_c = await _register_char(session, "sect_c@example.com", "宗测丙")
                 await GmService(session).gm_set_character(user_c, spirit_stones=10)
                 await session.commit()
                 with pytest.raises(AppError) as exc2:
-                    await svc.create(user_c, name="穷宗", motto=None)
+                    await svc.create(
+                        user_c,
+                        name="穷宗",
+                        motto=None,
+                        specialty="sword",
+                    )
                 assert exc2.value.code == 40102
 
     _run(_body())

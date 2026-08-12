@@ -1,10 +1,12 @@
 <script setup lang="ts">
 /**
- * 社交页（M7 L6 · /social）：道友 / 邮件 / 赠送 / 师徒 / 引渡救援。
+ * 社交中心（/social）：道友 / 队伍 / 双修 / 邮件 / 赠送 / 师徒 / 引渡。
  */
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AuthSessionBar from '../components/AuthSessionBar.vue'
+import DualCultivationPanel from '../components/dual/DualCultivationPanel.vue'
+import PartyPanel from '../components/party/PartyPanel.vue'
 import FriendListPanel from '../components/social/FriendListPanel.vue'
 import FerryRescuePanel from '../components/social/FerryRescuePanel.vue'
 import GiftPanel from '../components/social/GiftPanel.vue'
@@ -14,9 +16,24 @@ import { useCharacterStore } from '../stores/character'
 import { createLogEntry, type GameLogEntry } from '../types/gameLog'
 
 /** 合法 mode */
-type SocialMode = 'friends' | 'mail' | 'gift' | 'mentor' | 'ferry'
+type SocialMode =
+  | 'friends'
+  | 'party'
+  | 'dual'
+  | 'mail'
+  | 'gift'
+  | 'mentor'
+  | 'ferry'
 
-const MODE_SET = new Set<string>(['friends', 'mail', 'gift', 'mentor', 'ferry'])
+const MODE_SET = new Set<string>([
+  'friends',
+  'party',
+  'dual',
+  'mail',
+  'gift',
+  'mentor',
+  'ferry',
+])
 
 const route = useRoute()
 const router = useRouter()
@@ -52,7 +69,7 @@ onMounted(async () => {
       return
     }
   }
-  pushLog('社交页已就绪：道友 / 邮件 / 赠送 / 师徒 / 引渡。', 'info')
+  pushLog('社交中心已就绪：道友 / 队伍 / 双修 / 邮件。', 'info')
   if (!MODE_SET.has(String(route.query.mode ?? ''))) {
     void router.replace({ query: { ...route.query, mode: 'friends' } })
   }
@@ -66,14 +83,28 @@ onMounted(async () => {
     <div class="page-title">
       <el-button size="small" @click="router.push('/hall')">← 回大厅</el-button>
       <el-text tag="b" size="large">社交</el-text>
-      <el-text type="info" size="small">M7 L6 · 师徒 / 引渡</el-text>
+      <el-text type="info" size="small">道友 · 队伍 · 双修</el-text>
       <div class="mode-nav">
         <el-button
           size="small"
           :type="mode === 'friends' ? 'primary' : 'default'"
-          @click="router.push('/friends')"
+          @click="setMode('friends')"
         >
-          道友（独立页）
+          道友
+        </el-button>
+        <el-button
+          size="small"
+          :type="mode === 'party' ? 'primary' : 'default'"
+          @click="setMode('party')"
+        >
+          队伍
+        </el-button>
+        <el-button
+          size="small"
+          :type="mode === 'dual' ? 'primary' : 'default'"
+          @click="setMode('dual')"
+        >
+          双修
         </el-button>
         <el-button
           size="small"
@@ -110,6 +141,8 @@ onMounted(async () => {
     <div class="main-grid">
       <div class="main-left">
         <FriendListPanel v-if="mode === 'friends'" @log="pushLog" />
+        <PartyPanel v-else-if="mode === 'party'" @log="pushLog" />
+        <DualCultivationPanel v-else-if="mode === 'dual'" @log="pushLog" />
         <MailBoxPanel v-else-if="mode === 'mail'" @log="pushLog" />
         <GiftPanel v-else-if="mode === 'gift'" @log="pushLog" />
         <MentorPanel v-else-if="mode === 'mentor'" @log="pushLog" />

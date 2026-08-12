@@ -12,10 +12,13 @@ export interface SectSummary {
   sect_id: number | null
   /** 宗门名 */
   name: string | null
-  /** 职位键：member / founder 等 */
+  /** 职位键：member / founder 等（兼容） */
   role: string | null
   /** 职位中文 */
   role_label_zh: string | null
+  /** M7-V+ 十二档职位 */
+  rank?: string | null
+  rank_label_zh?: string | null
   /** 个人贡献点 */
   contrib: number
   /** npc | player */
@@ -24,6 +27,10 @@ export interface SectSummary {
   template_id: string | null
   /** 箴言（可选） */
   motto?: string | null
+  /** 宗门等级键 */
+  grade?: string | null
+  /** 专精键 */
+  specialty?: string | null
   /** 相对散修挂机修为占位倍率 */
   idle_bonus_vs_wanderer: number
   /** 已解锁功能键列表 */

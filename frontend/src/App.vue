@@ -7,6 +7,7 @@ import { useRoute } from 'vue-router'
 import WorldClockBar from './components/layout/WorldClockBar.vue'
 import WsStatusBadge from './components/layout/WsStatusBadge.vue'
 import ChatDock from './components/layout/ChatDock.vue'
+import DmDialog from './components/social/DmDialog.vue'
 import FerryDeathDialog from './components/reincarnation/FerryDeathDialog.vue'
 import { useChatStore } from './stores/chat'
 import { useWorldStore } from './stores/world'
@@ -47,6 +48,7 @@ watch(
     </div>
     <RouterView />
     <ChatDock v-if="showWorldBar" />
+    <DmDialog v-if="showWorldBar" />
     <FerryDeathDialog />
   </div>
 </template>

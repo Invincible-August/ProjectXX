@@ -21,6 +21,14 @@ class ChatReadRequest(BaseModel):
     channel_ref: str
 
 
+class ChatDmClearRequest(BaseModel):
+    """清空与某道友的私聊会话（双方可见历史均删）。"""
+
+    channel_ref: str | None = None
+    peer_character_id: int | None = None
+    peer_name: str | None = None
+
+
 class PartyActionRequest(BaseModel):
     """组队 / 邀请 / 应答 / 离队 / 踢人。"""
 

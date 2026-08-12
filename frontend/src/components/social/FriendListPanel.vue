@@ -220,9 +220,10 @@ async function onTrade(item: FriendItem): Promise<void> {
     emit('log', tradeStore.lastMessage || `已向「${item.peer_name}」发起面交`, 'success')
     const sessionId = tradeStore.faceSession?.id
     await router.push({
-      path: '/market',
+      path: '/shop',
       query: {
-        mode: 'face',
+        mode: 'auction',
+        sub: 'face',
         peer: item.peer_name,
         ...(sessionId ? { session: String(sessionId) } : {}),
       },

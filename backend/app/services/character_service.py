@@ -16,7 +16,6 @@ from app.core.config import get_settings
 from app.core.time_utils import now_utc, to_utc_iso
 from app.db.models.character import Character
 from app.db.models.user import User
-from app.domain.combat import CombatCalculator
 from app.domain.reincarnation_rules import combat_attr_multiplier, parse_growth_attrs, parse_story_flags
 from app.schemas.character import CharacterPublic, CreateCharacterRequest
 from app.schemas.common import AppError
@@ -64,29 +63,47 @@ class CharacterService:
         )
         return result.scalar_one_or_none() is not None
 
-    async def build_combat_stats(
+    async def build_combat_attrs(
         self,
         character: Character,
-    ) -> tuple[int, int, list[dict], dict]:
+        *,
+        entity_kind: str = "player",
+    ) -> dict:
         """
-        计算含品阶/功法/体质/轮回永久加成修正后的 atk/hp（全站战力权威入口）。
+        组装统一 CombatAttrBlock + LifeAttrBlock（ATTR 权威入口）。
+
+        Args:
+            character: 角色 ORM。
+            entity_kind: 实体类型（默认 player）。
 
         Returns:
-            tuple: (final_atk, final_hp, technique_summary, constitution_summary)。
+            dict: combat / life / technique_summary / constitution_summary。
         """
         from sqlalchemy import select
 
         from app.db.models.reincarnation_bonus import CharacterReincarnationBonus
+        from app.domain.combat import (
+            PRIMARY_KEYS,
+            assemble_combat_attr_block,
+            assemble_life_attr_block,
+            CombatAttrAssembleInput,
+        )
         from app.services.constitution_service import ConstitutionService
         from app.services.grade_service import GradeService
         from app.services.technique_service import TechniqueService
 
         techniques_svc = TechniqueService(self._session)
         constitution_svc = ConstitutionService(self._session)
+        cfg = get_game_config().combat_attrs
 
         stage = get_current_stage(character.major_realm, character.realm_stage)
-        base_atk = stage.base_atk if stage else 0
-        base_hp = stage.base_hp if stage else 0
+        realm_atk = stage.base_atk if stage else 0
+        realm_hp = stage.base_hp if stage else 0
+        # 人物境界无 base_speed：回退 combat_attrs.defaults 或棋盘 main 默认
+        realm_speed = int(cfg.defaults.get("speed", 10))
+        main_defaults = get_game_config().board.unit_defaults.get("main")
+        if main_defaults is not None:
+            realm_speed = int(main_defaults.speed)
 
         bonus_row = (
             await self._session.execute(
@@ -99,9 +116,6 @@ class CharacterService:
             float(bonus_row.initial_attr_bonus) if bonus_row else 0.0,
             float(bonus_row.lifetime_applied_growth) if bonus_row else 0.0,
         )
-        # 境界底 × 轮回初始/本世成长乘区
-        base_atk = int(base_atk * rein_mult)
-        base_hp = int(base_hp * rein_mult)
 
         grade_cfg = GradeService.get_grade_config(character.breakthrough_grade)
         grade_atk_mul = grade_cfg.atk_mul if grade_cfg is not None else 1.0
@@ -114,21 +128,109 @@ class CharacterService:
         )
         cons_state = await constitution_svc.get_constitution_state(character)
 
-        stats = CombatCalculator.compute(
-            base_atk=base_atk,
-            base_hp=base_hp,
-            grade_atk_mul=grade_atk_mul,
-            grade_hp_mul=grade_hp_mul,
-            technique_atk=tech_atk,
-            technique_hp=tech_hp,
-            constitution_atk=cons_atk,
-            constitution_hp=cons_hp,
+        growth_attrs = parse_growth_attrs(getattr(character, "growth_attrs_json", None))
+        primary: dict[str, int] = {}
+        for pk in PRIMARY_KEYS:
+            # growth_attrs 可覆盖占位；缺省 0
+            raw = growth_attrs.get(pk, cfg.attrs[pk].default if pk in cfg.attrs else 0)
+            try:
+                primary[pk] = int(raw)
+            except (TypeError, ValueError):
+                primary[pk] = 0
+
+        labels = {k: a.label_zh for k, a in cfg.attrs.items()}
+        # defaults：抗性/法攻等从 attrs.default 与顶层 defaults 合并
+        defaults: dict[str, float] = dict(cfg.defaults)
+        for key, adef in cfg.attrs.items():
+            defaults.setdefault(key, float(adef.default))
+
+        combat = assemble_combat_attr_block(
+            CombatAttrAssembleInput(
+                realm_phys_atk=realm_atk,
+                realm_hp=realm_hp,
+                realm_speed=realm_speed,
+                rein_mult=rein_mult,
+                grade_atk_mul=grade_atk_mul,
+                grade_hp_mul=grade_hp_mul,
+                technique_phys_atk=tech_atk,
+                technique_hp=tech_hp,
+                constitution_phys_atk=cons_atk,
+                constitution_hp=cons_hp,
+                primary=primary,
+                primary_map=dict(cfg.primary_map),
+                defaults=defaults,
+                labels=labels,
+                channels=dict(cfg.channels),
+                schema_version=cfg.schema_version,
+                entity_kind=entity_kind,
+                growth={
+                    "physique": int(growth_attrs.get("physique", 0) or 0),
+                    "reincarnation_growth": float(
+                        bonus_row.lifetime_applied_growth if bonus_row else 0.0,
+                    ),
+                    "fate_luck": int(getattr(character, "fate_luck", 0) or 0),
+                    "demonic_nature": int(getattr(character, "demonic_nature", 0) or 0),
+                },
+            ),
         )
+
+        life_values: dict[str, float | int] = {
+            "comprehension": primary.get("comprehension", 0),
+            "stamina": int(getattr(character, "stamina", 0) or 0),
+            "resist_heart_demon": int(growth_attrs.get("resist_heart_demon", 0) or 0),
+            "resist_tribulation": int(growth_attrs.get("resist_tribulation", 0) or 0),
+            "breath_efficiency": float(
+                growth_attrs.get(
+                    "breath_efficiency",
+                    defaults.get("breath_efficiency", 1.0),
+                ),
+            ),
+            "endurance": int(growth_attrs.get("endurance", 0) or 0),
+            "craft_dexterity": int(growth_attrs.get("craft_dexterity", 0) or 0),
+            "precision": int(growth_attrs.get("precision", 0) or 0),
+            "temperament": int(growth_attrs.get("temperament", 0) or 0),
+        }
+        life = assemble_life_attr_block(
+            values=life_values,
+            labels=labels,
+            schema_version=cfg.schema_version,
+            breakdown=[
+                {
+                    "source": "character",
+                    "label_zh": "角色状态",
+                    "stamina": life_values["stamina"],
+                },
+            ],
+        )
+
+        return {
+            "combat": combat,
+            "life": life,
+            "technique_summary": TechniqueService.technique_summary_for_character(
+                techniques,
+            ),
+            "constitution_summary": ConstitutionService.constitution_summary_from_state(
+                cons_state,
+            ),
+        }
+
+    async def build_combat_stats(
+        self,
+        character: Character,
+    ) -> tuple[int, int, list[dict], dict]:
+        """
+        计算含品阶/功法/体质/轮回永久加成修正后的 atk/hp（兼容包装）。
+
+        Returns:
+            tuple: (final_atk, final_hp, technique_summary, constitution_summary)。
+        """
+        packed = await self.build_combat_attrs(character)
+        final = packed["combat"]["final"]
         return (
-            stats.atk,
-            stats.hp,
-            TechniqueService.technique_summary_for_character(techniques),
-            ConstitutionService.constitution_summary_from_state(cons_state),
+            int(final["phys_atk"]),
+            int(final["hp"]),
+            packed["technique_summary"],
+            packed["constitution_summary"],
         )
 
     def to_public(
@@ -140,6 +242,8 @@ class CharacterService:
         offline_pending: dict | None = None,
         final_atk: int | None = None,
         final_hp: int | None = None,
+        combat: dict | None = None,
+        life: dict | None = None,
         has_avatar: bool = False,
         avatar_summary: dict | None = None,
         divine_sense: dict | None = None,
@@ -169,6 +273,9 @@ class CharacterService:
         major_name = major.name if major else character.major_realm
         stage = get_current_stage(character.major_realm, character.realm_stage)
         idle_cfg = get_game_config().idle
+        from app.domain.body_temper import build_body_temper_public
+
+        body_temper_pub = build_body_temper_public(character)
 
         cultivation_to_next: int | None = None
         progress_ratio = 0.0
@@ -282,6 +389,21 @@ class CharacterService:
             ),
             cultivation_points=int(character.cultivation_points),
             body_tempering_points=int(character.body_tempering_points),
+            body_temper_stage=str(body_temper_pub["body_temper_stage"]),
+            body_temper_stage_name=str(body_temper_pub["body_temper_stage_name"]),
+            body_temper_layer=int(body_temper_pub.get("body_temper_layer") or 1),
+            body_temper_layer_label=str(
+                body_temper_pub.get("body_temper_layer_label") or "layer_1",
+            ),
+            body_temper_progress=int(body_temper_pub["body_temper_progress"]),
+            body_temper_to_next=body_temper_pub["body_temper_to_next"],
+            body_temper_progress_ratio=float(body_temper_pub["body_temper_progress_ratio"]),
+            body_temper_display=str(body_temper_pub["body_temper_display"]),
+            body_temper_capped=bool(body_temper_pub["body_temper_capped"]),
+            body_temper_ready_to_quench=bool(
+                body_temper_pub.get("body_temper_ready_to_quench", False),
+            ),
+            body_temper_next_stage_name=body_temper_pub.get("body_temper_next_stage_name"),
             crafting_exp=int(character.crafting_exp),
             spirit_stones=int(character.spirit_stones),
             idle_direction=character.idle_direction,
@@ -304,6 +426,8 @@ class CharacterService:
             idle_tick_seconds=idle_cfg.tick_seconds,
             base_atk=final_atk if final_atk is not None else base_atk,
             base_hp=final_hp if final_hp is not None else base_hp,
+            combat=combat,
+            life=life,
             realm_progress=int(character.realm_progress),
             breakthrough_grade=grade_id,
             breakthrough_grade_name=grade_name,
@@ -380,7 +504,13 @@ class CharacterService:
         from app.services.pet_service import PetService
 
         await refresh_membership_for_idle(self._session, character)
-        final_atk, final_hp, tech_sum, cons_sum = await self.build_combat_stats(character)
+        packed = await self.build_combat_attrs(character)
+        final_atk = int(packed["combat"]["final"]["phys_atk"])
+        final_hp = int(packed["combat"]["final"]["hp"])
+        tech_sum = packed["technique_summary"]
+        cons_sum = packed["constitution_summary"]
+        combat_block = packed["combat"]
+        life_block = packed["life"]
         # 挂载永久加成摘要供 to_public 序列化
         from sqlalchemy import select
 
@@ -560,6 +690,8 @@ class CharacterService:
             offline_pending=offline_pending,
             final_atk=final_atk,
             final_hp=final_hp,
+            combat=combat_block,
+            life=life_block,
             has_avatar=avatar_panel is not None,
             avatar_summary=avatar_panel,
             divine_sense=await avatar_svc.get_sense(character),
@@ -616,6 +748,10 @@ class CharacterService:
             peak_major_realm="body_tempering",
             cultivation_points=0,
             body_tempering_points=0,
+            body_temper_stage="refine_skin",
+            body_temper_layer=1,
+            body_temper_layer_label="layer_1",
+            body_temper_progress=0,
             crafting_exp=0,
             realm_progress=0,
             spirit_stones=settings.initial_spirit_stones,

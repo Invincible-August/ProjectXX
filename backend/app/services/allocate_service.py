@@ -104,6 +104,27 @@ class AllocateService:
             message = f"已向境界进度投入 {amount} 点修为"
             levels_gained = 0
             allocated = amount
+        elif target_type == "body_temper":
+            from app.domain.body_temper import apply_body_temper_progress
+
+            pool = int(character.body_tempering_points)
+            if pool < amount:
+                raise AppError(code=40032, message="淬体度池不足", http_status=400)
+            before = int(getattr(character, "body_temper_progress", 0) or 0)
+            # 先试算：写入进度（封顶本境），再按实际增量扣池
+            apply_body_temper_progress(character, amount)
+            after = int(character.body_temper_progress)
+            gained = max(0, after - before)
+            if gained <= 0:
+                raise AppError(
+                    code=40032,
+                    message="本境淬体进度已满，请先发起淬体晋境",
+                    http_status=400,
+                )
+            character.body_tempering_points = pool - gained
+            allocated = gained
+            levels_gained = 0
+            message = f"已向淬体进度投入 {gained} 点淬体度"
         elif target_type == "technique":
             if not target_id:
                 raise AppError(code=40033, message="须指定功法 id", http_status=400)
@@ -124,9 +145,19 @@ class AllocateService:
             if row.level >= tech_cfg.max_level:
                 raise AppError(code=40033, message="功法已满级", http_status=400)
 
+            # 炼体功法(track=body)自动扣淬体度池；灵修扣修为池；制造扣制造业经验
             pool_field, pool_balance = self._pool_for_track(character, tech_cfg.track)
+            pool_label = {
+                "spirit": "修为池",
+                "body": "淬体度池",
+                "crafting": "制造业经验池",
+            }.get(tech_cfg.track, "资源池")
             if pool_balance < amount:
-                raise AppError(code=40032, message="对应资源池不足", http_status=400)
+                raise AppError(
+                    code=40032,
+                    message=f"{pool_label}不足",
+                    http_status=400,
+                )
 
             remaining = amount
             levels_gained = 0
@@ -152,11 +183,15 @@ class AllocateService:
             setattr(character, pool_field, pool_balance - spent)
             allocated = spent
             if levels_gained > 0:
-                message = f"{tech_cfg.name} 升至 {row.level} 级"
+                message = f"{tech_cfg.name} 升至 {row.level} 级（扣{pool_label}）"
             else:
-                message = f"已向 {tech_cfg.name} 投入 {spent} 点（未升级）"
+                message = f"已向 {tech_cfg.name} 投入 {spent} 点（未升级，扣{pool_label}）"
         else:
-            raise AppError(code=40000, message="无效分配目标类型", http_status=400)
+            raise AppError(
+                code=40000,
+                message="无效分配目标类型（realm|body_temper|technique）",
+                http_status=400,
+            )
 
         await self._session.flush()
         await self._session.refresh(character)

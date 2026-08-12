@@ -27,12 +27,14 @@ const listEl = ref<HTMLElement | null>(null)
 const stickToBottom = ref(true)
 
 const sortedChannels = computed(() => {
-  const order = ['world', 'sect', 'dm', 'mentor', 'party']
-  return [...chatStore.channels].sort((a, b) => {
-    const ia = order.indexOf(a.channel_type)
-    const ib = order.indexOf(b.channel_type)
-    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
-  })
+  const order = ['world', 'sect', 'mentor', 'party']
+  return [...chatStore.channels]
+    .filter((c) => c.channel_type !== 'dm')
+    .sort((a, b) => {
+      const ia = order.indexOf(a.channel_type)
+      const ib = order.indexOf(b.channel_type)
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
+    })
 })
 
 /** 仅世界 / 宗门可发机缘 */
@@ -45,12 +47,11 @@ const canSendHeritage = computed(() => {
 })
 
 /**
- * 页签角标：私聊有未读只显示点（人数汇总在坞按钮）；其它频仍显示条数。
+ * 页签角标：非私聊显示条数（私聊已迁出坞）。
  */
 function tabBadge(ch: ChatChannelItem): string | null {
   const n = Number(ch.unread) || 0
   if (n <= 0) return null
-  if (ch.channel_type === 'dm') return '·'
   return String(n)
 }
 
@@ -231,7 +232,8 @@ function onHeritageCreated(): void {
       <span
         v-if="chatStore.dmUnreadPeers > 0"
         class="badge"
-        title="有未读私聊的对方人数"
+        title="有未读私聊，点击打开私聊窗"
+        @click.stop="chatStore.openDmDialog()"
       >{{ chatStore.dmUnreadPeers }}</span>
       <span
         v-if="chatStore.pendingInvites.length > 0"

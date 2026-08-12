@@ -15,15 +15,15 @@ const mainLabel = computed(() => {
   const dir = preview.value?.main_idle_direction ?? ch.idle_direction
   if (dir === 'spirit') {
     const rate = preview.value?.main_cultivation_per_tick ?? ch.idle_cultivation_per_tick
-    return `本体修灵 +${rate}/片`
+    return `本体修炼 +${rate}/周天`
   }
   if (dir === 'body') {
     const rate = preview.value?.main_body_per_tick ?? ch.idle_body_per_tick ?? 0
-    return `本体炼体 +${rate}/片`
+    return `本体淬体 +${rate}/周天`
   }
   if (dir === 'crafting') {
     const rate = preview.value?.main_crafting_per_tick ?? ch.idle_crafting_per_tick ?? 0
-    return `本体制造业 +${rate}/片`
+    return `本体制造业修炼 +${rate}/周天`
   }
   return '本体待机'
 })
@@ -34,15 +34,15 @@ const avatarLabel = computed(() => {
   const dir = preview.value?.avatar_idle_direction ?? ch.avatar_summary?.idle_direction ?? 'none'
   if (dir === 'spirit') {
     const rate = preview.value?.avatar_cultivation_per_tick ?? 0
-    return `化身修灵 +${rate}/片`
+    return `化身修炼 +${rate}/周天`
   }
   if (dir === 'body') {
     const rate = preview.value?.avatar_body_per_tick ?? 0
-    return `化身炼体 +${rate}/片`
+    return `化身淬体 +${rate}/周天`
   }
   if (dir === 'crafting') {
     const rate = preview.value?.avatar_crafting_per_tick ?? 0
-    return `化身制造业 +${rate}/片`
+    return `化身制造业修炼 +${rate}/周天`
   }
   if (dir === 'none') return '化身待机'
   return `化身 ${dir}`

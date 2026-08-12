@@ -36,3 +36,42 @@ face_dev_assume_online: true
 
 # 系统回收账户展示名（流水 character_id 为空）
 recycle_label_zh: 天道回收池
+
+# ---------------------------------------------------------------------
+# 真正坊市（NPC 固定货架）：玩家用灵石购买；亦可按收购价出售给坊市
+# ---------------------------------------------------------------------
+bazaar:
+  label_zh: 坊市
+  hint_zh: 固定货架售卖常见材料与消耗品；玩家可将可回收道具按收购价换灵石。
+  max_qty_per_deal: 99
+  # item_id → 买价 / 卖价（卖价缺省=买价×sell_ratio_default）
+  sell_ratio_default: 0.4
+  items:
+    herb_spirit_grass:
+      label_zh: 灵草
+      buy_price: 30
+      sell_price: 12
+    ore_iron_raw:
+      label_zh: 粗铁矿
+      buy_price: 25
+      sell_price: 10
+    talisman_paper:
+      label_zh: 符纸
+      buy_price: 40
+      sell_price: 16
+    wood_spirit:
+      label_zh: 灵木
+      buy_price: 35
+      sell_price: 14
+    stamina_pill_minor:
+      label_zh: 小体力丹
+      buy_price: 80
+      sell_price: 30
+    pet_food_basic:
+      label_zh: 灵宠口粮
+      buy_price: 50
+      sell_price: 20
+    array_fragment:
+      label_zh: 阵法残片
+      buy_price: 120
+      sell_price: 48

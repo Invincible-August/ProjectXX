@@ -102,3 +102,152 @@ major_realms:
       - { stage: 2, label: middle, cultivation_required: 900000, base_atk: 2800, base_hp: 28000 }
       - { stage: 3, label: late, cultivation_required: 1200000, base_atk: 3300, base_hp: 33000 }
       - { stage: 4, label: perfection, cultivation_required: 1600000, base_atk: 4000, base_hp: 40000 }
+
+# =====================================================================
+# 炼体大境（淬体）：结构对齐主修「层 / 期」
+# - 前两境（炼皮/锻骨）stage_mode=layers：1～9 层 + 圆满(10)
+# - 其后（通脉→道体）stage_mode=phases：初/中/后/圆满
+# - 挂机只涨淬体度池；分配「投入淬体」写入 body_temper_progress
+# - 淬体 attempt 有成功率，失败按 keep_ratio 回退进度；永不渡劫
+# - 扩境口子：给末境填 next_major，并追加 majors 条目 + unlock 序即可
+# =====================================================================
+
+# 对照主修解锁序（可含尚未落地的主修 id，便于后续扩境）
+body_temper_unlock_majors:
+  - body_tempering  # 锻体 → 炼皮
+  - qi_refining     # 炼气 → 锻骨
+  - foundation      # 筑基 → 通脉
+  - jindan          # 金丹 → 换血
+  - yuanying        # 元婴 → 炼脏
+  - huashen         # 化神 → 玉髓
+  - true_immortal   # 真仙 → 金身
+  - heti            # 合体 → 法身（主修未开时不可解锁）
+  - dacheng         # 大乘 → 道体
+  # - future_post_dacheng  # 预留：大乘之后主修
+
+# 淬体成功率（无灵石/无渡劫；失败回退进度）
+body_temper_quench:
+  layer_advance:
+    success_rate: 0.85
+    fail_progress_keep_ratio: 0.7
+  major_advance:
+    success_rate: 0.7
+    fail_progress_keep_ratio: 0.5
+  success_rate_clamp:
+    min: 0.05
+    max: 0.95
+
+body_temper_majors:
+  # —— 字段 ——
+  # name / stage_mode(layers|phases) / unlock_major / next_major
+  # stages[].stage / label / progress_required（当前档淬体进度门槛）
+  refine_skin:
+    name: 炼皮
+    stage_mode: layers
+    unlock_major: body_tempering
+    next_major: forge_bone
+    stages:
+      - { stage: 1, label: layer_1, progress_required: 50 }
+      - { stage: 2, label: layer_2, progress_required: 80 }
+      - { stage: 3, label: layer_3, progress_required: 120 }
+      - { stage: 4, label: layer_4, progress_required: 160 }
+      - { stage: 5, label: layer_5, progress_required: 220 }
+      - { stage: 6, label: layer_6, progress_required: 280 }
+      - { stage: 7, label: layer_7, progress_required: 360 }
+      - { stage: 8, label: layer_8, progress_required: 450 }
+      - { stage: 9, label: layer_9, progress_required: 560 }
+      - { stage: 10, label: perfection, progress_required: 700 }
+
+  forge_bone:
+    name: 锻骨
+    stage_mode: layers
+    unlock_major: qi_refining
+    next_major: open_meridian
+    stages:
+      - { stage: 1, label: layer_1, progress_required: 120 }
+      - { stage: 2, label: layer_2, progress_required: 180 }
+      - { stage: 3, label: layer_3, progress_required: 260 }
+      - { stage: 4, label: layer_4, progress_required: 360 }
+      - { stage: 5, label: layer_5, progress_required: 480 }
+      - { stage: 6, label: layer_6, progress_required: 620 }
+      - { stage: 7, label: layer_7, progress_required: 800 }
+      - { stage: 8, label: layer_8, progress_required: 1000 }
+      - { stage: 9, label: layer_9, progress_required: 1250 }
+      - { stage: 10, label: perfection, progress_required: 1600 }
+
+  open_meridian:
+    name: 通脉
+    stage_mode: phases
+    unlock_major: foundation
+    next_major: change_blood
+    stages:
+      - { stage: 1, label: early, progress_required: 2000 }
+      - { stage: 2, label: middle, progress_required: 2800 }
+      - { stage: 3, label: late, progress_required: 3800 }
+      - { stage: 4, label: perfection, progress_required: 5200 }
+
+  change_blood:
+    name: 换血
+    stage_mode: phases
+    unlock_major: jindan
+    next_major: temper_organs
+    stages:
+      - { stage: 1, label: early, progress_required: 6000 }
+      - { stage: 2, label: middle, progress_required: 8500 }
+      - { stage: 3, label: late, progress_required: 12000 }
+      - { stage: 4, label: perfection, progress_required: 16000 }
+
+  temper_organs:
+    name: 炼脏
+    stage_mode: phases
+    unlock_major: yuanying
+    next_major: jade_marrow
+    stages:
+      - { stage: 1, label: early, progress_required: 20000 }
+      - { stage: 2, label: middle, progress_required: 28000 }
+      - { stage: 3, label: late, progress_required: 38000 }
+      - { stage: 4, label: perfection, progress_required: 52000 }
+
+  jade_marrow:
+    name: 玉髓
+    stage_mode: phases
+    unlock_major: huashen
+    next_major: golden_body
+    stages:
+      - { stage: 1, label: early, progress_required: 60000 }
+      - { stage: 2, label: middle, progress_required: 85000 }
+      - { stage: 3, label: late, progress_required: 120000 }
+      - { stage: 4, label: perfection, progress_required: 160000 }
+
+  golden_body:
+    name: 金身
+    stage_mode: phases
+    unlock_major: true_immortal
+    next_major: dharma_body
+    stages:
+      - { stage: 1, label: early, progress_required: 180000 }
+      - { stage: 2, label: middle, progress_required: 240000 }
+      - { stage: 3, label: late, progress_required: 320000 }
+      - { stage: 4, label: perfection, progress_required: 420000 }
+
+  dharma_body:
+    name: 法身
+    stage_mode: phases
+    unlock_major: heti
+    next_major: dao_body
+    stages:
+      - { stage: 1, label: early, progress_required: 500000 }
+      - { stage: 2, label: middle, progress_required: 680000 }
+      - { stage: 3, label: late, progress_required: 900000 }
+      - { stage: 4, label: perfection, progress_required: 1200000 }
+
+  dao_body:
+    name: 道体
+    stage_mode: phases
+    unlock_major: dacheng
+    next_major: null  # 扩境时改为下一炼体境 id，并在 majors 中追加条目
+    stages:
+      - { stage: 1, label: early, progress_required: 1400000 }
+      - { stage: 2, label: middle, progress_required: 1800000 }
+      - { stage: 3, label: late, progress_required: 2400000 }
+      - { stage: 4, label: perfection, progress_required: 3200000 }

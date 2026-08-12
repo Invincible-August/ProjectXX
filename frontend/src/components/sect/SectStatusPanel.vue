@@ -28,14 +28,21 @@ const featureText = computed(() => {
         <div class="row">
           <el-text type="info" size="small">宗门</el-text>
           <el-text tag="b">{{ sect.name || '—' }}</el-text>
-          <el-tag size="small" type="success">{{ sect.role_label_zh || sect.role || '弟子' }}</el-tag>
+          <el-tag size="small" type="success">
+            {{ sect.rank_label_zh || sect.role_label_zh || sect.role || '弟子' }}
+          </el-tag>
           <el-tag v-if="sect.kind" size="small" type="info">
             {{ sect.kind === 'npc' ? 'NPC 宗' : '自建宗' }}
           </el-tag>
+          <el-tag v-if="sect.grade" size="small">{{ sect.grade }}</el-tag>
         </div>
         <div v-if="sect.motto" class="row">
           <el-text type="info" size="small">箴言</el-text>
           <el-text>{{ sect.motto }}</el-text>
+        </div>
+        <div v-if="sect.specialty" class="row">
+          <el-text type="info" size="small">专精</el-text>
+          <el-text>{{ sect.specialty }}</el-text>
         </div>
         <div class="row">
           <el-text type="info" size="small">贡献</el-text>

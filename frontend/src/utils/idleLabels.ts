@@ -6,9 +6,10 @@
 /** 方向 key → 短标签 */
 export const IDLE_DIRECTION_LABELS: Record<string, string> = {
   none: '停止',
-  spirit: '修灵',
-  body: '炼体',
-  crafting: '制造业',
+  spirit: '修炼',
+  body: '淬体',
+  crafting: '制造业修炼',
+  sect_mining: '采矿',
 }
 
 /**
@@ -29,8 +30,9 @@ export function avatarIdleBadge(direction: string | undefined, hasAvatar: boolea
   if (!hasAvatar) return '未凝练'
   const dir = direction ?? 'none'
   if (dir === 'none') return '待机'
-  if (dir === 'spirit') return '修灵中'
-  if (dir === 'body') return '炼体中'
-  if (dir === 'crafting') return '制造业'
+  if (dir === 'spirit') return '修炼中'
+  if (dir === 'body') return '淬体中'
+  if (dir === 'crafting') return '制造业修炼中'
+  if (dir === 'sect_mining') return '采矿中'
   return idleDirectionLabel(dir)
 }

@@ -7,6 +7,8 @@ import type { ApiResponse } from '../types/api'
 import type {
   AuctionListPayload,
   AuctionMutationResult,
+  BazaarCatalogPayload,
+  BazaarDealResult,
   FaceMutationResult,
   ListingListPayload,
   ListingMutationResult,
@@ -291,5 +293,57 @@ export async function faceCancel(
     return response.data
   } catch (error: unknown) {
     return envelopeFromAxiosError<FaceMutationResult>(error)
+  }
+}
+
+/** GET /trade/bazaar */
+export async function fetchBazaar(): Promise<ApiResponse<BazaarCatalogPayload>> {
+  try {
+    const response = await http.get<ApiResponse<BazaarCatalogPayload>>('/trade/bazaar')
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<BazaarCatalogPayload>(error)
+  }
+}
+
+/**
+ * POST /trade/bazaar/buy
+ *
+ * @param itemId - 物品 id
+ * @param quantity - 数量
+ */
+export async function buyFromBazaar(
+  itemId: string,
+  quantity: number,
+): Promise<ApiResponse<BazaarDealResult>> {
+  try {
+    const response = await http.post<ApiResponse<BazaarDealResult>>(
+      '/trade/bazaar/buy',
+      { item_id: itemId, quantity },
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<BazaarDealResult>(error)
+  }
+}
+
+/**
+ * POST /trade/bazaar/sell
+ *
+ * @param itemId - 物品 id
+ * @param quantity - 数量
+ */
+export async function sellToBazaar(
+  itemId: string,
+  quantity: number,
+): Promise<ApiResponse<BazaarDealResult>> {
+  try {
+    const response = await http.post<ApiResponse<BazaarDealResult>>(
+      '/trade/bazaar/sell',
+      { item_id: itemId, quantity },
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<BazaarDealResult>(error)
   }
 }

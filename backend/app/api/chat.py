@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.deps import get_chat_service, get_current_user
 from app.db.models import User
-from app.schemas.chat import ChatReadRequest, ChatSendRequest, PartyActionRequest
+from app.schemas.chat import ChatDmClearRequest, ChatReadRequest, ChatSendRequest, PartyActionRequest
 from app.schemas.common import success
 from app.services.chat_service import ChatService
 
@@ -68,6 +68,23 @@ async def chat_read(
 ) -> dict:
     """清零未读。"""
     return success(await svc.mark_read(current_user, channel_ref=body.channel_ref))
+
+
+@router.post("/chat/dm/clear", response_model=None)
+async def chat_dm_clear(
+    body: ChatDmClearRequest,
+    svc: ChatService = Depends(get_chat_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """清空私聊会话历史（双方）。"""
+    return success(
+        await svc.clear_dm(
+            current_user,
+            channel_ref=body.channel_ref,
+            peer_character_id=body.peer_character_id,
+            peer_name=body.peer_name,
+        ),
+    )
 
 
 @router.get("/party/me", response_model=None)

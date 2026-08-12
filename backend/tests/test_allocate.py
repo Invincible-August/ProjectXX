@@ -76,8 +76,37 @@ def test_allocate_realm_progress(tmp_path: Path) -> None:
     _run(_body())
 
 
+def test_allocate_body_temper_progress(tmp_path: Path) -> None:
+    """分配淬体度池到淬体进度。"""
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "alloc_bt.db") as factory:
+            async with factory() as session:
+                user = await _prepare(session, "btpool@example.com")
+                character = await character_service.get_character_by_user_id(session, user.id)
+                assert character is not None
+                character.body_tempering_points = 80
+                character.body_temper_stage = "refine_skin"
+                character.body_temper_progress = 0
+                await session.commit()
+
+                data = await allocate_service.allocate_resources(
+                    session,
+                    user,
+                    target_type="body_temper",
+                    target_id=None,
+                    amount=40,
+                )
+                await session.commit()
+                assert data["allocated"] == 40
+                assert data["character"]["body_temper_progress"] == 40
+                assert data["character"]["body_tempering_points"] == 40
+
+    _run(_body())
+
+
 def test_allocate_technique_level_up(tmp_path: Path) -> None:
-    """分配炼体度升功法等级。"""
+    """分配淬体度升炼体功法等级。"""
 
     async def _body() -> None:
         async with open_test_session_factory(tmp_path / "alloc_tech.db") as factory:

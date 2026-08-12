@@ -28,6 +28,10 @@ class SettleResult:
     advanced_only: bool = False  # True=仅推进锚点无产出（如状态非 normal）
     # M5-D11：跨时辰/天气切段明细（可空；短窗单段时仍可有一条）
     segments: list[dict[str, Any]] | None = None
+    # 采矿挂机（与修炼同路径 sync / 日志）
+    gained_mining_stones: int = 0
+    spent_stamina: int = 0
+    mining_pool_stones: int = 0
 
 
 @dataclass(frozen=True)

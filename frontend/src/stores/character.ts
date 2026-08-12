@@ -13,6 +13,7 @@ import type { CharacterPublic } from '../types/character'
 import type { IdleDirection, IdleSyncData } from '../types/idle'
 import { validateCharacterName } from '../utils/characterName'
 import {
+  isIdleBusyDirection,
   isProductiveDirection,
   predictAvatarIdleDisplay,
   predictIdleDisplay,
@@ -66,7 +67,7 @@ export const useCharacterStore = defineStore('character', () => {
 
   /**
    * 本体挂机面板展示快照（只读预测；不污染权威 character）。
-   * 池增量用浏览器实时环境速率，与「本片预计」一致。
+   * 池增量用浏览器实时环境速率，与「本周天预计」一致。
    */
   const display = computed<IdleDisplaySnapshot | null>(() => {
     void displayTick.value
@@ -105,8 +106,8 @@ export const useCharacterStore = defineStore('character', () => {
     if (serverNextTickAt !== undefined) {
       nextTickAt.value = serverNextTickAt
     } else if (
-      !isProductiveDirection(ch.idle_direction) ||
-      ch.is_stalled ||
+      !isIdleBusyDirection(ch.idle_direction) ||
+      (isProductiveDirection(ch.idle_direction) && ch.is_stalled) ||
       ch.offline_pending
     ) {
       nextTickAt.value = null
@@ -304,8 +305,8 @@ export const useCharacterStore = defineStore('character', () => {
     const ch = character.value
     if (
       !ch ||
-      !isProductiveDirection(ch.idle_direction) ||
-      ch.is_stalled ||
+      !isIdleBusyDirection(ch.idle_direction) ||
+      (isProductiveDirection(ch.idle_direction) && ch.is_stalled) ||
       ch.offline_pending
     ) {
       scheduleSyncAligned()
@@ -313,7 +314,11 @@ export const useCharacterStore = defineStore('character', () => {
     }
     try {
       const data = await syncNow()
-      if (data.settled_ticks > 0 && onSettledCb) {
+      const hasMining =
+        Number(data.gained_mining_stones || 0) > 0 ||
+        Number(data.spent_stamina || 0) > 0 ||
+        Number(data.mining_pool_stones || 0) > 0
+      if ((data.settled_ticks > 0 || hasMining) && onSettledCb) {
         onSettledCb(data)
       }
     } catch {
@@ -339,8 +344,8 @@ export const useCharacterStore = defineStore('character', () => {
     const ch = character.value
     if (
       !ch ||
-      !isProductiveDirection(ch.idle_direction) ||
-      ch.is_stalled ||
+      !isIdleBusyDirection(ch.idle_direction) ||
+      (isProductiveDirection(ch.idle_direction) && ch.is_stalled) ||
       ch.offline_pending
     ) {
       return

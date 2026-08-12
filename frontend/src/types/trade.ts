@@ -104,3 +104,34 @@ export interface FaceMutationResult {
   session?: FaceSession
   character?: CharacterPublic
 }
+
+/** NPC 坊市货架行 */
+export interface BazaarItem {
+  item_id: string
+  label_zh: string
+  item_type: string
+  buy_price: number
+  sell_price: number
+  owned: number
+}
+
+/** GET /trade/bazaar */
+export interface BazaarCatalogPayload {
+  label_zh: string
+  hint_zh: string
+  max_qty_per_deal: number
+  items: BazaarItem[]
+  inventory_sellable: BazaarItem[]
+  spirit_stones: number
+}
+
+/** POST /trade/bazaar/buy|sell */
+export interface BazaarDealResult {
+  item_id: string
+  quantity: number
+  spirit_stones_spent?: number
+  spirit_stones_gained?: number
+  spirit_stones: number
+  message?: string
+  catalog?: BazaarCatalogPayload
+}

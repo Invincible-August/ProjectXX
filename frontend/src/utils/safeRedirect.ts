@@ -28,6 +28,8 @@ const ALLOWED_REDIRECT_PATHS = new Set([
   '/party',
   '/dual-cultivation',
   '/shop',
+  '/account',
+  '/character',
 ])
 
 /**

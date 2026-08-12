@@ -18,6 +18,7 @@ export interface ActivityBlockers {
   start_craft?: string | null
   start_battle?: string | null
   breakthrough?: string | null
+  quench?: string | null
   start_tribulation?: string | null
 }
 
@@ -33,6 +34,7 @@ export interface ActivitySnapshot {
   can_start_craft: boolean
   can_start_battle: boolean
   can_breakthrough: boolean
+  can_quench?: boolean
   can_start_tribulation: boolean
   blockers: ActivityBlockers
 }

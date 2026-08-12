@@ -4,10 +4,13 @@
  */
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { useCharacterStore } from '../../stores/character'
+import { useChatStore } from '../../stores/chat'
 
 const router = useRouter()
 const characterStore = useCharacterStore()
+const chatStore = useChatStore()
 
 const sect = computed(() => characterStore.character?.sect ?? null)
 const inSect = computed(() => Boolean(sect.value?.in_sect))
@@ -16,6 +19,14 @@ const sectLabel = computed(() => {
   if (!sect.value.in_sect) return sect.value.hint_zh || '散修 · 可拜入或自建'
   return `${sect.value.name || '宗门'} · 贡献 ${sect.value.contrib}`
 })
+
+/** 有未读的私聊会话数（按对方人数，非消息条数） */
+const dmUnreadSessions = computed(() => Number(chatStore.dmUnreadPeers) || 0)
+
+async function openDm(): Promise<void> {
+  const err = await chatStore.openDmDialog()
+  if (err) ElMessage.error(err)
+}
 </script>
 
 <template>
@@ -28,7 +39,7 @@ const sectLabel = computed(() => {
       <div
         class="gate-card"
         :class="{ emphasize: !inSect }"
-        @click="router.push(inSect ? '/sect?mode=status' : '/sect?mode=join')"
+        @click="router.push(inSect ? '/sect?mode=overview' : '/sect?mode=join')"
       >
         <el-badge :is-dot="!inSect" type="success">
           <el-button type="primary" size="small">
@@ -39,6 +50,14 @@ const sectLabel = computed(() => {
       </div>
 
       <div class="gate-row">
+        <el-badge
+          :value="dmUnreadSessions"
+          :hidden="dmUnreadSessions <= 0"
+          :max="99"
+          type="danger"
+        >
+          <el-button type="warning" size="small" @click="openDm">私聊</el-button>
+        </el-badge>
         <el-button size="small" @click="router.push('/friends')">道友</el-button>
         <el-button size="small" @click="router.push('/party')">队伍</el-button>
         <el-button size="small" @click="router.push('/market')">坊市</el-button>
@@ -59,13 +78,16 @@ const sectLabel = computed(() => {
             <b>道友</b>：先结交道友，再私聊 / 赠礼 / 面交 / 化身助战；组队请到队伍页。
           </li>
           <li>
+            <b>私聊</b>：大厅「私聊」或道友页进入；角标为<strong>有未读的会话数</strong>（一人未读显示 1，与消息条数无关）。
+          </li>
+          <li>
             <b>组队</b>：在<strong>队伍页</strong>建队 / 接受邀请；仅队长可邀请与踢人；双方须在线且已是道友；聊天坞「队伍」仅发言，不可发机缘。
           </li>
           <li>
             <b>交易（面交）</b>：须已是道友且双方在线；对方接受 → 摆货 → 锁定 → 双方确认。
           </li>
           <li>
-            <b>聊天 / 机缘</b>：世界与宗门可发言并<b>发机缘</b>；私聊、师承、队伍可发言但<b>不可发机缘</b>。私聊未读按「人数」提示（一人未读显示 1，与消息条数无关）。
+            <b>聊天 / 机缘</b>：世界与宗门可发言并<b>发机缘</b>；私聊、师承、队伍可发言但<b>不可发机缘</b>。
           </li>
         </ul>
       </el-alert>
@@ -111,6 +133,11 @@ const sectLabel = computed(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
+  align-items: center;
+}
+
+.gate-row :deep(.el-badge) {
+  vertical-align: middle;
 }
 
 .rules-alert {

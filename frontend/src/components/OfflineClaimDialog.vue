@@ -72,7 +72,7 @@ async function onClaim(): Promise<void> {
     ElMessage.success('已领取离线收益')
     emit(
       'log',
-      `离线领取 ${data.settled_ticks} 片：修为 +${data.gained_cultivation}，炼体 +${data.gained_body ?? 0}，制造业 +${data.gained_crafting ?? 0}，灵石 -${data.spent_spirit_stones}`,
+      `离线领取 ${data.settled_ticks} 周天：修为 +${data.gained_cultivation}，炼体 +${data.gained_body ?? 0}，制造业 +${data.gained_crafting ?? 0}，灵石 -${data.spent_spirit_stones}`,
       'success',
     )
     visible.value = false
@@ -97,7 +97,7 @@ async function onClaim(): Promise<void> {
     <el-skeleton v-if="loadingPreview && !pending" animated :rows="4" />
     <template v-else-if="pending">
       <el-descriptions :column="1" border size="small">
-        <el-descriptions-item label="有效片数">
+        <el-descriptions-item label="有效周天">
           {{ pending.settled_ticks }}
         </el-descriptions-item>
         <el-descriptions-item label="离线帽">
@@ -113,7 +113,7 @@ async function onClaim(): Promise<void> {
           {{ idleDirectionLabel(pending.direction) }}
         </el-descriptions-item>
         <el-descriptions-item label="修为">+{{ pending.gained_cultivation }}</el-descriptions-item>
-        <el-descriptions-item label="炼体度">+{{ pending.gained_body }}</el-descriptions-item>
+        <el-descriptions-item label="淬体度">+{{ pending.gained_body }}</el-descriptions-item>
         <el-descriptions-item label="制造业经验">
           +{{ pending.gained_crafting }}
         </el-descriptions-item>

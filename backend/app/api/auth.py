@@ -7,7 +7,13 @@ from fastapi import APIRouter, Depends, status
 from app.core.deps import get_auth_service, get_current_user
 from app.core.time_utils import to_utc_iso
 from app.db.models import User
-from app.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, RegisterResult
+from app.schemas.auth import (
+    ChangePasswordRequest,
+    LoginRequest,
+    RefreshRequest,
+    RegisterRequest,
+    RegisterResult,
+)
 from app.schemas.common import success
 from app.services.auth_service import AuthService, auth_me_to_dict, token_payload_to_dict
 
@@ -109,3 +115,18 @@ async def me(
     """
     profile = await auth.profile(current_user)
     return success(auth_me_to_dict(profile))
+
+
+@router.post("/change-password", response_model=None)
+async def change_password(
+    payload: ChangePasswordRequest,
+    auth: AuthService = Depends(get_auth_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """校验原密码后更新为新密码。"""
+    data = await auth.change_password(
+        current_user,
+        old_password=payload.old_password,
+        new_password=payload.new_password,
+    )
+    return success(data)

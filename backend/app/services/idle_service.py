@@ -499,6 +499,10 @@ class IdleService:
             return SettleResult(stalled=self.is_currently_stalled(character), ticks=0)
 
         direction = character.idle_direction
+        # 采矿挂机由 SectFacilityService.settle_mining_character 权威结算；
+        # 同步 settle 不推进锚点，避免吞掉采矿 tick。
+        if direction == "sect_mining":
+            return SettleResult(stalled=False, ticks=0, advanced_only=True)
         # 非产出方向：零产出零消耗，仍推进锚点
         if character.status != "normal" or direction not in PRODUCTIVE_DIRECTIONS:
             stalled_status = character.status in ("awaiting_ferry", "reincarnating")
@@ -837,6 +841,43 @@ class IdleService:
             env_tags=env_tags,
             channel_mult=channel_mult,
         )
+        # 采矿挂机：若上方 prepare 路径未走，仍保证 dual 路径结算一次
+        if character.idle_direction == "sect_mining":
+            from app.services.sect_facility_service import SectFacilityService
+
+            mining = await SectFacilityService(self._session).settle_mining_character(
+                character,
+                now=now,
+            )
+            m_ticks = int(mining.get("ticks") or 0)
+            dual.main.ticks = int(dual.main.ticks) + m_ticks
+            dual.main.gained_mining_stones = int(mining.get("personal_stones") or 0)
+            dual.main.spent_stamina = int(mining.get("spent_stamina") or 0)
+            dual.main.mining_pool_stones = int(mining.get("pool_stones") or 0)
+            if m_ticks > 0:
+                dual.main.advanced_only = False
+        # 化身采矿结算（独立于本体席位）
+        if avatar_row is not None and str(getattr(avatar_row, "idle_direction", "") or "") == "sect_mining":
+            from app.services.sect_facility_service import SectFacilityService
+
+            av_mining = await SectFacilityService(self._session).settle_avatar_mining(
+                character,
+                avatar_row,
+                now=now,
+            )
+            av_ticks = int(av_mining.get("ticks") or 0)
+            if dual.avatar is not None:
+                dual.avatar.ticks = int(dual.avatar.ticks) + av_ticks
+            if av_ticks > 0 and dual.main is not None:
+                dual.main.gained_mining_stones = int(dual.main.gained_mining_stones or 0) + int(
+                    av_mining.get("personal_stones") or 0,
+                )
+                dual.main.spent_stamina = int(dual.main.spent_stamina or 0) + int(
+                    av_mining.get("spent_stamina") or 0,
+                )
+                dual.main.mining_pool_stones = int(dual.main.mining_pool_stones or 0) + int(
+                    av_mining.get("pool_stones") or 0,
+                )
         craft = CraftService(self._session)
         ready = await craft.settle_jobs_async(character, now=now)
         dual.craft_ready_ids = ready
@@ -1003,14 +1044,52 @@ class IdleService:
         avatar = await self._load_avatar_row(character.id)
         env_tags = await load_character_env_tags(self._session, character)
         channel_mult, _ = await resolve_idle_bonus_channels(self._session, character)
-        return self.prepare_offline_or_settle(
+        result = self.prepare_offline_or_settle(
             character,
             now=now,
             avatar=avatar,
             env_tags=env_tags,
             channel_mult=channel_mult,
         )
+        # sync / 切方向共用此路径：采矿须在 async 侧结算体力与个人灵石
+        if character.idle_direction == "sect_mining":
+            from app.services.sect_facility_service import SectFacilityService
 
+            mining = await SectFacilityService(self._session).settle_mining_character(
+                character,
+                now=now,
+            )
+            if isinstance(result, SettleResult):
+                m_ticks = int(mining.get("ticks") or 0)
+                result.ticks = int(result.ticks) + m_ticks
+                result.gained_mining_stones = int(mining.get("personal_stones") or 0)
+                result.spent_stamina = int(mining.get("spent_stamina") or 0)
+                result.mining_pool_stones = int(mining.get("pool_stones") or 0)
+                if m_ticks > 0:
+                    result.advanced_only = False
+        if avatar is not None and str(getattr(avatar, "idle_direction", "") or "") == "sect_mining":
+            from app.services.sect_facility_service import SectFacilityService
+
+            av_mining = await SectFacilityService(self._session).settle_avatar_mining(
+                character,
+                avatar,
+                now=now,
+            )
+            if isinstance(result, SettleResult):
+                av_ticks = int(av_mining.get("ticks") or 0)
+                result.ticks = int(result.ticks) + av_ticks
+                result.gained_mining_stones = int(result.gained_mining_stones or 0) + int(
+                    av_mining.get("personal_stones") or 0,
+                )
+                result.spent_stamina = int(result.spent_stamina or 0) + int(
+                    av_mining.get("spent_stamina") or 0,
+                )
+                result.mining_pool_stones = int(result.mining_pool_stones or 0) + int(
+                    av_mining.get("pool_stones") or 0,
+                )
+                if av_ticks > 0:
+                    result.advanced_only = False
+        return result
     def ensure_offline_pending(
         self,
         character: Character,
@@ -1205,6 +1284,9 @@ class IdleService:
             "gained_body": settle.gained_body,
             "gained_crafting": settle.gained_crafting,
             "spent_spirit_stones": settle.spent_spirit_stones,
+            "gained_mining_stones": settle.gained_mining_stones,
+            "spent_stamina": settle.spent_stamina,
+            "mining_pool_stones": settle.mining_pool_stones,
             "next_tick_at": self.compute_next_tick_at(character),
         }
         if pending is not None:
@@ -1233,6 +1315,9 @@ class IdleService:
             "gained_body": settle.gained_body if settle else 0,
             "gained_crafting": settle.gained_crafting if settle else 0,
             "spent_spirit_stones": settle.spent_spirit_stones if settle else 0,
+            "gained_mining_stones": settle.gained_mining_stones if settle else 0,
+            "spent_stamina": settle.spent_stamina if settle else 0,
+            "mining_pool_stones": settle.mining_pool_stones if settle else 0,
             "next_tick_at": None,
             "offline_pending": pending,
         }
@@ -1282,7 +1367,11 @@ class IdleService:
 
         allowed = {"none", "spirit", "body", "crafting"}
         if direction not in allowed:
-            raise AppError(code=40000, message="无效的挂机方向", http_status=400)
+            raise AppError(
+                code=40000,
+                message="无效的挂机方向（采矿请走宗门矿脉入口）",
+                http_status=400,
+            )
 
         # 活动互斥：进入修炼前先 settle 工坊到期任务；停修炼走 STOP_IDLE
         from app.domain.activity_mutex import Activity
@@ -1303,7 +1392,20 @@ class IdleService:
         if direction == "crafting" and not idle.crafting.enabled:
             raise AppError(code=40020, message="制造业挂机未开放", http_status=400)
 
+        # 离开采矿挂机时释放矿脉席位
+        if character.idle_direction == "sect_mining" and direction != "sect_mining":
+            from app.services.sect_facility_service import SectFacilityService
+
+            await SectFacilityService(self._session).settle_mining_character(
+                character,
+                now=now,
+            )
+            await SectFacilityService(self._session).release_miner_slot(character)
+
         character.idle_direction = direction
+        # 从点击切换起重新计时一整段 tick（非墙钟整分对齐）
+        if direction in {"spirit", "body", "crafting"}:
+            character.last_settled_at = now_utc(now)
         character.updated_at = now_utc(now)
         await self._session.flush()
         await self._session.refresh(character)

@@ -261,7 +261,7 @@ class GmService:
 
         if body_tempering_points is not None:
             if body_tempering_points < 0:
-                raise AppError(code=40000, message="炼体度不可为负", http_status=400)
+                raise AppError(code=40000, message="淬体度不可为负", http_status=400)
             character.body_tempering_points = body_tempering_points
 
         if crafting_exp is not None:

@@ -59,10 +59,11 @@ export async function joinSect(body: {
 /**
  * POST /sect/create — 自建宗门。
  *
- * @param body - name + 可选 motto
+ * @param body - name + specialty + 可选 motto
  */
 export async function createSect(body: {
   name: string
+  specialty: string
   motto?: string | null
 }): Promise<ApiResponse<SectJoinCreateResult>> {
   try {
@@ -73,6 +74,442 @@ export async function createSect(body: {
     return response.data
   } catch (error: unknown) {
     return envelopeFromAxiosError<SectJoinCreateResult>(error)
+  }
+}
+
+/** GET /sect/overview */
+export async function fetchSectOverview(): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.get<ApiResponse<Record<string, unknown>>>('/sect/overview')
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** GET /sect/members */
+export async function fetchSectMembers(): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.get<ApiResponse<Record<string, unknown>>>('/sect/members')
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** GET /sect/ranks/applications */
+export async function fetchRankApplications(): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.get<ApiResponse<Record<string, unknown>>>(
+      '/sect/ranks/applications',
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/ranks/apply */
+export async function applySectRank(body: {
+  target_rank: string
+}): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      '/sect/ranks/apply',
+      body,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/ranks/appoint */
+export async function appointSectRank(body: {
+  target_character_id: number
+  target_rank: string
+}): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      '/sect/ranks/appoint',
+      body,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/council/salary */
+export async function claimSectSalary(): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      '/sect/council/salary',
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/council/announce */
+export async function announceSect(body: {
+  text_zh: string
+}): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      '/sect/council/announce',
+      body,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/council/war/start */
+export async function startSectWar(body: {
+  war_kind: string
+}): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      '/sect/council/war/start',
+      body,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/grade/upgrade */
+export async function upgradeSectGrade(): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      '/sect/grade/upgrade',
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/facilities/{id}/upgrade */
+export async function upgradeSectFacility(
+  facilityId: string,
+): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      `/sect/facilities/${encodeURIComponent(facilityId)}/upgrade`,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/buffs/toggle */
+export async function toggleSectBuff(body: {
+  buff_id: string
+  enable: boolean
+}): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      '/sect/buffs/toggle',
+      body,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** GET /sect/treasury */
+export async function fetchTreasury(): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.get<ApiResponse<Record<string, unknown>>>('/sect/treasury')
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/treasury/exchange */
+export async function exchangeTreasury(body: {
+  item_key: string
+}): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      '/sect/treasury/exchange',
+      body,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** GET /sect/scripture */
+export async function fetchScripture(): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.get<ApiResponse<Record<string, unknown>>>('/sect/scripture')
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/scripture/exchange */
+export async function exchangeScripture(body: {
+  technique_id: string
+}): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      '/sect/scripture/exchange',
+      body,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** GET /sect/workshops/{branch} */
+export async function fetchWorkshop(
+  branch: string,
+): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.get<ApiResponse<Record<string, unknown>>>(
+      `/sect/workshops/${encodeURIComponent(branch)}`,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/workshops/{branch}/hire */
+export async function hireWorkshop(
+  branch: string,
+  body: { craftsman_id: string; recipe_id: string },
+): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      `/sect/workshops/${encodeURIComponent(branch)}/hire`,
+      body,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/workshops/{branch}/blueprints/exchange */
+export async function exchangeWorkshopBlueprint(
+  branch: string,
+  body: { recipe_id: string },
+): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      `/sect/workshops/${encodeURIComponent(branch)}/blueprints/exchange`,
+      body,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/workshops/{branch}/blueprints/donate */
+export async function donateWorkshopBlueprint(
+  branch: string,
+  body: {
+    recipe_id: string
+    label_zh: string
+    cost_contribution?: number
+    self_research?: boolean
+  },
+): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      `/sect/workshops/${encodeURIComponent(branch)}/blueprints/donate`,
+      body,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** GET /sect/formation */
+export async function fetchFormation(): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.get<ApiResponse<Record<string, unknown>>>('/sect/formation')
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/formation/select */
+export async function selectFormation(body: {
+  formation_id: string
+}): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      '/sect/formation/select',
+      body,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/formation/active */
+export async function setFormationActive(body: {
+  active: boolean
+}): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      '/sect/formation/active',
+      body,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/formation/allocate */
+export async function allocateFormationAttr(body: {
+  attr_key: string
+}): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      '/sect/formation/allocate',
+      body,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/formation/exchange */
+export async function exchangeFormation(body: {
+  formation_id: string
+}): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      '/sect/formation/exchange',
+      body,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/formation/donate */
+export async function donateFormation(body: {
+  formation_id: string
+  need_review?: boolean
+}): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      '/sect/formation/donate',
+      body,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** GET /sect/mine */
+export async function fetchMine(): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.get<ApiResponse<Record<string, unknown>>>('/sect/mine')
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/mine/start */
+export async function startMine(): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>('/sect/mine/start')
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/mine/stop */
+export async function stopMine(): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>('/sect/mine/stop')
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** GET /sect/herbs */
+export async function fetchHerbs(): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.get<ApiResponse<Record<string, unknown>>>('/sect/herbs')
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/herbs/exchange */
+export async function exchangeHerb(body: {
+  plant_id: string
+}): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      '/sect/herbs/exchange',
+      body,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/herbs/plant */
+export async function plantHerb(body: {
+  plant_id: string
+  herbalist_id?: string | null
+  hosted?: boolean
+}): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      '/sect/herbs/plant',
+      body,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/herbs/{id}/harvest */
+export async function harvestHerb(
+  plotId: number,
+): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      `/sect/herbs/${plotId}/harvest`,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
   }
 }
 

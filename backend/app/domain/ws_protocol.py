@@ -42,6 +42,7 @@ TYPE_EVENT_STATE = "event.state"
 TYPE_CHAT_MESSAGE = "chat.message"
 TYPE_CHAT_UNREAD = "chat.unread"
 TYPE_CHAT_RECALL = "chat.recall"
+TYPE_CHAT_DM_CLEARED = "chat.dm.cleared"
 
 # —— 队伍邀请 / 状态（party invite flow）——
 TYPE_PARTY_INVITE = "party.invite"

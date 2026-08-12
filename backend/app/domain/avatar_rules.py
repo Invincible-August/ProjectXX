@@ -195,6 +195,7 @@ def is_allowed_avatar_idle_direction(direction: str) -> bool:
         IdleDirection.SPIRIT,
         IdleDirection.BODY,
         IdleDirection.CRAFTING,
+        "sect_mining",
     }
 
 

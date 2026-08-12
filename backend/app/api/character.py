@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, status
 from app.core.deps import get_character_service, get_current_user
 from app.db.models import User
 from app.schemas.character import CreateCharacterRequest
-from app.schemas.common import success
+from app.schemas.common import AppError, success
 from app.services.character_service import CharacterService, character_public_to_dict
 
 router = APIRouter(prefix="/characters", tags=["characters"])
@@ -55,3 +55,21 @@ async def get_my_character(
     """
     public = await characters.get_mine(current_user)
     return success(character_public_to_dict(public))
+
+
+@router.get("/me/combat", response_model=None)
+async def get_my_combat_attrs(
+    characters: CharacterService = Depends(get_character_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """
+    获取当前角色统一战斗/生活属性块（与 settle/开战同源 build_combat_attrs）。
+
+    Returns:
+        dict: ``{ combat, life }``；无角色 ``40005``。
+    """
+    character = await characters.get_by_user_id(current_user.id)
+    if character is None:
+        raise AppError(code=40005, message="尚未创建角色", http_status=404)
+    packed = await characters.build_combat_attrs(character)
+    return success({"combat": packed["combat"], "life": packed["life"]})

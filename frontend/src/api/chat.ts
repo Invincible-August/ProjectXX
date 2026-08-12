@@ -71,6 +71,34 @@ export async function markChatRead(channel_ref: string): Promise<
   }
 }
 
+/** POST /chat/dm/clear */
+export async function clearDmChat(body: {
+  channel_ref?: string | null
+  peer_character_id?: number | null
+  peer_name?: string | null
+}): Promise<
+  ApiResponse<{
+    message?: string
+    channel_ref?: string
+    unread_total?: number
+    dm_unread_peers?: number
+  }>
+> {
+  try {
+    const response = await http.post<
+      ApiResponse<{
+        message?: string
+        channel_ref?: string
+        unread_total?: number
+        dm_unread_peers?: number
+      }>
+    >('/chat/dm/clear', body)
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
 /** GET /party/me */
 export async function fetchPartyMe(): Promise<ApiResponse<PartyMePayload>> {
   try {

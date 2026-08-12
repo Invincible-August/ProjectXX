@@ -15,6 +15,7 @@ import {
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import CreateCharacterView from '../views/CreateCharacterView.vue'
+import CharacterView from '../views/CharacterView.vue'
 import HallView from '../views/HallView.vue'
 import FormationView from '../views/FormationView.vue'
 import BattleView from '../views/BattleView.vue'
@@ -33,6 +34,7 @@ import FriendsView from '../views/FriendsView.vue'
 import PartyView from '../views/PartyView.vue'
 import DualCultivationView from '../views/DualCultivationView.vue'
 import ShopView from '../views/ShopView.vue'
+import AccountView from '../views/AccountView.vue'
 import TestPage from '../test/apps.vue'
 import { useAuthStore } from '../stores/auth'
 import { useCharacterStore } from '../stores/character'
@@ -57,6 +59,7 @@ declare module 'vue-router' {
 /** 玩法路由（需有角色） */
 const PLAY_ROUTE_NAMES = new Set([
   'hall',
+  'character',
   'formation',
   'battle',
   'avatar',
@@ -118,6 +121,12 @@ const routes: RouteRecordRaw[] = [
     path: '/hall',
     name: 'hall',
     component: HallView,
+    meta: { requiresAuth: true, showWorldBar: true },
+  },
+  {
+    path: '/character',
+    name: 'character',
+    component: CharacterView,
     meta: { requiresAuth: true, showWorldBar: true },
   },
   {
@@ -220,6 +229,12 @@ const routes: RouteRecordRaw[] = [
     path: '/shop',
     name: 'shop',
     component: ShopView,
+    meta: { requiresAuth: true, showWorldBar: true },
+  },
+  {
+    path: '/account',
+    name: 'account',
+    component: AccountView,
     meta: { requiresAuth: true, showWorldBar: true },
   },
   // 学习用，非 M0 验收；保持公开以免打断联调

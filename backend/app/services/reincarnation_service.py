@@ -488,6 +488,10 @@ class ReincarnationService:
         character.realm_progress = plan.realm_progress
         character.cultivation_points = plan.cultivation_points
         character.body_tempering_points = plan.body_tempering_points
+        character.body_temper_stage = "refine_skin"
+        character.body_temper_layer = 1
+        character.body_temper_layer_label = "layer_1"
+        character.body_temper_progress = 0
         character.crafting_exp = plan.crafting_exp
         character.spirit_stones = plan.spirit_stones
         character.status = plan.status

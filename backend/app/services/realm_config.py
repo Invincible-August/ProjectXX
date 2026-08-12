@@ -45,9 +45,10 @@ STAGE_LABEL_NAMES: dict[str, str] = {
 
 IDLE_DIRECTION_NAMES: dict[str, str] = {
     "none": "未修炼",
-    "spirit": "修灵",
-    "body": "炼体",
-    "crafting": "制造业",
+    "spirit": "修炼",
+    "body": "淬体",
+    "crafting": "制造业修炼",
+    "sect_mining": "采矿",
 }
 
 STATUS_NAMES: dict[str, str] = {
@@ -90,6 +91,62 @@ class MajorRealmConfig:
     def max_stage(self) -> int:
         """当前大境界最大 stage 数字。"""
         return max(item.stage for item in self.stages)
+
+
+@dataclass(frozen=True)
+class BodyTemperLayerConfig:
+    """炼体大境内单一层/期。"""
+
+    stage: int
+    label: str
+    progress_required: int
+
+
+@dataclass(frozen=True)
+class BodyTemperMajorConfig:
+    """炼体大境（炼皮/锻骨/…/道体）。"""
+
+    key: str
+    name: str
+    stage_mode: str
+    unlock_major: str
+    next_major: str | None
+    stages: tuple[BodyTemperLayerConfig, ...]
+
+    def stage_by_number(self, stage: int) -> BodyTemperLayerConfig | None:
+        """按层/期编号查找。"""
+        for item in self.stages:
+            if item.stage == stage:
+                return item
+        return None
+
+    def max_stage(self) -> int:
+        """本境最大层/期编号。"""
+        return max(item.stage for item in self.stages)
+
+
+@dataclass(frozen=True)
+class BodyTemperQuenchRule:
+    """淬体尝试规则（成功率 + 失败保留进度比）。"""
+
+    success_rate: float
+    fail_progress_keep_ratio: float
+
+
+@dataclass(frozen=True)
+class BodyTemperConfig:
+    """炼体大境总表 + 淬体规则（可扩 next_major）。"""
+
+    unlock_majors: tuple[str, ...]
+    majors: dict[str, BodyTemperMajorConfig]
+    default_major_id: str
+    layer_advance: BodyTemperQuenchRule
+    major_advance: BodyTemperQuenchRule
+    success_rate_clamp: tuple[float, float]
+
+    def get_major(self, key: str) -> BodyTemperMajorConfig | None:
+        """按炼体大境 id 查询。"""
+        return self.majors.get(key)
 
 
 @dataclass(frozen=True)
@@ -414,6 +471,33 @@ class DiceChannelConfig:
 
     channel_id: str
     enabled: bool
+
+
+@dataclass(frozen=True)
+class CombatAttrDefConfig:
+    """combat_attrs.yaml 单属性注册项。"""
+
+    key: str
+    label_zh: str
+    help_zh: str
+    category: str
+    engine: bool = False
+    panel: bool = True
+    formula_enabled: bool = True
+    default: float = 0.0
+
+
+@dataclass(frozen=True)
+class CombatAttrsConfig:
+    """统一战斗/生活属性注册表（ATTR-D01）。"""
+
+    schema_version: int
+    defaults: dict[str, float]
+    aliases: dict[str, str]
+    primary_map: dict[str, dict[str, float]]
+    attrs: dict[str, CombatAttrDefConfig]
+    entity_profiles: dict[str, tuple[str, ...]]
+    channels: dict[str, dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -1262,7 +1346,7 @@ class ReincarnationConfig:
 
 @dataclass(frozen=True)
 class SectsConfig:
-    """宗门与设施开关（sects.yaml · M7 L1）。"""
+    """宗门与设施开关（sects.yaml · M7 L1 + M7-V+ 深化）。"""
 
     facilities: dict[str, dict[str, Any]]
     sects: dict[str, dict[str, Any]]
@@ -1271,11 +1355,30 @@ class SectsConfig:
     contribution_zero_on_reincarnation: bool
     max_name_len: int
     max_motto_len: int
+    max_announcement_len: int
+    promotion_auto_approve_after_game_days: int
+    facility_upgrade_cost_base: int
+    facility_upgrade_cost_per_level: int
+    grade_upgrade_spirit_stones_base: int
     features_by_founder_realm: dict[str, list[str]]
     npc_sects: dict[str, dict[str, Any]]
     sect_exchange: dict[str, Any]
     shop_items: dict[str, dict[str, Any]]
     quests: dict[str, dict[str, Any]]
+    # M7-V+ 深化表
+    sect_grades: dict[str, dict[str, Any]]
+    disciple_ranks: dict[str, dict[str, Any]]
+    specialties: dict[str, dict[str, Any]]
+    facility_defs: dict[str, dict[str, Any]]
+    sect_buffs: dict[str, dict[str, Any]]
+    treasury: dict[str, Any]
+    scripture: dict[str, Any]
+    craftsmen: dict[str, dict[str, Any]]
+    workshop_blueprints: dict[str, list[dict[str, Any]]]
+    formations: dict[str, dict[str, Any]]
+    formation_attr_keys: dict[str, dict[str, Any]]
+    mine_yield: dict[str, Any]
+    herb_garden: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -1294,7 +1397,7 @@ class FriendsConfig:
 
 @dataclass(frozen=True)
 class TradeConfig:
-    """交易行/拍卖/面交（trade.yaml · M7 L2）。"""
+    """交易行/拍卖/面交/坊市（trade.yaml · M7 L2）。"""
 
     listing_fee_pct: float
     barter_fee_by_realm: dict[str, int]
@@ -1309,6 +1412,8 @@ class TradeConfig:
     face_require_online: bool
     face_dev_assume_online: bool
     recycle_label_zh: str
+    # NPC 坊市：label / hint / 货架 mapping
+    bazaar: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -1329,7 +1434,9 @@ class ChatConfig:
     """聊天五频道（chat.yaml · M7 L4）。"""
 
     history_limit: int
-    # 客户端会话级：不拉历史；退出/关浏览器清空本会话消息
+    # 私聊每会话保留条数（持久；发送后惰性裁剪）
+    dm_history_limit: int
+    # 客户端会话级：非私聊不拉历史；退出/关浏览器清空本会话消息
     session_ephemeral: bool
     max_body_len: int
     rate_window_sec: int
@@ -1519,6 +1626,7 @@ class GameConfigBundle:
     """全部玩法配置的只读快照。"""
 
     realms: dict[str, MajorRealmConfig]
+    body_temper: BodyTemperConfig
     idle: IdleConfig
     breakthrough: BreakthroughConfig
     monsters: dict[str, MonsterConfig]
@@ -1553,6 +1661,8 @@ class GameConfigBundle:
     reincarnation: ReincarnationConfig
     # 修为骰子
     dice: DiceConfig
+    # ATTR 统一属性注册表
+    combat_attrs: CombatAttrsConfig
     # ADM：宗门设施 / 地图 / 活动
     sects: SectsConfig
     friends: FriendsConfig
@@ -1617,7 +1727,7 @@ def _load_yaml(filename: str) -> dict[str, Any]:
 
 
 def _parse_realms(raw: dict[str, Any]) -> dict[str, MajorRealmConfig]:
-    """解析 realms.yaml。"""
+    """解析 realms.yaml 大境界表。"""
     majors_raw = raw.get("major_realms")
     if not isinstance(majors_raw, dict) or not majors_raw:
         raise ValueError("realms.yaml 缺少 major_realms")
@@ -1645,6 +1755,104 @@ def _parse_realms(raw: dict[str, Any]) -> dict[str, MajorRealmConfig]:
             stages=stages,
         )
     return result
+
+
+def _parse_body_temper(raw: dict[str, Any]) -> BodyTemperConfig:
+    """
+    解析 realms.yaml 炼体大境 + 淬体规则。
+
+    兼容旧键 ``body_temper_major_order``（等同 unlock_majors）。
+
+    Args:
+        raw: realms.yaml 根对象。
+
+    Returns:
+        BodyTemperConfig: 炼体境快照。
+    """
+    order_raw = raw.get("body_temper_unlock_majors") or raw.get("body_temper_major_order")
+    if not isinstance(order_raw, list) or not order_raw:
+        raise ValueError("realms.yaml 缺少 body_temper_unlock_majors")
+    unlock_majors = tuple(str(item) for item in order_raw)
+
+    majors_raw = raw.get("body_temper_majors")
+    if not isinstance(majors_raw, dict) or not majors_raw:
+        raise ValueError("realms.yaml 缺少 body_temper_majors")
+
+    majors: dict[str, BodyTemperMajorConfig] = {}
+    for key, body in majors_raw.items():
+        if not isinstance(body, dict):
+            raise ValueError(f"body_temper_majors.{key} 须为对象")
+        unlock = str(body.get("unlock_major") or "").strip()
+        if unlock not in unlock_majors:
+            raise ValueError(
+                f"body_temper_majors.{key}.unlock_major={unlock!r} "
+                f"不在 body_temper_unlock_majors",
+            )
+        stage_mode = str(body.get("stage_mode") or "layers").strip()
+        if stage_mode not in {"layers", "phases"}:
+            raise ValueError(f"body_temper_majors.{key}.stage_mode 仅 layers|phases")
+        stages_raw = body.get("stages") or []
+        stages = tuple(
+            BodyTemperLayerConfig(
+                stage=int(item["stage"]),
+                label=str(item["label"]),
+                progress_required=max(0, int(item["progress_required"])),
+            )
+            for item in stages_raw
+        )
+        if not stages:
+            raise ValueError(f"body_temper_majors.{key} 无 stages")
+        next_major = body.get("next_major")
+        majors[str(key)] = BodyTemperMajorConfig(
+            key=str(key),
+            name=str(body["name"]),
+            stage_mode=stage_mode,
+            unlock_major=unlock,
+            next_major=str(next_major) if next_major else None,
+            stages=stages,
+        )
+
+    # next_major 外键（允许 null；指向的境须已声明——便于扩境时一次加齐）
+    for major in majors.values():
+        if major.next_major and major.next_major not in majors:
+            raise ValueError(
+                f"body_temper_majors.{major.key}.next_major={major.next_major!r} 未定义",
+            )
+
+    # 默认起点：无入边的境；否则取字典首项
+    pointed = {m.next_major for m in majors.values() if m.next_major}
+    roots = [k for k in majors if k not in pointed]
+    default_major_id = roots[0] if roots else next(iter(majors))
+
+    quench_raw = raw.get("body_temper_quench") or {}
+    if not isinstance(quench_raw, dict):
+        raise ValueError("body_temper_quench 须为对象")
+
+    def _rule(section: str, default_rate: float, default_keep: float) -> BodyTemperQuenchRule:
+        body = quench_raw.get(section) or {}
+        if not isinstance(body, dict):
+            body = {}
+        return BodyTemperQuenchRule(
+            success_rate=float(body.get("success_rate", default_rate)),
+            fail_progress_keep_ratio=float(
+                body.get("fail_progress_keep_ratio", default_keep),
+            ),
+        )
+
+    clamp_raw = quench_raw.get("success_rate_clamp") or {}
+    if not isinstance(clamp_raw, dict):
+        clamp_raw = {}
+    clamp_min = float(clamp_raw.get("min", 0.05))
+    clamp_max = float(clamp_raw.get("max", 0.95))
+
+    return BodyTemperConfig(
+        unlock_majors=unlock_majors,
+        majors=majors,
+        default_major_id=default_major_id,
+        layer_advance=_rule("layer_advance", 0.85, 0.7),
+        major_advance=_rule("major_advance", 0.7, 0.5),
+        success_rate_clamp=(clamp_min, clamp_max),
+    )
 
 
 def _parse_direction(
@@ -2039,6 +2247,62 @@ def _parse_stage_bonus_table(
             stage_map[int(stage_key)] = {str(k): int(v) for k, v in body.items()}
         result[str(major)] = stage_map
     return result
+
+
+def _parse_combat_attrs(raw: dict[str, Any]) -> CombatAttrsConfig:
+    """解析 combat_attrs.yaml（ATTR 属性注册表）。"""
+    defaults_raw = raw.get("defaults") or {}
+    defaults = {str(k): float(v) for k, v in dict(defaults_raw).items()}
+    aliases_raw = raw.get("aliases") or {}
+    aliases = {str(k): str(v) for k, v in dict(aliases_raw).items()}
+    primary_raw = raw.get("primary_map") or {}
+    primary_map: dict[str, dict[str, float]] = {}
+    for pk, body in dict(primary_raw).items():
+        if not isinstance(body, dict):
+            primary_map[str(pk)] = {}
+            continue
+        primary_map[str(pk)] = {str(ck): float(cv) for ck, cv in body.items()}
+    attrs_raw = raw.get("attrs") or {}
+    attrs: dict[str, CombatAttrDefConfig] = {}
+    for key, body in dict(attrs_raw).items():
+        if not isinstance(body, dict):
+            continue
+        attrs[str(key)] = CombatAttrDefConfig(
+            key=str(key),
+            label_zh=str(body.get("label_zh") or key),
+            help_zh=str(body.get("help_zh") or ""),
+            category=str(body.get("category") or "combat_core"),
+            engine=bool(body.get("engine", False)),
+            panel=bool(body.get("panel", True)),
+            formula_enabled=bool(body.get("formula_enabled", True)),
+            default=float(body.get("default", defaults.get(str(key), 0))),
+        )
+    profiles_raw = raw.get("entity_profiles") or {}
+    entity_profiles: dict[str, tuple[str, ...]] = {}
+    for ek, body in dict(profiles_raw).items():
+        if isinstance(body, dict):
+            cats = body.get("use_categories") or []
+            entity_profiles[str(ek)] = tuple(str(c) for c in cats)
+        elif isinstance(body, (list, tuple)):
+            entity_profiles[str(ek)] = tuple(str(c) for c in body)
+    channels_raw = raw.get("channels") or {}
+    channels: dict[str, dict[str, Any]] = {}
+    for cid, body in dict(channels_raw).items():
+        if not isinstance(body, dict):
+            continue
+        channels[str(cid)] = {
+            "enabled": bool(body.get("enabled", False)),
+            "label_zh": str(body.get("label_zh") or cid),
+        }
+    return CombatAttrsConfig(
+        schema_version=int(raw.get("schema_version", 2)),
+        defaults=defaults,
+        aliases=aliases,
+        primary_map=primary_map,
+        attrs=attrs,
+        entity_profiles=entity_profiles,
+        channels=channels,
+    )
 
 
 def _parse_dice(raw: dict[str, Any]) -> DiceConfig:
@@ -3340,8 +3604,22 @@ def _parse_reincarnation(raw: dict[str, Any], settings: Any) -> ReincarnationCon
     )
 
 
+def _parse_mapping_of_dicts(raw: Any, *, path: str) -> dict[str, dict[str, Any]]:
+    """将 YAML mapping 解析为 dict[str, dict]。"""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"sects.yaml {path} 须为 mapping")
+    out: dict[str, dict[str, Any]] = {}
+    for key, body in raw.items():
+        if not isinstance(body, dict):
+            raise ValueError(f"sects.yaml {path}.{key} 须为 mapping")
+        out[str(key)] = dict(body)
+    return out
+
+
 def _parse_sects(raw: dict[str, Any]) -> SectsConfig:
-    """解析 sects.yaml：设施开关 + M7 L1 宗门玩法表。"""
+    """解析 sects.yaml：设施开关 + M7 L1 / M7-V+ 宗门玩法表。"""
     facilities_raw = raw.get("facilities") or {}
     if not isinstance(facilities_raw, dict):
         raise ValueError("sects.yaml facilities 须为 mapping")
@@ -3397,6 +3675,53 @@ def _parse_sects(raw: dict[str, Any]) -> SectsConfig:
         str(k): dict(v) if isinstance(v, dict) else {"value": v}
         for k, v in quests_raw.items()
     }
+    sect_grades = _parse_mapping_of_dicts(raw.get("sect_grades"), path="sect_grades")
+    for gid, gbody in sect_grades.items():
+        if not gbody.get("label_zh"):
+            raise ValueError(f"sect_grades.{gid} 须含 label_zh")
+    disciple_ranks = _parse_mapping_of_dicts(
+        raw.get("disciple_ranks"),
+        path="disciple_ranks",
+    )
+    for rid, rbody in disciple_ranks.items():
+        if not rbody.get("label_zh"):
+            raise ValueError(f"disciple_ranks.{rid} 须含 label_zh")
+    specialties = _parse_mapping_of_dicts(raw.get("specialties"), path="specialties")
+    facility_defs = _parse_mapping_of_dicts(
+        raw.get("facility_defs"),
+        path="facility_defs",
+    )
+    sect_buffs = _parse_mapping_of_dicts(raw.get("sect_buffs"), path="sect_buffs")
+    treasury_raw = raw.get("treasury") or {}
+    if not isinstance(treasury_raw, dict):
+        raise ValueError("sects.yaml treasury 须为 mapping")
+    scripture_raw = raw.get("scripture") or {}
+    if not isinstance(scripture_raw, dict):
+        raise ValueError("sects.yaml scripture 须为 mapping")
+    craftsmen = _parse_mapping_of_dicts(raw.get("craftsmen"), path="craftsmen")
+    bp_raw = raw.get("workshop_blueprints") or {}
+    if not isinstance(bp_raw, dict):
+        raise ValueError("sects.yaml workshop_blueprints 须为 mapping")
+    workshop_blueprints: dict[str, list[dict[str, Any]]] = {}
+    for branch, rows in bp_raw.items():
+        if not isinstance(rows, list):
+            raise ValueError(f"workshop_blueprints.{branch} 须为 list")
+        workshop_blueprints[str(branch)] = [
+            dict(x) if isinstance(x, dict) else {"value": x} for x in rows
+        ]
+    formations = _parse_mapping_of_dicts(raw.get("formations"), path="formations")
+    formation_attr_keys = _parse_mapping_of_dicts(
+        raw.get("formation_attr_keys") or {},
+        path="formation_attr_keys",
+    )
+    mine_yield = dict(raw.get("mine_yield") or {}) if isinstance(
+        raw.get("mine_yield") or {},
+        dict,
+    ) else {}
+    herb_garden = dict(raw.get("herb_garden") or {}) if isinstance(
+        raw.get("herb_garden") or {},
+        dict,
+    ) else {}
     return SectsConfig(
         facilities=facilities,
         sects=sects,
@@ -3407,11 +3732,35 @@ def _parse_sects(raw: dict[str, Any]) -> SectsConfig:
         ),
         max_name_len=int(raw.get("max_name_len") or 12),
         max_motto_len=int(raw.get("max_motto_len") or 48),
+        max_announcement_len=int(raw.get("max_announcement_len") or 200),
+        promotion_auto_approve_after_game_days=int(
+            raw.get("promotion_auto_approve_after_game_days") or 1,
+        ),
+        facility_upgrade_cost_base=int(raw.get("facility_upgrade_cost_base") or 80),
+        facility_upgrade_cost_per_level=int(
+            raw.get("facility_upgrade_cost_per_level") or 40,
+        ),
+        grade_upgrade_spirit_stones_base=int(
+            raw.get("grade_upgrade_spirit_stones_base") or 5000,
+        ),
         features_by_founder_realm=features_by_founder_realm,
         npc_sects=npc_sects,
         sect_exchange=dict(exchange_raw),
         shop_items=shop_items,
         quests=quests,
+        sect_grades=sect_grades,
+        disciple_ranks=disciple_ranks,
+        specialties=specialties,
+        facility_defs=facility_defs,
+        sect_buffs=sect_buffs,
+        treasury=dict(treasury_raw),
+        scripture=dict(scripture_raw),
+        craftsmen=craftsmen,
+        workshop_blueprints=workshop_blueprints,
+        formations=formations,
+        formation_attr_keys=formation_attr_keys,
+        mine_yield=mine_yield,
+        herb_garden=herb_garden,
     )
 
 
@@ -3441,6 +3790,11 @@ def _parse_trade(raw: dict[str, Any]) -> TradeConfig:
     refund = str(raw.get("auction_unsold_refund") or "mail").strip().lower()
     if refund not in {"inventory", "mail"}:
         raise ValueError("trade.yaml auction_unsold_refund 须为 inventory|mail")
+    bazaar_raw = raw.get("bazaar") or {}
+    if bazaar_raw is None:
+        bazaar_raw = {}
+    if not isinstance(bazaar_raw, dict):
+        raise ValueError("trade.yaml bazaar 须为 mapping")
     return TradeConfig(
         listing_fee_pct=float(raw.get("listing_fee_pct") or 0.05),
         barter_fee_by_realm={str(k): int(v) for k, v in fee_raw.items()},
@@ -3455,6 +3809,7 @@ def _parse_trade(raw: dict[str, Any]) -> TradeConfig:
         face_require_online=bool(raw.get("face_require_online", True)),
         face_dev_assume_online=bool(raw.get("face_dev_assume_online", False)),
         recycle_label_zh=str(raw.get("recycle_label_zh") or "天道回收池"),
+        bazaar=dict(bazaar_raw),
     )
 
 
@@ -3487,6 +3842,7 @@ def _parse_chat(raw: dict[str, Any]) -> ChatConfig:
         raise ValueError("chat.yaml labels_zh 须为 mapping")
     return ChatConfig(
         history_limit=int(raw.get("history_limit") or 100),
+        dm_history_limit=max(1, int(raw.get("dm_history_limit") or 100)),
         session_ephemeral=bool(raw.get("session_ephemeral", True)),
         max_body_len=int(raw.get("max_body_len") or 200),
         rate_window_sec=int(raw.get("rate_window_sec") or 10),
@@ -3800,7 +4156,9 @@ def load_game_config() -> GameConfigBundle:
         GameConfigBundle: 只读配置快照。
     """
     settings = get_settings()
-    realms = _parse_realms(_load_yaml("realms.yaml"))
+    realms_raw = _load_yaml("realms.yaml")
+    realms = _parse_realms(realms_raw)
+    body_temper = _parse_body_temper(realms_raw)
     idle = _parse_idle(_load_yaml("idle.yaml"), settings.idle_tick_seconds)
     breakthrough = _parse_breakthrough(_load_yaml("breakthrough.yaml"))
     monsters = _parse_monsters(_load_yaml("pve_monsters.yaml"))
@@ -3927,6 +4285,7 @@ def load_game_config() -> GameConfigBundle:
     tribulation = _parse_tribulation(_load_yaml("tribulation.yaml"))
     reincarnation = _parse_reincarnation(_load_yaml("reincarnation.yaml"), settings)
     dice = _parse_dice(_load_yaml("dice.yaml"))
+    combat_attrs = _parse_combat_attrs(_load_yaml("combat_attrs.yaml"))
     sects = _parse_sects(_load_yaml("sects.yaml"))
     friends = _parse_friends(_load_yaml("friends.yaml"))
     trade = _parse_trade(_load_yaml("trade.yaml"))
@@ -3971,6 +4330,7 @@ def load_game_config() -> GameConfigBundle:
     )
     return GameConfigBundle(
         realms=realms,
+        body_temper=body_temper,
         idle=idle,
         breakthrough=breakthrough,
         monsters=monsters,
@@ -4001,6 +4361,7 @@ def load_game_config() -> GameConfigBundle:
         tribulation=tribulation,
         reincarnation=reincarnation,
         dice=dice,
+        combat_attrs=combat_attrs,
         sects=sects,
         friends=friends,
         trade=trade,

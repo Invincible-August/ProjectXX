@@ -647,6 +647,8 @@ class AdminConfigService:
             rc._parse_idle(merged, settings.idle_tick_seconds)
         elif domain == "dice":
             rc._parse_dice(merged)
+        elif domain == "combat_attrs":
+            rc._parse_combat_attrs(merged)
         elif domain == "sects":
             rc._parse_sects(merged)
         elif domain == "friends":

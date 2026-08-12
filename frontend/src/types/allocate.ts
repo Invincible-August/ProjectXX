@@ -3,7 +3,7 @@
  */
 import type { CharacterPublic } from './character'
 
-export type AllocateTargetType = 'realm' | 'technique'
+export type AllocateTargetType = 'realm' | 'body_temper' | 'technique'
 
 export interface AllocateRequest {
   target_type: AllocateTargetType

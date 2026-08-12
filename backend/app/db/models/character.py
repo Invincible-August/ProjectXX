@@ -46,6 +46,19 @@ class Character(Base):
     # 成长资源池（M2：挂机只涨池；境界进度见 realm_progress）
     cultivation_points: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     body_tempering_points: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    # 炼体大境 id（炼皮…道体）+ 层/期（对齐主修 layers/phases）
+    body_temper_stage: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="refine_skin",
+    )
+    body_temper_layer: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    body_temper_layer_label: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="layer_1",
+    )
+    body_temper_progress: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     crafting_exp: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     spirit_stones: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1000)
 

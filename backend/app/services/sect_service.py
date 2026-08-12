@@ -123,11 +123,19 @@ class SectService:
             "sect_id": sect.id,
             "name": sect.name,
             "role": member.role,
-            "role_label_zh": role_label_zh(member.role),
+            "role_label_zh": role_label_zh(
+                getattr(member, "rank", None) or member.role,
+            ),
+            "rank": getattr(member, "rank", None) or member.role,
+            "rank_label_zh": role_label_zh(
+                getattr(member, "rank", None) or member.role,
+            ),
             "contrib": int(member.contribution),
             "kind": sect.kind,
             "template_id": sect.template_id,
             "motto": sect.motto,
+            "grade": getattr(sect, "grade", None) or "hut",
+            "specialty": getattr(sect, "specialty", None),
             "idle_bonus_vs_wanderer": bonus,
             "unlocked_features": features,
             "unlocked_features_zh": [feature_label_zh(f) for f in features],
@@ -244,6 +252,7 @@ class SectService:
             sect_id=sect.id,
             character_id=character.id,
             role="member",
+            rank="laborer",
             contribution=0,
         )
         self._session.add(member)
@@ -269,14 +278,22 @@ class SectService:
             "character": await self._character_public(character),
         }
 
-    async def create(self, user: User, *, name: str, motto: str | None) -> dict[str, Any]:
+    async def create(
+        self,
+        user: User,
+        *,
+        name: str,
+        motto: str | None,
+        specialty: str | None = None,
+    ) -> dict[str, Any]:
         """
-        自建宗门（D2/D3：有钱即可；创建者=祖师+宗主）。
+        自建宗门（D2/D3：有钱即可；创建者=创派祖师+掌门；须选专精）。
 
         Args:
             user: 当前用户。
             name: 宗门名。
             motto: 箴言。
+            specialty: 专精键（M7-V+ 必选）。
 
         Returns:
             dict: 结果。
@@ -297,6 +314,9 @@ class SectService:
                 message=f"箴言过长（最多 {cfg.max_motto_len} 字）",
                 http_status=400,
             )
+        spec = (specialty or "").strip()
+        if not spec or spec not in cfg.specialties:
+            raise AppError(code=40000, message="建宗须选择有效专精", http_status=400)
         ok_cost, cost_reason = can_create_sect(
             spirit_stones=int(character.spirit_stones),
             create_cost=int(cfg.create_cost_spirit_stones),
@@ -319,15 +339,29 @@ class SectService:
             template_id=None,
             name=cleaned_name,
             motto=cleaned_motto,
+            grade="hut",
+            specialty=spec,
             founder_character_id=character.id,
             leader_character_id=character.id,
         )
         self._session.add(sect)
         await self._session.flush()
+        # 初始设施
+        from app.db.models.sect import SectFacility
+
+        for fid, fdef in cfg.facility_defs.items():
+            self._session.add(
+                SectFacility(
+                    sect_id=sect.id,
+                    facility_id=str(fid),
+                    level=int(fdef.get("initial_level") or 1),
+                ),
+            )
         member = SectMember(
             sect_id=sect.id,
             character_id=character.id,
             role="founder",
+            rank="founder",
             contribution=0,
         )
         self._session.add(member)
@@ -341,10 +375,11 @@ class SectService:
         )
         await self._session.flush()
         logger.info(
-            "sect create character_id=%s sect_id=%s name=%s",
+            "sect create character_id=%s sect_id=%s name=%s specialty=%s",
             character.id,
             sect.id,
             cleaned_name,
+            spec,
         )
         return {
             "message": f"已创建宗门「{cleaned_name}」",
@@ -883,10 +918,24 @@ class SectService:
             template_id=template_id,
             name=name,
             motto=str(npc.get("motto") or "") or None,
+            grade=str(npc.get("grade") or "hut"),
+            specialty=str(npc.get("specialty") or "") or None,
             founder_character_id=None,
             leader_character_id=None,
         )
         self._session.add(sect)
+        await self._session.flush()
+        # NPC 初始设施
+        from app.db.models.sect import SectFacility
+
+        for fid, fdef in self._cfg().facility_defs.items():
+            self._session.add(
+                SectFacility(
+                    sect_id=sect.id,
+                    facility_id=str(fid),
+                    level=int(fdef.get("initial_level") or 1),
+                ),
+            )
         await self._session.flush()
         return sect
 

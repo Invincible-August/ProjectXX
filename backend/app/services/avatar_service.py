@@ -392,6 +392,13 @@ class AvatarService:
         if not is_allowed_avatar_idle_direction(direction):
             raise AppError(code=40000, message="无效的挂机方向", http_status=400)
 
+        # 离开采矿：先结算再切方向
+        prev_dir = str(avatar.idle_direction or "none")
+        if prev_dir == "sect_mining" and direction != "sect_mining":
+            from app.services.sect_facility_service import SectFacilityService
+
+            await SectFacilityService(self._session).stop_avatar_mining(character, avatar)
+
         ok, blocked_feature = self.capability().idle_direction_allowed(
             character.major_realm,
             direction,
@@ -407,6 +414,12 @@ class AvatarService:
                 message=f"化身挂机方向未开放：{direction}",
                 http_status=400,
             )
+
+        if direction == "sect_mining":
+            from app.services.sect_facility_service import SectFacilityService
+
+            await SectFacilityService(self._session).start_avatar_mining(character, avatar)
+            return self._panel_dict(avatar, character, now=now)
 
         avatar.idle_direction = direction
         await self._session.flush()

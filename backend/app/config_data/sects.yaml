@@ -1,6 +1,6 @@
 # =====================================================================
-# 用途：宗门玩法（M7 L1）+ 全站设施开关
-# 加载时机：SectService / 设施预览 API / 灵兽宗改词条类型闸
+# 用途：宗门玩法（M7 L1 + M7-V+ 深化）+ 全站设施开关
+# 加载时机：SectService / SectOrgService / SectFacilityService / 设施预览
 # 后台域：sects（facility 风险）；须双写可配（§0.0 / §0.0.1）
 # =====================================================================
 
@@ -14,13 +14,43 @@ facilities:
     note: 灵兽宗改词条类型（PET-D06）；费用见 pet_sect_reroll
   sect_hall:
     enabled: true
-    note: 宗门大厅（M7 L1）：拜入 / 自建 / 摘要
+    note: 宗门大厅：拜入 / 自建 / 摘要
   sect_shop:
     enabled: true
-    note: 宗门贡献商店（M7 L1）
+    note: 宗门贡献商店（兼容旧接口）
   sect_tasks:
     enabled: true
     note: 宗门任务（含化身独立接交 · M4-D06）
+  quest_hall:
+    enabled: true
+    note: 任务殿：接取与完成宗门任务
+  council_hall:
+    enabled: true
+    note: 议事厅：人事 / 公告 / 俸禄 / 战入口占位
+  treasure_pavilion:
+    enabled: true
+    note: 藏宝阁：贡献兑换与分配
+  scripture_pavilion:
+    enabled: true
+    note: 藏经阁：功法兑换与上供
+  forge_workshop:
+    enabled: true
+    note: 锻造工坊：贡献聘工匠代锻；可上缴/兑换图纸
+  alchemy_workshop:
+    enabled: true
+    note: 炼丹阁：贡献聘丹师代炼；可上缴/兑换丹方
+  talisman_workshop:
+    enabled: true
+    note: 服务工坊：符箓与傀儡代工；可上缴/兑换图纸
+  formation_array:
+    enabled: true
+    note: 宗门大阵：阵法启停与上供
+  spirit_mine:
+    enabled: true
+    note: 矿脉：产出宗门灵石
+  herb_garden:
+    enabled: true
+    note: 灵药园：基础灵植与代种植
 
 # 建宗费用（灵石）；有钱即可，无修为门槛（D2）
 create_cost_spirit_stones: 100000
@@ -34,6 +64,17 @@ contribution_zero_on_reincarnation: true
 # 宗门名 / 箴言长度上限
 max_name_len: 12
 max_motto_len: 48
+max_announcement_len: 200
+
+# 贡献晋升自申：申请后隔多少个游戏日自动通过（1=次日）
+promotion_auto_approve_after_game_days: 1
+
+# 设施升级基础贡献费用（level→下一档）占位
+facility_upgrade_cost_base: 80
+facility_upgrade_cost_per_level: 40
+
+# 宗门等级升级基础灵石（宗门库）占位
+grade_upgrade_spirit_stones_base: 5000
 
 # 祖师大境界 → 已解锁功能键（宗主≠祖师；功能读祖师进度 D3）
 features_by_founder_realm:
@@ -48,6 +89,569 @@ features_by_founder_realm:
   dacheng: [shop_basic, quests_basic, pet_exchange, secret_realm_hook]
   true_immortal: [shop_basic, quests_basic, pet_exchange, secret_realm_hook]
 
+# ---------------------------------------------------------------------------
+# 宗门等级（低→高）：草庐→…→道庭
+# max_members / max_active_buffs / facility_level_cap / idle_bonus / buff_tier_cap
+# upgrade_require_facilities：升到本档前，设施须达指定等级
+# ---------------------------------------------------------------------------
+sect_grades:
+  hut:
+    label_zh: 草庐
+    order: 1
+    max_members: 20
+    max_active_buffs: 1
+    facility_level_cap: 2
+    idle_bonus: 1.05
+    buff_tier_cap: 1
+    upgrade_require_facilities: {}
+  mountain_gate:
+    label_zh: 山门
+    order: 2
+    max_members: 40
+    max_active_buffs: 1
+    facility_level_cap: 3
+    idle_bonus: 1.08
+    buff_tier_cap: 1
+    upgrade_require_facilities:
+      quest_hall: 2
+      council_hall: 2
+  spirit_sect:
+    label_zh: 灵宗
+    order: 3
+    max_members: 80
+    max_active_buffs: 2
+    facility_level_cap: 4
+    idle_bonus: 1.12
+    buff_tier_cap: 2
+    upgrade_require_facilities:
+      quest_hall: 3
+      treasure_pavilion: 2
+      scripture_pavilion: 2
+  famous_sect:
+    label_zh: 名宗
+    order: 4
+    max_members: 120
+    max_active_buffs: 2
+    facility_level_cap: 5
+    idle_bonus: 1.16
+    buff_tier_cap: 2
+    upgrade_require_facilities:
+      forge_workshop: 3
+      alchemy_workshop: 3
+      spirit_mine: 2
+  superior_sect:
+    label_zh: 上宗
+    order: 5
+    max_members: 180
+    max_active_buffs: 3
+    facility_level_cap: 6
+    idle_bonus: 1.20
+    buff_tier_cap: 3
+    upgrade_require_facilities:
+      talisman_workshop: 3
+      formation_array: 3
+      herb_garden: 3
+  immortal_gate:
+    label_zh: 仙门
+    order: 6
+    max_members: 250
+    max_active_buffs: 3
+    facility_level_cap: 7
+    idle_bonus: 1.25
+    buff_tier_cap: 3
+    upgrade_require_facilities:
+      council_hall: 5
+      treasure_pavilion: 5
+      scripture_pavilion: 5
+  sacred_land:
+    label_zh: 圣地
+    order: 7
+    max_members: 350
+    max_active_buffs: 4
+    facility_level_cap: 8
+    idle_bonus: 1.30
+    buff_tier_cap: 4
+    upgrade_require_facilities:
+      formation_array: 6
+      spirit_mine: 5
+      herb_garden: 5
+  heaven_sect:
+    label_zh: 天宗
+    order: 8
+    max_members: 500
+    max_active_buffs: 4
+    facility_level_cap: 9
+    idle_bonus: 1.35
+    buff_tier_cap: 4
+    upgrade_require_facilities:
+      quest_hall: 7
+      forge_workshop: 7
+      alchemy_workshop: 7
+  dao_court:
+    label_zh: 道庭
+    order: 9
+    max_members: 800
+    max_active_buffs: 5
+    facility_level_cap: 10
+    idle_bonus: 1.40
+    buff_tier_cap: 5
+    upgrade_require_facilities:
+      council_hall: 8
+      formation_array: 8
+      treasure_pavilion: 8
+
+# ---------------------------------------------------------------------------
+# 弟子职位（低→高）
+# contrib_required：贡献自升/自荐门槛；self_apply=true 表示可议事厅自申次日过
+# appoint_by：可任命本职的职位键列表；unique：全宗唯一
+# treasury_page_max：可分配藏宝阁页码上限（0=不可分配）
+# ---------------------------------------------------------------------------
+disciple_ranks:
+  laborer:
+    label_zh: 杂役弟子
+    order: 1
+    contrib_required: 0
+    self_apply: false
+    appoint_by: []
+    unique: false
+    treasury_page_max: 0
+    salary_contribution: 5
+    council_actions: [salary, war_join]
+  outer_disciple:
+    label_zh: 外门弟子
+    order: 2
+    contrib_required: 50
+    self_apply: true
+    appoint_by: []
+    unique: false
+    treasury_page_max: 0
+    salary_contribution: 10
+    council_actions: [salary, war_join, self_recommend]
+  inner_disciple:
+    label_zh: 内门弟子
+    order: 3
+    contrib_required: 150
+    self_apply: true
+    appoint_by: []
+    unique: false
+    treasury_page_max: 0
+    salary_contribution: 20
+    council_actions: [salary, war_join, self_recommend]
+  core_disciple:
+    label_zh: 亲传弟子
+    order: 4
+    contrib_required: 300
+    self_apply: true
+    appoint_by: []
+    unique: false
+    treasury_page_max: 0
+    salary_contribution: 35
+    council_actions: [salary, war_join, self_recommend]
+  outer_deacon:
+    label_zh: 外门执事
+    order: 5
+    contrib_required: 500
+    self_apply: true
+    appoint_by: []
+    unique: false
+    treasury_page_max: 0
+    salary_contribution: 50
+    council_actions: [salary, war_join, self_recommend]
+  outer_elder:
+    label_zh: 外门长老
+    order: 6
+    contrib_required: 800
+    self_apply: true
+    appoint_by: []
+    unique: false
+    treasury_page_max: 1
+    salary_contribution: 80
+    council_actions: [salary, war_join, self_recommend]
+  inner_deacon:
+    label_zh: 内门执事
+    order: 7
+    contrib_required: 0
+    self_apply: true
+    appoint_by: [leader, grand_elder, supreme_elder, founder]
+    unique: false
+    treasury_page_max: 2
+    salary_contribution: 100
+    council_actions: [salary, war_join, self_recommend]
+  inner_elder:
+    label_zh: 内门长老
+    order: 8
+    contrib_required: 0
+    self_apply: true
+    appoint_by: [leader, grand_elder, supreme_elder, founder]
+    unique: false
+    treasury_page_max: 3
+    salary_contribution: 130
+    council_actions: [salary, war_join, self_recommend]
+  leader:
+    label_zh: 掌门
+    order: 9
+    contrib_required: 0
+    self_apply: false
+    appoint_by: [supreme_elder, founder]
+    unique: true
+    treasury_page_max: 5
+    salary_contribution: 200
+    council_actions:
+      - salary
+      - war_join
+      - war_start
+      - announce
+      - upgrade_facility
+      - upgrade_grade
+      - toggle_buff
+      - appoint
+  grand_elder:
+    label_zh: 大长老
+    order: 10
+    contrib_required: 0
+    self_apply: false
+    appoint_by: [supreme_elder, founder]
+    unique: false
+    # 大长老修为须高于掌门（服务端校验）
+    require_cultivation_above_leader: true
+    treasury_page_max: 4
+    salary_contribution: 180
+    council_actions:
+      - salary
+      - war_join
+      - appoint
+  supreme_elder:
+    label_zh: 太上长老
+    order: 11
+    contrib_required: 0
+    self_apply: false
+    appoint_by: [founder]
+    unique: false
+    treasury_page_max: 6
+    salary_contribution: 250
+    council_actions:
+      - salary
+      - war_join
+      - war_start
+      - announce
+      - upgrade_facility
+      - upgrade_grade
+      - toggle_buff
+      - appoint
+  founder:
+    label_zh: 创派祖师
+    order: 12
+    contrib_required: 0
+    self_apply: false
+    appoint_by: []
+    unique: true
+    treasury_page_max: 99
+    salary_contribution: 300
+    council_actions:
+      - salary
+      - war_join
+      - war_start
+      - announce
+      - upgrade_facility
+      - upgrade_grade
+      - toggle_buff
+      - appoint
+
+# 专精（建宗必选；藏经阁匹配加贡献）
+specialties:
+  beast:
+    label_zh: 御兽
+    summary: 善御灵兽与契约
+  sword:
+    label_zh: 剑修
+    summary: 以剑入道
+  alchemy:
+    label_zh: 丹道
+    summary: 炼丹济世
+  formation:
+    label_zh: 阵道
+    summary: 布阵守山
+  talisman:
+    label_zh: 符箓
+    summary: 符箓傀儡并重
+
+# 玩法设施定义（等级上限受宗门等级 facility_level_cap 再夹）
+facility_defs:
+  quest_hall:
+    label_zh: 任务殿
+    summary: 接取与完成宗门任务
+    max_level: 10
+    initial_level: 1
+  council_hall:
+    label_zh: 议事厅
+    summary: 人事任命、公告、俸禄与战事入口
+    max_level: 10
+    initial_level: 1
+  treasure_pavilion:
+    label_zh: 藏宝阁
+    summary: 贡献兑换与道具分配
+    max_level: 10
+    initial_level: 1
+  scripture_pavilion:
+    label_zh: 藏经阁
+    summary: 功法兑换与上供
+    max_level: 10
+    initial_level: 1
+  forge_workshop:
+    label_zh: 锻造工坊
+    summary: 贡献聘工匠代锻；上缴与兑换图纸
+    max_level: 10
+    initial_level: 1
+  alchemy_workshop:
+    label_zh: 炼丹阁
+    summary: 贡献聘丹师代炼；上缴与兑换丹方
+    max_level: 10
+    initial_level: 1
+  talisman_workshop:
+    label_zh: 服务工坊
+    summary: 符箓与傀儡代工；上缴与兑换图纸
+    max_level: 10
+    initial_level: 1
+  formation_array:
+    label_zh: 宗门大阵
+    summary: 阵法启停与上供学习
+    max_level: 10
+    initial_level: 1
+  spirit_mine:
+    label_zh: 矿脉
+    summary: 产出宗门灵石
+    max_level: 10
+    initial_level: 1
+  herb_garden:
+    label_zh: 灵药园
+    summary: 灵植出售与代种植
+    max_level: 10
+    initial_level: 1
+
+# 宗门 buff（同时开启数受 grade.max_active_buffs；档位受 buff_tier_cap）
+sect_buffs:
+  idle_boost:
+    label_zh: 聚灵阵
+    summary: 提升门众挂机修为占位乘区
+    tier: 1
+    idle_bonus_add: 0.03
+    cost_spirit_stones_per_day: 100
+  craft_boost:
+    label_zh: 匠心护持
+    summary: 工坊代工精品概率占位加成
+    tier: 2
+    craft_quality_bonus: 0.05
+    cost_spirit_stones_per_day: 200
+  defense_boost:
+    label_zh: 护山大阵余韵
+    summary: 防御向占位加成（战报未接）
+    tier: 3
+    defense_bonus: 0.05
+    cost_spirit_stones_per_day: 300
+
+# 藏宝阁：禁止放入的机读类型键（图纸类；本轮 inventory 未必已有，入库仍拒）
+treasury:
+  forbidden_deposit_types:
+    - forge_blueprint
+    - talisman_blueprint
+    - alchemy_formula
+    - puppet_blueprint
+  max_pages: 6
+  catalog:
+    basic_spirit_herb:
+      label_zh: 基础灵草
+      summary: 门派通用基础物
+      cost_contribution: 20
+      item_type: material
+      page: 0
+      region: common
+      reward_qty: 1
+    basic_ore:
+      label_zh: 粗炼矿石
+      summary: 门派通用基础物
+      cost_contribution: 25
+      item_type: material
+      page: 0
+      region: common
+      reward_qty: 1
+    qingyun_mist_tea:
+      label_zh: 青云雾茶
+      summary: 青云山地图特色基础物（占位）
+      cost_contribution: 40
+      item_type: consumable
+      page: 0
+      region: qingyun
+      reward_qty: 1
+
+# 藏经阁目录（专精匹配额外贡献奖励）
+scripture:
+  specialty_match_bonus_contrib: 30
+  catalog:
+    basic_breath:
+      label_zh: 吐纳心法残卷
+      summary: 入门功法残卷（占位）
+      cost_contribution: 60
+      specialty_tags: [sword, alchemy, formation, talisman, beast]
+    beast_contract_primer:
+      label_zh: 御兽契诀入门
+      summary: 御兽专精功法
+      cost_contribution: 90
+      specialty_tags: [beast]
+    sword_intent_primer:
+      label_zh: 剑意初窥
+      summary: 剑修专精功法
+      cost_contribution: 90
+      specialty_tags: [sword]
+
+# 工匠（代工属性占位；品阶越高贡献越贵）
+craftsmen:
+  apprentice_smith:
+    label_zh: 外门锻徒
+    branch: smithing
+    grade: 1
+    quality_chance: 0.08
+    cost_contribution: 30
+  elder_smith:
+    label_zh: 内门锻师
+    branch: smithing
+    grade: 3
+    quality_chance: 0.18
+    cost_contribution: 90
+  apprentice_alchemist:
+    label_zh: 外门丹徒
+    branch: alchemy
+    grade: 1
+    quality_chance: 0.08
+    cost_contribution: 30
+  elder_alchemist:
+    label_zh: 内门丹师
+    branch: alchemy
+    grade: 3
+    quality_chance: 0.18
+    cost_contribution: 90
+  apprentice_talisman:
+    label_zh: 外门符徒
+    branch: talisman
+    grade: 1
+    quality_chance: 0.08
+    cost_contribution: 30
+  elder_talisman:
+    label_zh: 内门符师
+    branch: talisman
+    grade: 3
+    quality_chance: 0.18
+    cost_contribution: 90
+
+# 工坊在售图纸（须对应 craft_recipes 中存在的 recipe_id 子集）
+workshop_blueprints:
+  smithing:
+    - recipe_id: ore_plate_t1
+      label_zh: 一级矿板图纸
+      cost_contribution: 40
+      sellable: true
+  alchemy:
+    - recipe_id: pill_stamina_minor
+      label_zh: 小体力丹丹方
+      cost_contribution: 40
+      sellable: true
+  talisman:
+    - recipe_id: talisman_atk_t1
+      label_zh: 一级攻符图纸
+      cost_contribution: 40
+      sellable: true
+    - recipe_id: puppet_wood_v1
+      label_zh: 木傀设计图
+      cost_contribution: 50
+      sellable: true
+      branch_note: puppet
+
+# 宗门阵法（可兑换/上缴；有权者可选阵/启停/加点）
+formations:
+  mountain_guard:
+    label_zh: 护山小阵
+    summary: 基础护宗阵法
+    max_level: 5
+    activate_cost_spirit_stones: 50
+    attr_point_cost_spirit_stones: 120
+    exchange_cost_contribution: 80
+    max_attr_points: 10
+  spirit_gather:
+    label_zh: 聚灵中阵
+    summary: 提升闲时灵气（占位）
+    max_level: 5
+    activate_cost_spirit_stones: 80
+    attr_point_cost_spirit_stones: 150
+    exchange_cost_contribution: 100
+    max_attr_points: 12
+
+# 阵法可分配属性键（中文由服务端译）
+formation_attr_keys:
+  attack:
+    label_zh: 攻击
+  defense:
+    label_zh: 防御
+  resistance:
+    label_zh: 抗性
+
+# 矿脉：被动入宗门库 + 采矿挂机（无名额日领）
+mine_yield:
+  # 被动：每小时基础入宗门库
+  base_pool_per_hour: 60
+  per_grade_order: 25
+  per_facility_level: 20
+  # 每位采矿弟子额外提升被动速率（比例）
+  miner_pool_bonus_pct: 0.12
+  # 采矿名额
+  max_miners_base: 2
+  max_miners_per_facility_level: 1
+  max_miners_per_grade_order: 1
+  # 采矿挂机（与 idle tick 对齐）
+  tick_seconds: 60
+  personal_stones_per_tick: 5
+  stamina_per_tick: 2
+  note_zh: 自点击开始起每满 tick_seconds（默认60s）结算一次：个人灵石（受时辰/天气/通道加成）与战斗体力同步扣发；开始后第一段等待不扣体力；宗门库亦按自锚点满段入账
+
+# 灵药园：兑换灵植 + 托管种植
+herb_garden:
+  base_plots: 1
+  per_facility_level: 1
+  rank_plot_bonus:
+    laborer: 0
+    outer_disciple: 0
+    inner_disciple: 1
+    core_disciple: 1
+    outer_deacon: 1
+    outer_elder: 2
+    inner_deacon: 2
+    inner_elder: 2
+    leader: 3
+    grand_elder: 3
+    supreme_elder: 3
+    founder: 4
+  plants:
+    spirit_grass:
+      label_zh: 灵草幼苗
+      summary: 基础灵植
+      # 直接兑换（贡献→占位授予）
+      exchange_cost_contribution: 25
+      # 托管种植费用与周期
+      plant_cost_contribution: 15
+      grow_game_days: 1
+      yield_item_id: basic_spirit_herb
+      yield_qty: 2
+    mist_lotus:
+      label_zh: 雾莲种
+      summary: 稍贵的灵植样本
+      exchange_cost_contribution: 45
+      plant_cost_contribution: 28
+      grow_game_days: 2
+      yield_item_id: basic_spirit_herb
+      yield_qty: 4
+  herbalists:
+    garden_adept:
+      label_zh: 外门灵植师
+      cost_contribution: 20
+
 # NPC 宗门表（禁止代码写死宗门 id）
 npc_sects:
   lingshou_zong:
@@ -57,6 +661,8 @@ npc_sects:
     join_cost_spirit_stones: 0
     motto: 万兽听令，灵契长存
     idle_bonus_vs_wanderer: 1.08
+    grade: famous_sect
+    specialty: beast
   qingyun_zong:
     label_zh: 青云宗
     summary: 正统修仙宗门样本；入门门槛较低
@@ -64,6 +670,8 @@ npc_sects:
     join_cost_spirit_stones: 500
     motto: 青云直上，道心不移
     idle_bonus_vs_wanderer: 1.05
+    grade: spirit_sect
+    specialty: sword
 
 # 宗门兑宠（V6）：贡献兑换白名单物种
 sect_exchange:

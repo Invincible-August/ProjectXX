@@ -25,6 +25,7 @@ export const WsType = {
   CHAT_MESSAGE: 'chat.message',
   CHAT_UNREAD: 'chat.unread',
   CHAT_RECALL: 'chat.recall',
+  CHAT_DM_CLEARED: 'chat.dm.cleared',
   PARTY_INVITE: 'party.invite',
   PARTY_UPDATE: 'party.update',
   PRESENCE_CHANGED: 'presence.changed',

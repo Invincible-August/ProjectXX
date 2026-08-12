@@ -22,6 +22,7 @@ from app.services.autochess_service import AutochessService
 from app.services.avatar_service import AvatarService
 from app.services.battle_service import BattleService
 from app.services.breakthrough_service import BreakthroughService
+from app.services.quench_service import QuenchService
 from app.services.character_service import CharacterService
 from app.services.constitution_service import ConstitutionService
 from app.services.craft_service import CraftService
@@ -48,6 +49,8 @@ from app.services.dao_lord_service import DaoLordService
 from app.services.dao_contest_service import DaoContestService
 from app.services.world_event_service import WorldEventService
 from app.services.sect_service import SectService
+from app.services.sect_org_service import SectOrgService
+from app.services.sect_facility_service import SectFacilityService
 from app.services.friend_service import FriendService
 from app.services.trade_service import TradeService
 from app.services.mail_service import MailService
@@ -136,6 +139,19 @@ def get_breakthrough_service(session: AsyncSession = Depends(get_db)) -> Breakth
         BreakthroughService: 突破预览与 attempt 服务。
     """
     return BreakthroughService(session)
+
+
+def get_quench_service(session: AsyncSession = Depends(get_db)) -> QuenchService:
+    """
+    提供请求级 ``QuenchService``（炼体淬体）。
+
+    Args:
+        session: 来自 ``get_db`` 的异步数据库会话。
+
+    Returns:
+        QuenchService: 淬体预览与 attempt 服务。
+    """
+    return QuenchService(session)
 
 
 def get_allocate_service(session: AsyncSession = Depends(get_db)) -> AllocateService:
@@ -390,6 +406,18 @@ def get_sect_service(session: AsyncSession = Depends(get_db)) -> SectService:
     return SectService(session)
 
 
+def get_sect_org_service(session: AsyncSession = Depends(get_db)) -> SectOrgService:
+    """提供请求级 ``SectOrgService``（M7-V+ 组织/人事）。"""
+    return SectOrgService(session)
+
+
+def get_sect_facility_service(
+    session: AsyncSession = Depends(get_db),
+) -> SectFacilityService:
+    """提供请求级 ``SectFacilityService``（M7-V+ 设施）。"""
+    return SectFacilityService(session)
+
+
 def get_friend_service(session: AsyncSession = Depends(get_db)) -> FriendService:
     """提供请求级 ``FriendService``（M7 L2 道友）。"""
     return FriendService(session)
@@ -438,6 +466,7 @@ __all__ = [
     "get_play_gate",
     "get_battle_service",
     "get_breakthrough_service",
+    "get_quench_service",
     "get_allocate_service",
     "get_constitution_service",
     "get_technique_service",
@@ -468,6 +497,8 @@ __all__ = [
     "get_dao_contest_service",
     "get_world_event_service",
     "get_sect_service",
+    "get_sect_org_service",
+    "get_sect_facility_service",
     "get_friend_service",
     "get_trade_service",
     "get_mail_service",

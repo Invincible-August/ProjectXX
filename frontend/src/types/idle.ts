@@ -11,11 +11,17 @@ export interface IdleSyncData {
   gained_body?: number
   gained_crafting?: number
   spent_spirit_stones: number
+  /** 采矿个人灵石入账 */
+  gained_mining_stones?: number
+  /** 采矿扣体力 */
+  spent_stamina?: number
+  /** 采矿顺带宗门库入账 */
+  mining_pool_stones?: number
   /** 下一片理论到期 ISO UTC；未修炼/停滞为 null */
   next_tick_at: string | null
 }
 
-export type IdleDirection = 'none' | 'spirit' | 'body' | 'crafting'
+export type IdleDirection = 'none' | 'spirit' | 'body' | 'crafting' | 'sect_mining'
 
 /** GET /idle/offline/preview */
 export interface OfflinePreviewData {

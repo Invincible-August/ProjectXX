@@ -40,8 +40,8 @@ onMounted(async () => {
       <el-button size="small" @click="router.push('/hall')">← 回大厅</el-button>
       <el-text tag="b" size="large">队伍</el-text>
       <el-text type="info" size="small">队长邀请 · 踢人 · 队友情报</el-text>
-      <el-button size="small" @click="router.push('/friends')">道友</el-button>
-      <el-button size="small" @click="router.push('/social')">社交</el-button>
+      <el-button size="small" @click="router.push('/social?mode=friends')">道友</el-button>
+      <el-button size="small" @click="router.push('/social?mode=party')">社交 · 队伍</el-button>
     </div>
 
     <div class="main-grid">

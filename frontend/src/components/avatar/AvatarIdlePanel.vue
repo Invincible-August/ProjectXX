@@ -1,12 +1,13 @@
 <script setup lang="ts">
 /**
- * 化身挂机方向面板：仅列出已解锁方向；禁用项显示解锁境界。
+ * 化身挂机方向面板：修灵/炼体/制造业/采矿；禁用项显示解锁境界。
  */
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAvatarStore } from '../../stores/avatar'
+import { useCharacterStore } from '../../stores/character'
 import type { AvatarFeatureState, AvatarPublic } from '../../types/avatar'
-import { IDLE_DIRECTION_LABELS, idleDirectionLabel } from '../../utils/idleLabels'
+import { idleDirectionLabel } from '../../utils/idleLabels'
 
 const props = defineProps<{
   avatar: AvatarPublic
@@ -18,16 +19,27 @@ const emit = defineEmits<{
 }>()
 
 const avatarStore = useAvatarStore()
+const characterStore = useCharacterStore()
 const busy = ref(false)
 
 const direction = computed(() => props.avatar.idle_direction)
+const inSect = computed(() => Boolean(characterStore.character?.sect?.in_sect))
 
-/** 方向 → 功能 id */
+/** 方向 → 功能 id（采矿复用修灵解锁） */
 const DIR_FEATURE: Record<string, string> = {
   spirit: 'idle_spirit',
   body: 'idle_body',
   crafting: 'idle_crafting',
+  sect_mining: 'idle_spirit',
 }
+
+const DIR_BUTTONS: { key: string; label: string }[] = [
+  { key: 'none', label: '停止' },
+  { key: 'spirit', label: '修炼' },
+  { key: 'body', label: '淬体' },
+  { key: 'crafting', label: '制造业修炼' },
+  { key: 'sect_mining', label: '采矿' },
+]
 
 function featureFor(dir: string): AvatarFeatureState | undefined {
   const fid = DIR_FEATURE[dir]
@@ -37,13 +49,14 @@ function featureFor(dir: string): AvatarFeatureState | undefined {
 
 function isDirEnabled(dir: string): boolean {
   if (dir === 'none') return true
+  if (dir === 'sect_mining' && !inSect.value) return false
   const feat = featureFor(dir)
-  // 无 features 时回退全开（兼容旧响应）
   if (!feat) return true
   return feat.unlocked
 }
 
 function disabledReason(dir: string): string {
+  if (dir === 'sect_mining' && !inSect.value) return '需先入宗'
   const feat = featureFor(dir)
   if (!feat || feat.unlocked) return ''
   return `需本体达 ${feat.min_major}`
@@ -66,6 +79,7 @@ async function setDir(dir: string): Promise<void> {
     const label = idleDirectionLabel(dir)
     ElMessage.success(`化身方向：${label}`)
     emit('log', `化身切换为 ${label}`, 'success')
+    await characterStore.fetchMe()
   } finally {
     busy.value = false
   }
@@ -90,26 +104,26 @@ async function setDir(dir: string): Promise<void> {
 
     <div class="dir-actions">
       <el-tooltip
-        v-for="(label, key) in IDLE_DIRECTION_LABELS"
-        :key="key"
-        :disabled="isDirEnabled(key)"
-        :content="disabledReason(key)"
+        v-for="btn in DIR_BUTTONS"
+        :key="btn.key"
+        :disabled="isDirEnabled(btn.key)"
+        :content="disabledReason(btn.key)"
         placement="top"
       >
         <el-button
           size="small"
-          :type="direction === key ? 'primary' : 'default'"
+          :type="direction === btn.key ? (btn.key === 'sect_mining' ? 'warning' : 'primary') : 'default'"
           :loading="busy"
-          :disabled="!isDirEnabled(key)"
-          @click="setDir(key)"
+          :disabled="!isDirEnabled(btn.key)"
+          @click="setDir(btn.key)"
         >
-          {{ label }}
+          {{ btn.label }}
         </el-button>
       </el-tooltip>
     </div>
 
     <el-text type="info" size="small">
-      与大厅本体挂机并行；方向由境界功能解锁表控制。
+      与本体并行；采矿计入宗门矿脉名额，个人灵石入本体钱包并耗体力。
     </el-text>
   </el-card>
 </template>

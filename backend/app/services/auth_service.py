@@ -486,6 +486,39 @@ class AuthService:
             created_at=user.created_at,
         )
 
+    async def change_password(
+        self,
+        user: User,
+        *,
+        old_password: str,
+        new_password: str,
+    ) -> dict[str, str]:
+        """
+        校验原密码后写入新密码哈希。
+
+        Args:
+            user: 当前用户。
+            old_password: 原明文密码。
+            new_password: 新明文密码。
+
+        Returns:
+            dict: message。
+
+        Raises:
+            AppError: 原密码错误或新密码不合规。
+        """
+        if not verify_password(old_password, user.password_hash):
+            raise AppError(code=40100, message="原密码不正确", http_status=400)
+        next_pwd = (new_password or "").strip()
+        if len(next_pwd) < 8:
+            raise AppError(code=40000, message="新密码至少 8 位", http_status=400)
+        if secrets.compare_digest(old_password, next_pwd):
+            raise AppError(code=40000, message="新密码不能与原密码相同", http_status=400)
+        user.password_hash = hash_password(next_pwd)
+        await self._session.flush()
+        logger.info("password changed user_id=%s", user.id)
+        return {"message": "密码已更新"}
+
     async def load_user_by_id(self, user_id: int) -> User:
         """
         Load user by primary key for Bearer dependency resolution.

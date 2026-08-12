@@ -146,9 +146,82 @@ def realms_payload_to_sheets(payload: dict[str, Any]) -> list[dict[str, Any]]:
                     "base_hp": stage_body.get("base_hp", 0),
                 },
             )
+
+    order_raw = payload.get("body_temper_unlock_majors") or payload.get(
+        "body_temper_major_order",
+    )
+    body_order_rows: list[dict[str, Any]] = []
+    if isinstance(order_raw, list):
+        for idx, major_id in enumerate(order_raw, start=1):
+            body_order_rows.append({"order": idx, "major_id": str(major_id)})
+
+    bt_majors_root = payload.get("body_temper_majors")
+    bt_major_rows: list[dict[str, Any]] = []
+    bt_layer_rows: list[dict[str, Any]] = []
+    if isinstance(bt_majors_root, dict):
+        for major_id, body in bt_majors_root.items():
+            if not isinstance(body, dict):
+                continue
+            next_major = body.get("next_major")
+            bt_major_rows.append(
+                {
+                    "id": str(major_id),
+                    "name": body.get("name", ""),
+                    "stage_mode": body.get("stage_mode", "layers"),
+                    "unlock_major": body.get("unlock_major", ""),
+                    "next_major": "" if next_major is None else str(next_major),
+                },
+            )
+            stages = body.get("stages")
+            if not isinstance(stages, list):
+                continue
+            for stage_body in stages:
+                if not isinstance(stage_body, dict):
+                    continue
+                bt_layer_rows.append(
+                    {
+                        "major_id": str(major_id),
+                        "stage": stage_body.get("stage"),
+                        "label": stage_body.get("label", ""),
+                        "progress_required": stage_body.get("progress_required", 0),
+                    },
+                )
+
+    quench_root = payload.get("body_temper_quench") or {}
+    quench_rows: list[dict[str, Any]] = []
+    if isinstance(quench_root, dict):
+        for rule_id in ("layer_advance", "major_advance"):
+            body = quench_root.get(rule_id) or {}
+            if not isinstance(body, dict):
+                continue
+            quench_rows.append(
+                {
+                    "rule_id": rule_id,
+                    "success_rate": body.get("success_rate"),
+                    "fail_progress_keep_ratio": body.get("fail_progress_keep_ratio"),
+                    "clamp_min": None,
+                    "clamp_max": None,
+                },
+            )
+        clamp = quench_root.get("success_rate_clamp") or {}
+        if isinstance(clamp, dict):
+            quench_rows.append(
+                {
+                    "rule_id": "clamp",
+                    "success_rate": None,
+                    "fail_progress_keep_ratio": None,
+                    "clamp_min": clamp.get("min"),
+                    "clamp_max": clamp.get("max"),
+                },
+            )
+
     return [
         {**REALMS_SCHEMA.sheets[0].to_dict(), "rows": major_rows},
         {**REALMS_SCHEMA.sheets[1].to_dict(), "rows": stage_rows},
+        {**REALMS_SCHEMA.sheets[2].to_dict(), "rows": body_order_rows},
+        {**REALMS_SCHEMA.sheets[3].to_dict(), "rows": bt_major_rows},
+        {**REALMS_SCHEMA.sheets[4].to_dict(), "rows": bt_layer_rows},
+        {**REALMS_SCHEMA.sheets[5].to_dict(), "rows": quench_rows},
     ]
 
 
@@ -202,7 +275,81 @@ def realms_sheets_to_payload(sheets: list[dict[str, Any]]) -> dict[str, Any]:
         stages.sort(key=lambda item: int(item["stage"]))
         major_realms[major_id]["stages"] = stages
 
-    return {"major_realms": major_realms}
+    order_rows = _require_rows(mapped, "body_temper_order")
+    order_rows_sorted = sorted(order_rows, key=lambda row: _as_int(row.get("order")))
+    body_temper_unlock_majors = [
+        str(row.get("major_id") or "").strip()
+        for row in order_rows_sorted
+        if str(row.get("major_id") or "").strip()
+    ]
+
+    bt_major_rows = _require_rows(mapped, "body_temper_majors")
+    body_temper_majors: dict[str, Any] = {}
+    for row in bt_major_rows:
+        major_id = str(row.get("id") or "").strip()
+        if not major_id:
+            raise AppError(code=40000, message="炼体境 id 不能为空", http_status=400)
+        stage_mode = str(row.get("stage_mode") or "layers").strip()
+        body_temper_majors[major_id] = {
+            "name": str(row.get("name") or major_id),
+            "stage_mode": stage_mode,
+            "unlock_major": str(row.get("unlock_major") or "").strip(),
+            "next_major": _as_null_str(row.get("next_major")),
+            "stages": [],
+        }
+
+    bt_layers = _require_rows(mapped, "body_temper_layers")
+    layers_by_major: dict[str, list[dict[str, Any]]] = {
+        key: [] for key in body_temper_majors
+    }
+    for row in bt_layers:
+        major_id = str(row.get("major_id") or "").strip()
+        if major_id not in body_temper_majors:
+            raise AppError(
+                code=40000,
+                message=f"炼体层引用未知炼体境: {major_id}",
+                http_status=400,
+            )
+        layers_by_major[major_id].append(
+            {
+                "stage": _as_int(row.get("stage")),
+                "label": str(row.get("label") or ""),
+                "progress_required": _as_int(row.get("progress_required")),
+            },
+        )
+    for major_id, layers in layers_by_major.items():
+        layers.sort(key=lambda item: int(item["stage"]))
+        body_temper_majors[major_id]["stages"] = layers
+
+    quench_rows = _require_rows(mapped, "body_temper_quench")
+    body_temper_quench: dict[str, Any] = {}
+    for row in quench_rows:
+        rule_id = str(row.get("rule_id") or "").strip()
+        if rule_id == "clamp":
+            body_temper_quench["success_rate_clamp"] = {
+                "min": float(
+                    row.get("clamp_min") if row.get("clamp_min") is not None else 0.05,
+                ),
+                "max": float(
+                    row.get("clamp_max") if row.get("clamp_max") is not None else 0.95,
+                ),
+            }
+        elif rule_id in {"layer_advance", "major_advance"}:
+            body_temper_quench[rule_id] = {
+                "success_rate": float(row.get("success_rate") or 0),
+                "fail_progress_keep_ratio": float(
+                    row.get("fail_progress_keep_ratio") or 0,
+                ),
+            }
+
+    result: dict[str, Any] = {"major_realms": major_realms}
+    if body_temper_unlock_majors:
+        result["body_temper_unlock_majors"] = body_temper_unlock_majors
+    if body_temper_majors:
+        result["body_temper_majors"] = body_temper_majors
+    if body_temper_quench:
+        result["body_temper_quench"] = body_temper_quench
+    return result
 
 
 # ----- idle -----

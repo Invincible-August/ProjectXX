@@ -218,15 +218,21 @@ export const useSectStore = defineStore('sect', () => {
    * 自建宗门。
    *
    * @param name - 宗门名
+   * @param specialty - 专精键
    * @param motto - 箴言
    */
   async function create(
     name: string,
+    specialty: string,
     motto?: string | null,
   ): Promise<string | null> {
     loading.value = true
     try {
-      const envelope = await createSect({ name, motto: motto || null })
+      const envelope = await createSect({
+        name,
+        specialty,
+        motto: motto || null,
+      })
       if (envelope.code !== 0 || !envelope.data) {
         const msg = envelope.message || `建宗失败（code=${envelope.code}）`
         lastError.value = msg

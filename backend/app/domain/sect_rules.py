@@ -18,12 +18,22 @@ FEATURE_LABEL_ZH: dict[str, str] = {
     "secret_realm_hook": "秘境任务钩子（占位）",
 }
 
-# 成员职位中文
+# 成员职位中文（兼容旧四档 + M7-V+ 十二档回落）
 ROLE_LABEL_ZH: dict[str, str] = {
-    "founder": "祖师",
-    "leader": "宗主",
+    "founder": "创派祖师",
+    "leader": "掌门",
     "elder": "长老",
     "member": "弟子",
+    "laborer": "杂役弟子",
+    "outer_disciple": "外门弟子",
+    "inner_disciple": "内门弟子",
+    "core_disciple": "亲传弟子",
+    "outer_deacon": "外门执事",
+    "outer_elder": "外门长老",
+    "inner_deacon": "内门执事",
+    "inner_elder": "内门长老",
+    "grand_elder": "大长老",
+    "supreme_elder": "太上长老",
 }
 
 
@@ -42,10 +52,10 @@ def feature_label_zh(feature_id: str) -> str:
 
 def role_label_zh(role: str) -> str:
     """
-    将职位键译为中文。
+    将职位键译为中文（兼容旧 role 与新 rank）。
 
     Args:
-        role: founder/leader/elder/member。
+        role: founder/leader/… 或 laborer/outer_disciple/…。
 
     Returns:
         str: 中文职位。

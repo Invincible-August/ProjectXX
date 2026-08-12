@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 角色领域类型（对齐 M0～M5 CharacterPublic）。
  */
 
@@ -74,6 +74,25 @@ export interface ConstitutionSummary {
   }>
 }
 
+/** ATTR 战斗属性块（服务端权威） */
+export interface CombatAttrBlock {
+  schema_version?: number
+  entity_kind?: string
+  final: Record<string, number>
+  primary?: Record<string, number>
+  labels?: Record<string, string>
+  breakdown?: Array<Record<string, unknown>>
+  growth?: Record<string, number | string>
+}
+
+/** ATTR 生活属性块 */
+export interface LifeAttrBlock {
+  schema_version?: number
+  final: Record<string, number>
+  labels?: Record<string, string>
+  breakdown?: Array<Record<string, unknown>>
+}
+
 /** M4 类型再导出（单源在 avatar.ts / craft.ts） */
 export type {
   AvatarSummary,
@@ -102,11 +121,33 @@ export interface CharacterPublic {
   cultivation_points: number
   /** 炼体池 */
   body_tempering_points: number
+  /** 炼体大境 id（炼皮→道体） */
+  body_temper_stage?: string
+  /** 炼体大境中文名 */
+  body_temper_stage_name?: string
+  /** 炼体层/期序号 */
+  body_temper_layer?: number
+  /** 炼体层/期标签 */
+  body_temper_layer_label?: string
+  /** 当前档淬体进度 */
+  body_temper_progress?: number
+  /** 距本档圆满尚需；可淬体时为 0 */
+  body_temper_to_next?: number | null
+  /** 淬体进度比例 0～1 */
+  body_temper_progress_ratio?: number
+  /** 炼体程度展示文案 */
+  body_temper_display?: string
+  /** 进度已满但主修未达对照境 */
+  body_temper_capped?: boolean
+  /** 可发起淬体 */
+  body_temper_ready_to_quench?: boolean
+  /** 淬体目标展示名 */
+  body_temper_next_stage_name?: string | null
   /** 制造业经验池 */
   crafting_exp: number
   /** 灵石 */
   spirit_stones: number
-  /** 本体挂机方向：none/spirit/body/crafting */
+  /** 本体挂机方向：none/spirit/body/crafting/sect_mining */
   idle_direction: string
   idle_direction_name: string
   /** 状态机：normal / tribulation / awaiting_ferry 等 */
@@ -127,10 +168,14 @@ export interface CharacterPublic {
   idle_crafting_per_tick?: number
   idle_stones_per_tick: number
   idle_tick_seconds: number
-  /** 衍生基础攻击 */
+  /** 衍生基础攻击（= combat.final.phys_atk 别名） */
   base_atk: number
-  /** 衍生基础生命 */
+  /** 衍生基础生命（= combat.final.hp 别名） */
   base_hp: number
+  /** ATTR 战斗属性块 */
+  combat?: CombatAttrBlock | null
+  /** ATTR 生活属性块 */
+  life?: LifeAttrBlock | null
   /** M2：已投入当前档的境界进度（突破门槛） */
   realm_progress: number
   /** 最近跨境品阶键；无跨境为 none */

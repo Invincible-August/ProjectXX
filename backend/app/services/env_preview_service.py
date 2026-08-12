@@ -271,6 +271,27 @@ def build_idle_env_bundle(
         "spirit": _preview("spirit"),
         "body": _preview("body"),
         "crafting": _preview("crafting"),
+        # 采矿：基础取 sects.mine_yield.personal_stones_per_tick，套用同套时辰/天气/通道
+        "sect_mining": build_idle_env_preview(
+            base_per_tick=int(
+                (bundle.sects.mine_yield or {}).get("personal_stones_per_tick") or 5,
+            ),
+            shichen_id=shichen_id,
+            weather_id=weather_id,
+            shichen_mult=shichen_mult,
+            weather_mult=weather_mult,
+            tag_mults_breakdown=tag_items,
+            clamp_min=clamp_min,
+            clamp_max=clamp_max,
+            shichen_catalog_entry=shichen_catalog,
+            weather_catalog_entry=weather_catalog,
+            shichen_label=shichen_label,
+            weather_label=weather_label,
+            realm_major=major,
+            realm_label=realm_label,
+            channel_mults_breakdown=channel_breakdown,
+            channel_mult=channel_mult,
+        ),
         "tags_applied": list(tags),
     }
 

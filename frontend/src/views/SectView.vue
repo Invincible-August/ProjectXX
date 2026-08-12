@@ -1,28 +1,61 @@
 <script setup lang="ts">
 /**
- * 宗门页（M7 L1 · /sect）：拜入 / 状态 / 任务 / 商店 / 魂灯 / 兑宠。
+ * 宗门页（M7 L1 + M7-V+ · /sect）：拜入 / 总览 / 议事厅 / 十设施 / 任务 / 商店 / 魂灯 / 兑宠。
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AuthSessionBar from '../components/AuthSessionBar.vue'
+import SectCouncilPanel from '../components/sect/SectCouncilPanel.vue'
+import SectFormationPanel from '../components/sect/SectFormationPanel.vue'
+import SectHerbPanel from '../components/sect/SectHerbPanel.vue'
 import SectJoinCreatePanel from '../components/sect/SectJoinCreatePanel.vue'
+import SectMinePanel from '../components/sect/SectMinePanel.vue'
+import SectOverviewPanel from '../components/sect/SectOverviewPanel.vue'
 import SectPetExchangePanel from '../components/sect/SectPetExchangePanel.vue'
 import SectQuestPanel from '../components/sect/SectQuestPanel.vue'
+import SectScripturePanel from '../components/sect/SectScripturePanel.vue'
 import SectShopPanel from '../components/sect/SectShopPanel.vue'
 import SectSoulLampPanel from '../components/sect/SectSoulLampPanel.vue'
 import SectStatusPanel from '../components/sect/SectStatusPanel.vue'
+import SectTreasuryPanel from '../components/sect/SectTreasuryPanel.vue'
+import SectWorkshopPanel from '../components/sect/SectWorkshopPanel.vue'
 import { useCharacterStore } from '../stores/character'
 import { useSectStore } from '../stores/sect'
 import { createLogEntry, type GameLogEntry } from '../types/gameLog'
 
-/** 合法 mode 集合 */
-type SectMode = 'join' | 'status' | 'quests' | 'shop' | 'lamps' | 'exchange'
+type SectMode =
+  | 'join'
+  | 'status'
+  | 'overview'
+  | 'council'
+  | 'quests'
+  | 'shop'
+  | 'treasure'
+  | 'scripture'
+  | 'forge'
+  | 'alchemy'
+  | 'talisman'
+  | 'formation'
+  | 'mine'
+  | 'herbs'
+  | 'lamps'
+  | 'exchange'
 
 const MODE_SET = new Set<string>([
   'join',
   'status',
+  'overview',
+  'council',
   'quests',
   'shop',
+  'treasure',
+  'scripture',
+  'forge',
+  'alchemy',
+  'talisman',
+  'formation',
+  'mine',
+  'herbs',
   'lamps',
   'exchange',
 ])
@@ -40,8 +73,7 @@ const mode = computed<SectMode>(() => {
   if (typeof m === 'string' && MODE_SET.has(m)) {
     return m as SectMode
   }
-  // 无合法 mode：散修默认 join，入宗默认 status
-  return sectStore.inSect ? 'status' : 'join'
+  return sectStore.inSect ? 'overview' : 'join'
 })
 
 function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
@@ -67,11 +99,10 @@ onMounted(async () => {
     loadError.value = err
     pushLog(err, 'warning')
   } else {
-    pushLog('宗门页已就绪：拜入与贡献权威在服务端。', 'info')
+    pushLog('宗门页已就绪：等级/人事/设施权威在服务端。', 'info')
   }
-  // 首次进入无 mode 时写入默认 query，便于分享深链
   if (!MODE_SET.has(String(route.query.mode ?? ''))) {
-    const def: SectMode = sectStore.inSect ? 'status' : 'join'
+    const def: SectMode = sectStore.inSect ? 'overview' : 'join'
     void router.replace({ query: { ...route.query, mode: def } })
   }
 })
@@ -85,7 +116,7 @@ watch(
 
 function onJoined(): void {
   pushLog(sectStore.lastMessage || '入宗成功', 'success')
-  setMode('status')
+  setMode('overview')
 }
 </script>
 
@@ -96,21 +127,26 @@ function onJoined(): void {
     <div class="page-title">
       <el-button size="small" @click="router.push('/hall')">← 回大厅</el-button>
       <el-text tag="b" size="large">宗门</el-text>
-      <el-text type="info" size="small">M7 L1 · 拜入 / 任务 / 商店 / 魂灯 / 兑宠</el-text>
+      <el-text type="info" size="small">M7-V+ · 等级 / 人事 / 十设施</el-text>
       <div class="mode-nav">
-        <el-button
-          size="small"
-          :type="mode === 'join' ? 'primary' : 'default'"
-          @click="setMode('join')"
-        >
+        <el-button size="small" :type="mode === 'join' ? 'primary' : 'default'" @click="setMode('join')">
           拜入/建宗
         </el-button>
         <el-button
           size="small"
-          :type="mode === 'status' ? 'primary' : 'default'"
-          @click="setMode('status')"
+          :type="mode === 'overview' ? 'primary' : 'default'"
+          :disabled="!sectStore.inSect"
+          @click="setMode('overview')"
         >
-          状态
+          总览
+        </el-button>
+        <el-button
+          size="small"
+          :type="mode === 'council' ? 'primary' : 'default'"
+          :disabled="!sectStore.inSect"
+          @click="setMode('council')"
+        >
+          议事厅
         </el-button>
         <el-button
           size="small"
@@ -118,7 +154,71 @@ function onJoined(): void {
           :disabled="!sectStore.inSect"
           @click="setMode('quests')"
         >
-          任务
+          任务殿
+        </el-button>
+        <el-button
+          size="small"
+          :type="mode === 'treasure' ? 'primary' : 'default'"
+          :disabled="!sectStore.inSect"
+          @click="setMode('treasure')"
+        >
+          藏宝阁
+        </el-button>
+        <el-button
+          size="small"
+          :type="mode === 'scripture' ? 'primary' : 'default'"
+          :disabled="!sectStore.inSect"
+          @click="setMode('scripture')"
+        >
+          藏经阁
+        </el-button>
+        <el-button
+          size="small"
+          :type="mode === 'forge' ? 'primary' : 'default'"
+          :disabled="!sectStore.inSect"
+          @click="setMode('forge')"
+        >
+          锻造工坊
+        </el-button>
+        <el-button
+          size="small"
+          :type="mode === 'alchemy' ? 'primary' : 'default'"
+          :disabled="!sectStore.inSect"
+          @click="setMode('alchemy')"
+        >
+          炼丹阁
+        </el-button>
+        <el-button
+          size="small"
+          :type="mode === 'talisman' ? 'primary' : 'default'"
+          :disabled="!sectStore.inSect"
+          @click="setMode('talisman')"
+        >
+          服务工坊
+        </el-button>
+        <el-button
+          size="small"
+          :type="mode === 'formation' ? 'primary' : 'default'"
+          :disabled="!sectStore.inSect"
+          @click="setMode('formation')"
+        >
+          大阵
+        </el-button>
+        <el-button
+          size="small"
+          :type="mode === 'mine' ? 'primary' : 'default'"
+          :disabled="!sectStore.inSect"
+          @click="setMode('mine')"
+        >
+          矿脉
+        </el-button>
+        <el-button
+          size="small"
+          :type="mode === 'herbs' ? 'primary' : 'default'"
+          :disabled="!sectStore.inSect"
+          @click="setMode('herbs')"
+        >
+          灵药园
         </el-button>
         <el-button
           size="small"
@@ -128,11 +228,7 @@ function onJoined(): void {
         >
           商店
         </el-button>
-        <el-button
-          size="small"
-          :type="mode === 'lamps' ? 'primary' : 'default'"
-          @click="setMode('lamps')"
-        >
+        <el-button size="small" :type="mode === 'lamps' ? 'primary' : 'default'" @click="setMode('lamps')">
           魂灯
         </el-button>
         <el-button
@@ -158,23 +254,18 @@ function onJoined(): void {
 
     <div class="main-grid">
       <div class="main-left">
-        <SectJoinCreatePanel
-          v-if="mode === 'join'"
-          @log="pushLog"
-          @joined="onJoined"
-        />
-        <el-card v-else-if="mode === 'status'" shadow="never">
-          <template #header>
-            <el-text tag="b">宗门概览</el-text>
-          </template>
-          <el-text v-if="sectStore.inSect">
-            可在上方切换任务、商店、魂灯与兑宠。贡献与解锁以服务端为准。
-          </el-text>
-          <el-text v-else type="warning">
-            你仍是散修。请先「拜入/建宗」，入宗后挂机修为占位提升。
-          </el-text>
-        </el-card>
+        <SectJoinCreatePanel v-if="mode === 'join'" @log="pushLog" @joined="onJoined" />
+        <SectOverviewPanel v-else-if="mode === 'overview' || mode === 'status'" @log="pushLog" />
+        <SectCouncilPanel v-else-if="mode === 'council'" @log="pushLog" />
         <SectQuestPanel v-else-if="mode === 'quests'" @log="pushLog" />
+        <SectTreasuryPanel v-else-if="mode === 'treasure'" @log="pushLog" />
+        <SectScripturePanel v-else-if="mode === 'scripture'" @log="pushLog" />
+        <SectWorkshopPanel v-else-if="mode === 'forge'" branch="smithing" @log="pushLog" />
+        <SectWorkshopPanel v-else-if="mode === 'alchemy'" branch="alchemy" @log="pushLog" />
+        <SectWorkshopPanel v-else-if="mode === 'talisman'" branch="talisman" @log="pushLog" />
+        <SectFormationPanel v-else-if="mode === 'formation'" @log="pushLog" />
+        <SectMinePanel v-else-if="mode === 'mine'" @log="pushLog" />
+        <SectHerbPanel v-else-if="mode === 'herbs'" @log="pushLog" />
         <SectShopPanel v-else-if="mode === 'shop'" @log="pushLog" />
         <template v-else-if="mode === 'lamps'">
           <el-empty
@@ -206,7 +297,6 @@ function onJoined(): void {
   margin: 0 auto;
   padding: 1rem 1rem 2rem;
 }
-
 .page-title {
   display: flex;
   flex-wrap: wrap;
@@ -214,25 +304,21 @@ function onJoined(): void {
   gap: 0.5rem 0.75rem;
   margin: 0.75rem 0 1rem;
 }
-
 .mode-nav {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
   margin-left: auto;
 }
-
 .page-alert {
   margin-bottom: 0.75rem;
 }
-
 .main-grid {
   display: grid;
   grid-template-columns: 1fr minmax(220px, 300px);
   gap: 0.75rem;
   margin-top: 0.75rem;
 }
-
 .main-left,
 .main-side {
   display: flex;
@@ -240,11 +326,9 @@ function onJoined(): void {
   gap: 0.75rem;
   min-width: 0;
 }
-
 .log-line {
   padding: 0.15rem 0;
 }
-
 @media (max-width: 800px) {
   .main-grid {
     grid-template-columns: 1fr;

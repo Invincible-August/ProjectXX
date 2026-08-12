@@ -123,9 +123,9 @@ onMounted(async () => {
       <el-button size="small" @click="router.push('/hall')">← 回大厅</el-button>
       <el-text tag="b" size="large">道友</el-text>
       <el-text type="info" size="small">修为 · 在线 · 社交动作</el-text>
-      <el-button size="small" @click="router.push('/party')">队伍</el-button>
+      <el-button size="small" @click="router.push('/social?mode=party')">队伍</el-button>
       <el-button size="small" @click="router.push('/social')">社交中心</el-button>
-      <el-button size="small" @click="router.push('/market?mode=face')">面交台</el-button>
+      <el-button size="small" @click="router.push('/shop?mode=auction&sub=face')">面交台</el-button>
     </div>
 
     <div class="main-grid">

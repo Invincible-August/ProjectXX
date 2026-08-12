@@ -140,6 +140,62 @@ class StaminaService:
             "regen_per_minute": cfg.regen_per_minute,
         }
 
+    def spend_amount(
+        self,
+        character: Character,
+        amount: int,
+        *,
+        reason: str = "custom",
+        now: datetime | None = None,
+    ) -> dict:
+        """
+        按指定点数扣体力（采矿 tick 等配置驱动消耗）。
+
+        Args:
+            character: 角色实体。
+            amount: 扣减点数（须 ≥0）。
+            reason: 日志用原因键。
+            now: 可选冻结时间。
+
+        Returns:
+            dict: 扣减后的体力读数。
+
+        Raises:
+            AppError: ``40049`` 体力不足。
+        """
+        settings = get_settings()
+        current_time = now_utc(now)
+        if not settings.stamina_enabled:
+            return self.read(character, now=current_time)
+
+        cfg = get_game_config().stamina
+        reading = self._settle(character, current_time)
+        cost = max(0, int(amount))
+        if reading.current < cost:
+            raise AppError(
+                code=40049,
+                message=(
+                    f"体力不足（当前 {reading.current}/{reading.cap}，"
+                    f"本次需 {cost}；{reading.next_point_in_seconds} 秒后恢复 1 点）"
+                ),
+                http_status=409,
+            )
+        character.stamina = reading.current - cost
+        character.stamina_updated_at = current_time
+        logger.info(
+            "stamina spend_amount character_id=%s reason=%s cost=%s left=%s",
+            character.id,
+            reason,
+            cost,
+            character.stamina,
+        )
+        return {
+            "left": int(character.stamina),
+            "cap": reading.cap,
+            "next_point_in_seconds": reading.next_point_in_seconds,
+            "regen_per_minute": cfg.regen_per_minute,
+        }
+
     def add_stamina(self, character: Character, amount: int, now: datetime | None = None) -> dict:
         """
         道具等方式增加体力（M4 体力丹）；受 cap 限制除非 item_overflow。

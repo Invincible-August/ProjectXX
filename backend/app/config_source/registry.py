@@ -218,6 +218,16 @@ DOMAIN_REGISTRY: dict[str, DomainMeta] = {
         category_title_zh="战斗",
         category_order=30,
     ),
+    "combat_attrs": DomainMeta(
+        domain_id="combat_attrs",
+        filename="combat_attrs.yaml",
+        title="战斗属性注册表",
+        risk="balance",
+        description="统一 Combat/Life 属性键、别名、主键映射与通道开关（ATTR-D01）",
+        category_id="combat",
+        category_title_zh="战斗",
+        category_order=30,
+    ),
     "realms": DomainMeta(
         domain_id="realms",
         filename="realms.yaml",
@@ -283,9 +293,9 @@ DOMAIN_REGISTRY: dict[str, DomainMeta] = {
     "trade": DomainMeta(
         domain_id="trade",
         filename="trade.yaml",
-        title="交易行与拍卖",
+        title="交易与坊市",
         risk="balance",
-        description="手续费、拍卖、面交超时（M7 L2）",
+        description="一口价/拍卖/面交手续费 + NPC 坊市货架（M7 L2）",
         enabled=True,
         category_id="social",
         category_title_zh="社交经济",

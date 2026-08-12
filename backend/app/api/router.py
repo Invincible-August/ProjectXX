@@ -22,6 +22,7 @@ from app.api import (
     idle,
     inventory,
     pets,
+    quench,
     reincarnation,
     server,
     snapshot,
@@ -49,6 +50,7 @@ api_router.include_router(verification.router)
 api_router.include_router(character.router)
 api_router.include_router(idle.router)
 api_router.include_router(breakthrough.router)
+api_router.include_router(quench.router)
 api_router.include_router(battle.router)
 api_router.include_router(gm.router)
 # M2 成长深度

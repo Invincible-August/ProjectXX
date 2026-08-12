@@ -96,10 +96,28 @@ def _f(
 REALMS_SCHEMA = DomainEditSchema(
     domain_id="realms",
     title_zh="境界",
-    description_zh="大境界链、小层/阶段门槛与战力占位。高危域，发布须二次确认。",
+    description_zh="大境界链、小层/阶段；炼体大境（层/期）与淬体规则。高危域，发布须二次确认。",
     edit_modes=("table", "json"),
     fields=(
         _f("major_realms", "大境界表", "键=大境界 id，值含 name/stage_mode/next_major/stages", "json"),
+        _f(
+            "body_temper_unlock_majors",
+            "炼体对照主修序",
+            "锻体→大乘（可含未开放主修，扩境预留）",
+            "json",
+        ),
+        _f(
+            "body_temper_majors",
+            "炼体大境表",
+            "炼皮→道体；含 stage_mode/unlock_major/next_major/stages",
+            "json",
+        ),
+        _f(
+            "body_temper_quench",
+            "淬体规则",
+            "layer_advance/major_advance 成功率与失败保留比；无渡劫",
+            "json",
+        ),
     ),
     sheets=(
         SheetMeta(
@@ -141,6 +159,54 @@ REALMS_SCHEMA = DomainEditSchema(
                 ),
                 _f("base_atk", "基础攻击", "战力面板占位 atk", "int"),
                 _f("base_hp", "基础生命", "战力面板占位 hp", "int"),
+            ),
+        ),
+        SheetMeta(
+            sheet_id="body_temper_order",
+            title_zh="炼体对照主修序",
+            description_zh="从上到下=锻体→大乘；可追加未开放主修作扩境预留。",
+            primary_keys=("order",),
+            columns=(
+                _f("order", "序", "从 1 起", "int"),
+                _f("major_id", "主修大境界 ID", "如 body_tempering / dacheng", "string"),
+            ),
+        ),
+        SheetMeta(
+            sheet_id="body_temper_majors",
+            title_zh="炼体大境",
+            description_zh="炼皮→道体；小层见「炼体层/期」表；末境 next_major 空=当前链终点。",
+            primary_keys=("id",),
+            columns=(
+                _f("id", "炼体境 ID", "英文键，如 refine_skin", "string"),
+                _f("name", "展示名", "如「炼皮」", "string"),
+                _f("stage_mode", "阶段模式", "layers 或 phases", "string"),
+                _f("unlock_major", "对照主修", "须在对照主修序中", "string"),
+                _f("next_major", "下一炼体境", "扩境口；终点空", "null_str"),
+            ),
+        ),
+        SheetMeta(
+            sheet_id="body_temper_layers",
+            title_zh="炼体层 / 期",
+            description_zh="前两境 1～10 层；其后初中后圆满。",
+            primary_keys=("major_id", "stage"),
+            columns=(
+                _f("major_id", "炼体境 ID", "对应炼体大境 id", "string"),
+                _f("stage", "层编号", "layers 1～10；phases 1～4", "int"),
+                _f("label", "层标签", "layer_N / early / middle / late / perfection", "string"),
+                _f("progress_required", "淬体进度门槛", "当前档满方可淬体", "int"),
+            ),
+        ),
+        SheetMeta(
+            sheet_id="body_temper_quench",
+            title_zh="淬体规则",
+            description_zh="层进阶 / 跨境成功率与失败保留比（无渡劫）。",
+            primary_keys=("rule_id",),
+            columns=(
+                _f("rule_id", "规则", "layer_advance / major_advance / clamp", "string"),
+                _f("success_rate", "成功率", "clamp 行可空", "float"),
+                _f("fail_progress_keep_ratio", "失败保留比", "clamp 行可空", "float"),
+                _f("clamp_min", "成功率下限", "仅 clamp 行", "float"),
+                _f("clamp_max", "成功率上限", "仅 clamp 行", "float"),
             ),
         ),
     ),
@@ -675,7 +741,7 @@ FORMATIONS_SCHEMA = DomainEditSchema(
 SECTS_SCHEMA = DomainEditSchema(
     domain_id="sects",
     title_zh="宗门与设施",
-    description_zh="设施开关 + NPC 宗门/建宗费/任务/商店/兑宠（M7 L1）。表格改设施；完整玩法表可用 JSON。",
+    description_zh="设施开关 + 等级/职位/专精/十设施（M7-V+）。表格改设施闸；完整玩法表可用 JSON。",
     edit_modes=("entries", "json"),
     fields=(
         _f("facilities", "设施表", "id→设施定义（enabled/note）", "json"),
@@ -687,6 +753,29 @@ SECTS_SCHEMA = DomainEditSchema(
             "入轮回时是否清本宗贡献",
             "bool",
         ),
+        _f("max_announcement_len", "公告字数上限", "议事厅公告", "int"),
+        _f(
+            "promotion_auto_approve_after_game_days",
+            "自申自动通过游戏日",
+            "贡献/自荐申请隔几游戏日自动通过",
+            "int",
+        ),
+        _f("facility_upgrade_cost_base", "设施升级基础贡献", "升到 2 级起算", "int"),
+        _f("facility_upgrade_cost_per_level", "设施升级贡献递增", "每级额外贡献", "int"),
+        _f("grade_upgrade_spirit_stones_base", "升宗门等级基础灵石", "扣宗门库", "int"),
+        _f("sect_grades", "宗门等级表", "草庐→道庭：人数/设施门槛/buff", "json"),
+        _f("disciple_ranks", "弟子职位表", "杂役→创派：任命/贡献/藏宝阁页", "json"),
+        _f("specialties", "专精表", "建宗必选；藏经阁匹配", "json"),
+        _f("facility_defs", "玩法设施定义", "任务殿等十设施", "json"),
+        _f("sect_buffs", "宗门增益", "可开启 buff 与费用", "json"),
+        _f("treasury", "藏宝阁规则", "禁止类型/目录/页数", "json"),
+        _f("scripture", "藏经阁规则", "功法目录与专精加成", "json"),
+        _f("craftsmen", "工匠表", "代工分支/品阶/贡献费", "json"),
+        _f("workshop_blueprints", "工坊图纸目录", "branch→在售 recipe", "json"),
+        _f("formations", "宗门阵法表", "兑换/启停/加点费用", "json"),
+        _f("formation_attr_keys", "阵法属性键", "攻击/防御/抗性等中文", "json"),
+        _f("mine_yield", "矿脉产出", "被动入库+采矿名额/体力", "json"),
+        _f("herb_garden", "灵药园", "兑换/托管种植/灵植师", "json"),
         _f("npc_sects", "NPC 宗门表", "template_id→拜入条件与中文名", "json"),
         _f("features_by_founder_realm", "祖师境界功能", "大境界→功能键列表", "json"),
         _f("sect_exchange", "兑宠规则", "白名单物种与贡献费用", "json"),
@@ -718,8 +807,8 @@ FRIENDS_SCHEMA = DomainEditSchema(
 
 TRADE_SCHEMA = DomainEditSchema(
     domain_id="trade",
-    title_zh="交易行与拍卖",
-    description_zh="手续费、拍卖时长、面交超时（M7 L2）。",
+    title_zh="交易行与拍卖 / 坊市",
+    description_zh="手续费、拍卖时长、面交超时、NPC 坊市货架（M7 L2）。",
     edit_modes=("json",),
     fields=(
         _f("listing_fee_pct", "一口价手续费比例", "0~1，从卖方所得扣除", "float"),
@@ -745,6 +834,7 @@ TRADE_SCHEMA = DomainEditSchema(
             "bool",
         ),
         _f("recycle_label_zh", "回收池中文名", "玩家可见", "string"),
+        _f("bazaar", "NPC坊市", "固定货架买价/卖价与提示文案", "json"),
     ),
 )
 
@@ -764,13 +854,31 @@ MAIL_SCHEMA = DomainEditSchema(
     ),
 )
 
+COMBAT_ATTRS_SCHEMA = DomainEditSchema(
+    domain_id="combat_attrs",
+    title_zh="战斗属性注册表",
+    description_zh="统一战斗/生活属性键、别名、主键映射与通道开关（ATTR-D01）；M13 只改数字不改键名。",
+    edit_modes=("json",),
+    fields=(
+        _f("schema_version", "Schema 版本", "战报/快照携带", "int"),
+        _f("defaults", "默认值", "speed/mp/攻防等", "json"),
+        _f("aliases", "旧键别名", "atk→phys_atk 等", "json"),
+        _f("primary_map", "主键映射", "力量→物攻等系数", "json"),
+        _f("attrs", "属性注册表", "label_zh/help_zh/category", "json"),
+        _f("entity_profiles", "实体适用面", "player/pet/monster…", "json"),
+        _f("channels", "养成通道开关", "equipment/puppet…", "json"),
+    ),
+)
+
 CHAT_SCHEMA = DomainEditSchema(
     domain_id="chat",
     title_zh="聊天频道",
-    description_zh="五频道限速、敏感词、历史条数（M7 L4）。",
+    description_zh="五频道限速、敏感词、历史条数（M7 L4）；私聊持久条数单独可配。",
     edit_modes=("json",),
     fields=(
-        _f("history_limit", "历史条数", "每频道保留上限", "int"),
+        _f("history_limit", "历史条数", "非私聊拉历史封顶", "int"),
+        _f("dm_history_limit", "私聊每会话保留条数", "超限裁剪最旧；默认 100", "int"),
+        _f("session_ephemeral", "会话级清空", "非私聊：关浏览器不拉历史", "bool"),
         _f("max_body_len", "正文最大字数", "单条", "int"),
         _f("rate_window_sec", "限速窗口秒", "滑动窗口", "int"),
         _f("rate_max_messages", "窗口内最大条数", "超限 40131", "int"),
@@ -1162,6 +1270,7 @@ DOMAIN_EDIT_SCHEMAS: dict[str, DomainEditSchema] = {
         REALMS_SCHEMA,
         IDLE_SCHEMA,
         DICE_SCHEMA,
+        COMBAT_ATTRS_SCHEMA,
         BREAKTHROUGH_SCHEMA,
         PETS_SCHEMA,
         PET_AFFIXES_SCHEMA,

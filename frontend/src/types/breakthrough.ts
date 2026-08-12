@@ -12,6 +12,8 @@ export interface BreakthroughPreview {
   spirit_stone_cost: number
   success_rate: number
   advance_type: 'layer' | 'major' | null
+  /** 进阶方式中文，如「同境升层/升期」 */
+  advance_type_label_zh?: string | null
   next_realm_display: string | null
   /** 跨境时可选品阶说明 */
   grade_preview?: string | null

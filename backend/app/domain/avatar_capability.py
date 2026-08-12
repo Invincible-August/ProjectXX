@@ -125,6 +125,7 @@ class AvatarCapabilityIndex:
             IdleDirection.SPIRIT: self.idle_spirit_enabled,
             IdleDirection.BODY: self.idle_body_enabled,
             IdleDirection.CRAFTING: self.idle_crafting_enabled,
+            "sect_mining": self.idle_spirit_enabled,
         }
         if not enabled_map.get(direction, True):
             return False, feature_id

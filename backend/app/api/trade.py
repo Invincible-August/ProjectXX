@@ -10,6 +10,7 @@ from app.schemas.common import success
 from app.schemas.social_trade import (
     AuctionBidRequest,
     AuctionCreateRequest,
+    BazaarDealRequest,
     FaceTradeConfirmRequest,
     FaceTradeInviteRequest,
     FaceTradeLockRequest,
@@ -204,3 +205,44 @@ async def trade_face_cancel(
 ) -> dict:
     """取消面交并退回已托管侧。"""
     return success(await svc.face_cancel(current_user, session_id))
+
+
+@router.get("/bazaar", response_model=None)
+async def trade_bazaar_catalog(
+    svc: TradeService = Depends(get_trade_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """NPC 坊市货架（固定售价）与可回收摘要。"""
+    return success(await svc.list_bazaar(current_user))
+
+
+@router.post("/bazaar/buy", response_model=None)
+async def trade_bazaar_buy(
+    body: BazaarDealRequest,
+    svc: TradeService = Depends(get_trade_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """向坊市购买固定货架道具。"""
+    return success(
+        await svc.bazaar_buy(
+            current_user,
+            item_id=body.item_id,
+            quantity=body.quantity,
+        ),
+    )
+
+
+@router.post("/bazaar/sell", response_model=None)
+async def trade_bazaar_sell(
+    body: BazaarDealRequest,
+    svc: TradeService = Depends(get_trade_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """向坊市出售道具换灵石。"""
+    return success(
+        await svc.bazaar_sell(
+            current_user,
+            item_id=body.item_id,
+            quantity=body.quantity,
+        ),
+    )

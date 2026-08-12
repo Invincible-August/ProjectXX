@@ -37,8 +37,12 @@ export interface ChatChannelsPayload {
   /** 有未读私聊的对方人数（按人头，非消息条数） */
   dm_unread_peers?: number
   channel_types: string[]
-  /** 会话级：不拉历史；退出/关浏览器清空本端消息 */
+  /** 会话级：不拉历史；退出/关浏览器清空本端「非私聊」消息 */
   session_ephemeral?: boolean
+  /** 私聊持久（弹窗拉 history） */
+  dm_persistent?: boolean
+  /** 私聊每会话保留条数 */
+  dm_history_limit?: number
 }
 
 export interface ChatHistoryPayload {

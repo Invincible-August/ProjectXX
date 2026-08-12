@@ -12,7 +12,7 @@ from collections import defaultdict, deque
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -39,6 +39,7 @@ from app.domain.channel_membership import (
     room_id_for,
 )
 from app.domain.ws_protocol import (
+    TYPE_CHAT_DM_CLEARED,
     TYPE_CHAT_MESSAGE,
     TYPE_CHAT_UNREAD,
     TYPE_PARTY_INVITE,
@@ -213,8 +214,11 @@ class ChatService:
             # 私聊角标按人头：有未读的 DM 频道数
             "dm_unread_peers": await self.count_dm_unread_peers(character.id),
             "channel_types": list(ACTIVE_CHANNEL_TYPES),
-            # 前端：退出/关浏览器清空本会话消息；进房不拉历史
+            # 前端：退出/关浏览器清空「非私聊」本会话消息；进房不拉历史
             "session_ephemeral": bool(getattr(cfg, "session_ephemeral", True)),
+            # 私聊持久：弹窗始终拉 history；条数上限
+            "dm_persistent": True,
+            "dm_history_limit": int(getattr(cfg, "dm_history_limit", 100) or 100),
         }
 
     async def history(
@@ -234,7 +238,12 @@ class ChatService:
         ok, reason = await self._membership.can_access(character, cref)
         if not ok:
             raise AppError(code=40130, message=reason or "频道无权限", http_status=403)
-        lim = min(int(limit or self._cfg().history_limit), int(self._cfg().history_limit))
+        if cref.channel_type == "dm":
+            await self._trim_dm_channel(cref.channel_ref)
+            cap = int(self._cfg().dm_history_limit or 100)
+        else:
+            cap = int(self._cfg().history_limit or 100)
+        lim = min(int(limit or cap), cap)
         lim = max(1, lim)
         q = select(ChatMessage).where(ChatMessage.channel_ref == cref.channel_ref)
         if before_id is not None:
@@ -316,6 +325,9 @@ class ChatService:
         self._session.add(row)
         await self._session.flush()
 
+        if cref.channel_type == "dm":
+            await self._trim_dm_channel(cref.channel_ref)
+
         # 未读：世界不刷全服角标；其它频道给成员（除自己）+1
         if cref.channel_type != "world":
             member_ids = await self._membership.list_member_ids(cref)
@@ -367,6 +379,63 @@ class ChatService:
             "channel_ref": cref.channel_ref,
             "unread": 0,
             "unread_total": total,
+            "dm_unread_peers": await self.count_dm_unread_peers(character.id),
+        }
+
+    async def clear_dm(
+        self,
+        user: User,
+        *,
+        channel_ref: str | None = None,
+        peer_character_id: int | None = None,
+        peer_name: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Clear all messages in a DM session (both sides lose history).
+
+        Args:
+            user: Acting user.
+            channel_ref: Explicit dm channel_ref.
+            peer_character_id: Peer id to resolve DM.
+            peer_name: Peer dao name to resolve DM.
+
+        Returns:
+            Cleared channel_ref and unread totals.
+        """
+        require_chat_enabled()
+        character = await self._gate.require_character(user)
+        cref = None
+        if channel_ref:
+            cref = parse_channel_ref(channel_ref)
+        if cref is None and (peer_character_id or peer_name):
+            peer = await self._resolve_character(peer_character_id, peer_name)
+            cref = build_dm_ref(character.id, peer.id)
+        if cref is None or cref.channel_type != "dm":
+            raise AppError(code=40000, message="仅可清空私聊会话", http_status=400)
+        ok, reason = await self._membership.can_access(character, cref)
+        if not ok:
+            raise AppError(code=40130, message=reason or "频道无权限", http_status=403)
+
+        await self._session.execute(
+            delete(ChatMessage).where(ChatMessage.channel_ref == cref.channel_ref),
+        )
+        member_ids = await self._membership.list_member_ids(cref)
+        for mid in member_ids:
+            await self._clear_unread(mid, cref.channel_ref)
+        await self._session.flush()
+
+        await self._push_dm_cleared(cref, cleared_by=character.id)
+        await self._push_unread_to_members(cref, exclude_id=-1)
+
+        logger.info(
+            "chat dm cleared character_id=%s channel=%s",
+            character.id,
+            cref.channel_ref,
+        )
+        return {
+            "message": "已清空私聊记录",
+            "channel_ref": cref.channel_ref,
+            "unread_total": await self.total_unread(character.id),
             "dm_unread_peers": await self.count_dm_unread_peers(character.id),
         }
 
@@ -877,6 +946,65 @@ class ChatService:
         if row is not None:
             row.unread_count = 0
             await self._session.flush()
+
+    async def _trim_dm_channel(self, channel_ref: str, *, keep: int | None = None) -> None:
+        """
+        Keep only the newest ``keep`` messages for a DM channel_ref.
+
+        Args:
+            channel_ref: dm:low:high
+            keep: Override; default ``dm_history_limit``.
+        """
+        cap = int(keep if keep is not None else (self._cfg().dm_history_limit or 100))
+        if cap < 1:
+            cap = 1
+        # ids of newest `cap` rows
+        keep_ids = list(
+            (
+                await self._session.execute(
+                    select(ChatMessage.id)
+                    .where(ChatMessage.channel_ref == channel_ref)
+                    .order_by(ChatMessage.id.desc())
+                    .limit(cap),
+                )
+            ).scalars().all(),
+        )
+        if not keep_ids:
+            return
+        count = (
+            await self._session.execute(
+                select(func.count()).select_from(ChatMessage).where(
+                    ChatMessage.channel_ref == channel_ref,
+                ),
+            )
+        ).scalar_one()
+        if int(count or 0) <= cap:
+            return
+        await self._session.execute(
+            delete(ChatMessage).where(
+                ChatMessage.channel_ref == channel_ref,
+                ChatMessage.id.not_in(list(keep_ids)),
+            ),
+        )
+        await self._session.flush()
+
+    async def _push_dm_cleared(self, cref, *, cleared_by: int) -> None:
+        """Notify DM members that history was wiped."""
+        settings = get_settings()
+        if not bool(getattr(settings, "chat_ws_push_enabled", True)):
+            return
+        if not bool(getattr(settings, "ws_enabled", True)):
+            return
+        hub = get_ws_hub()
+        payload = {
+            "channel_ref": cref.channel_ref,
+            "cleared_by": int(cleared_by),
+        }
+        hub.ensure_room(cref.room_id, kind="chat")
+        await hub.broadcast_room(cref.room_id, TYPE_CHAT_DM_CLEARED, payload)
+        member_ids = await self._membership.list_member_ids(cref)
+        for mid in member_ids:
+            await hub.send_to_character(int(mid), TYPE_CHAT_DM_CLEARED, payload)
 
     async def _unread_for(self, character_id: int, channel_ref: str) -> int:
         row = (

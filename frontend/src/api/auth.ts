@@ -65,3 +65,19 @@ export async function fetchMeApi(): Promise<ApiResponse<AuthMeResult>> {
   const response = await http.get<ApiResponse<AuthMeResult>>('/auth/me')
   return response.data
 }
+
+/**
+ * 修改密码。
+ *
+ * @param body - 原密码 / 新密码
+ */
+export async function changePasswordApi(body: {
+  old_password: string
+  new_password: string
+}): Promise<ApiResponse<{ message?: string }>> {
+  const response = await http.post<ApiResponse<{ message?: string }>>(
+    '/auth/change-password',
+    body,
+  )
+  return response.data
+}

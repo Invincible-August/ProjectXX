@@ -143,7 +143,7 @@ export interface DualIdlePreview {
   avatar_cultivation_per_tick?: number
   avatar_body_per_tick?: number
   avatar_crafting_per_tick?: number
-  /** 化身每片耗石（共享本体灵石池） */
+  /** 化身每周天耗石（共享本体灵石池） */
   avatar_stones_per_tick?: number
   /** 化身挂机锚点 ISO；缺省时回退 avatar_summary.last_settled_at */
   avatar_last_settled_at?: string

@@ -44,3 +44,19 @@ export async function fetchMyCharacterApi(): Promise<
     return envelopeFromAxiosError<CharacterPublic>(error)
   }
 }
+
+/**
+ * 获取统一战斗/生活属性块（与面板同源 build_combat_attrs）。
+ */
+export async function fetchMyCombatAttrsApi(): Promise<
+  ApiResponse<{ combat: CharacterPublic['combat']; life: CharacterPublic['life'] }>
+> {
+  try {
+    const response = await http.get<
+      ApiResponse<{ combat: CharacterPublic['combat']; life: CharacterPublic['life'] }>
+    >('/characters/me/combat')
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}

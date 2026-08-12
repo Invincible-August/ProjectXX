@@ -64,7 +64,40 @@ class CharacterPublic(BaseModel):
     realm_display: str = Field(description="境界展示文案（大境界+层/期）")
     # 成长三池：挂机只涨池；突破门槛读 realm_progress（M2）
     cultivation_points: int = Field(description="修灵池（修为点数，未投入境界进度）")
-    body_tempering_points: int = Field(description="炼体池（炼体度）")
+    body_tempering_points: int = Field(description="淬体度池（挂机炼体产出；可投入淬体进度或炼体功法）")
+    # 炼体大境（炼皮→道体，层/期对齐主修）
+    body_temper_stage: str = Field(default="refine_skin", description="炼体大境 id")
+    body_temper_stage_name: str = Field(default="炼皮", description="炼体大境中文名")
+    body_temper_layer: int = Field(default=1, description="炼体层/期序号")
+    body_temper_layer_label: str = Field(
+        default="layer_1",
+        description="炼体层/期标签 layer_N / early / …",
+    )
+    body_temper_progress: int = Field(default=0, description="当前档淬体进度")
+    body_temper_to_next: int | None = Field(
+        default=None,
+        description="距本档圆满尚需进度；可淬体时为 0",
+    )
+    body_temper_progress_ratio: float = Field(
+        default=0.0,
+        description="当前档淬体进度比例 0～1",
+    )
+    body_temper_display: str = Field(
+        default="炼皮一层",
+        description="炼体程度展示（含可淬体/卡主修提示）",
+    )
+    body_temper_capped: bool = Field(
+        default=False,
+        description="进度已满但主修未达对照境，暂不可淬体",
+    )
+    body_temper_ready_to_quench: bool = Field(
+        default=False,
+        description="进度满且条件达标，可发起淬体",
+    )
+    body_temper_next_stage_name: str | None = Field(
+        default=None,
+        description="淬体目标展示名",
+    )
     crafting_exp: int = Field(description="制造业经验池")
     spirit_stones: int = Field(description="灵石（挂机消耗与交易货币）")
     idle_direction: str = Field(description="本体挂机方向：none/spirit/body/crafting")
@@ -90,8 +123,16 @@ class CharacterPublic(BaseModel):
     idle_crafting_per_tick: int = Field(default=0, description="制造业方向每 tick 基础产出")
     idle_stones_per_tick: int = Field(default=0, description="每 tick 灵石消耗")
     idle_tick_seconds: int = Field(default=60, description="一片挂机时长（秒）")
-    base_atk: int = Field(default=0, description="衍生基础攻击（境界/品阶推导）")
-    base_hp: int = Field(default=0, description="衍生基础生命")
+    base_atk: int = Field(default=0, description="衍生基础攻击（= combat.final.phys_atk 别名）")
+    base_hp: int = Field(default=0, description="衍生基础生命（= combat.final.hp 别名）")
+    combat: dict | None = Field(
+        default=None,
+        description="ATTR CombatAttrBlock：final/primary/labels/breakdown/growth",
+    )
+    life: dict | None = Field(
+        default=None,
+        description="ATTR LifeAttrBlock：体力/悟性/吐纳/工坊向等",
+    )
     # --- M2 ---
     realm_progress: int = Field(default=0, description="已投入当前档的境界进度（突破门槛）")
     breakthrough_grade: str = Field(default="none", description="最近跨境品阶键；无跨境为 none")

@@ -1,5 +1,5 @@
 /**
- * 挂机「本片预计」客户端计算（仅展示，不写库、不请求服务器）。
+ * 挂机「本周天预计」客户端计算（仅展示，不写库、不请求服务器）。
  *
  * 公式对齐后端：
  * ``effective = floor(base * channel_mult * clamp(tagProduct * shichen * weather))``
@@ -124,7 +124,7 @@ export function channelProductFromBreakdown(
 }
 
 /**
- * 计算某方向本片有效产出（整数，与后端 int(base*channel*env) 对齐）。
+ * 计算某方向本周天有效产出（整数，与后端 int(base*channel*env) 对齐）。
  *
  * @param basePerTick - 角色面板基础速率（idle_*_per_tick，已为境界表）
  * @param worldDir - 世界 idle_preview 该方向（无角色标签）
@@ -181,11 +181,14 @@ export function baseGainForDirection(
   if (dir === 'spirit') return character.idle_cultivation_per_tick
   if (dir === 'body') return character.idle_body_per_tick ?? 0
   if (dir === 'crafting') return character.idle_crafting_per_tick ?? 0
+  if (dir === 'sect_mining') {
+    return character.idle_env?.sect_mining?.base_per_tick ?? 0
+  }
   return 0
 }
 
 /**
- * 本片预计有效产出（浏览器实时计算）。
+ * 本周天预计有效产出（浏览器实时计算）。
  *
  * @param character - 权威角色
  * @param worldIdlePreview - `/world/env.idle_preview`
@@ -201,15 +204,28 @@ export function computeTickGainForDirection(
   direction?: IdleGainDirection,
 ): number {
   const dir = direction ?? character.idle_direction
-  if (dir !== 'spirit' && dir !== 'body' && dir !== 'crafting') return 0
+  if (
+    dir !== 'spirit' &&
+    dir !== 'body' &&
+    dir !== 'crafting' &&
+    dir !== 'sect_mining'
+  ) {
+    return 0
+  }
   const base = baseGainForDirection(character, dir)
-  const worldDir = worldIdlePreview?.[dir]
-  const characterDir = character.idle_env?.[dir]
+  const worldDir =
+    dir === 'sect_mining'
+      ? worldIdlePreview?.sect_mining
+      : worldIdlePreview?.[dir as 'spirit' | 'body' | 'crafting']
+  const characterDir =
+    dir === 'sect_mining'
+      ? character.idle_env?.sect_mining
+      : character.idle_env?.[dir as 'spirit' | 'body' | 'crafting']
   return computeEffectivePerTick(base, worldDir, characterDir, shichen, weather)
 }
 
 /**
- * 「本片预计」展示文案。
+ * 「本周天预计」展示文案。
  *
  * @param character - 权威角色
  * @param worldIdlePreview - 世界挂机预览
@@ -233,7 +249,8 @@ export function formatTickGainLabel(
     dir,
   )
   if (dir === 'spirit') return `修为 +${rate}`
-  if (dir === 'body') return `炼体度 +${rate}`
+  if (dir === 'body') return `淬体度 +${rate}`
   if (dir === 'crafting') return `制造业经验 +${rate}`
+  if (dir === 'sect_mining') return `个人灵石 +${rate}`
   return ''
 }

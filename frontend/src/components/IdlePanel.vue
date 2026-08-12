@@ -1,40 +1,41 @@
 <script setup lang="ts">
 /**
- * 修炼面板：本体三向 + 化身线程进度（M2 / M4）。
- *
- * 本体可切换方向；化身进度只读展示，切方向去 /avatar。
+ * 修炼面板：本体三向挂机；资源分配 / 进阶弹窗入口。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import AllocatePanel from './AllocatePanel.vue'
+import BreakthroughPanel from './BreakthroughPanel.vue'
 import IdleEnvPanel from './IdleEnvPanel.vue'
 import { useActivityGate } from '../composables/useActivityGate'
 import { useCharacterStore } from '../stores/character'
 import { useWorldStore } from '../stores/world'
 import type { IdleDirection } from '../types/idle'
 import { formatTickGainLabel } from '../utils/idleRateClient'
-import { isProductiveDirection } from '../utils/idlePredict'
+import { isIdleBusyDirection, isProductiveDirection } from '../utils/idlePredict'
 
 const emit = defineEmits<{
   log: [message: string, level?: 'info' | 'success' | 'warning' | 'system']
   needClaimOffline: []
 }>()
 
-const router = useRouter()
 const characterStore = useCharacterStore()
 const worldStore = useWorldStore()
 const { canEnterIdle, blockReason, modeLabel, activity } = useActivityGate()
 const busy = ref(false)
 const creditFlash = ref(false)
-const avatarCreditFlash = ref(false)
+const allocateOpen = ref(false)
+const advanceOpen = ref(false)
 let creditFlashTimer: ReturnType<typeof setTimeout> | null = null
-let avatarFlashTimer: ReturnType<typeof setTimeout> | null = null
 
 const character = computed(() => characterStore.character)
 const display = computed(() => characterStore.display)
-const avatarDisplay = computed(() => characterStore.avatarDisplay)
 const direction = computed(() => character.value?.idle_direction ?? 'none')
+/** 修灵/炼体/制造业产出中 */
 const isActive = computed(() => isProductiveDirection(direction.value))
+/** 含采矿：占用修炼态 */
+const isBusy = computed(() => isIdleBusyDirection(direction.value))
+const isMining = computed(() => direction.value === 'sect_mining')
 const showStalled = computed(
   () => display.value?.is_stalled === true || character.value?.is_stalled === true,
 )
@@ -43,9 +44,8 @@ const hasPending = computed(() => Boolean(character.value?.offline_pending))
 /** 开始某方向修炼是否应禁用（停止当前方向始终可点，除非 pending） */
 function startDisabled(target: IdleDirection): boolean {
   if (hasPending.value) return true
-  // 已在该方向：按钮是「停止」，不拦
   if (direction.value === target) return false
-  // 从其它方向切换或从 none 进入：须 can_enter_idle
+  if (isMining.value) return false
   return !canEnterIdle.value
 }
 
@@ -55,59 +55,28 @@ const enterIdleBlockHint = computed(
     (activity.value.craft_running > 0 ? '工坊进行中，请先完成后再修炼' : null),
 )
 
-const hasAvatar = computed(() => Boolean(character.value?.has_avatar))
-const avatarDirection = computed(
-  () =>
-    character.value?.dual_idle_preview?.avatar_idle_direction ??
-    character.value?.avatar_summary?.idle_direction ??
-    'none',
-)
-const avatarActive = computed(() => isProductiveDirection(avatarDirection.value))
-const avatarShowStalled = computed(
-  () => avatarDisplay.value?.is_stalled === true,
-)
-
-const directionNames: Record<string, string> = {
-  none: '待机',
-  spirit: '修灵',
-  body: '炼体',
-  crafting: '制造业',
-}
-
 const tickPercent = computed(() => {
   const ratio = display.value?.tick_progress_ratio ?? 0
   if (!Number.isFinite(ratio)) return 0
   return Math.max(0, Math.min(100, Math.round(ratio * 100)))
 })
 
-const avatarTickPercent = computed(() => {
-  const ratio = avatarDisplay.value?.tick_progress_ratio ?? 0
+const secondsLeftInTick = computed(() => {
+  const d = display.value
+  if (!d || (!isActive.value && !isMining.value) || showStalled.value) return null
+  const left = Math.ceil(d.tick_seconds - d.seconds_into_tick)
+  return Math.max(0, left)
+})
+
+const miningTickPercent = computed(() => {
+  if (!isMining.value || !display.value) return 0
+  const ratio = display.value.tick_progress_ratio ?? 0
   if (!Number.isFinite(ratio)) return 0
   return Math.max(0, Math.min(100, Math.round(ratio * 100)))
 })
 
-const secondsLeftInTick = computed(() => {
-  const d = display.value
-  if (!d || !isActive.value || showStalled.value) return null
-  const left = Math.ceil(d.tick_seconds - d.seconds_into_tick)
-  return Math.max(0, left)
-})
+const miningGainHint = computed(() => poolGainLabel.value || '个人灵石（环境修正中）')
 
-const avatarSecondsLeft = computed(() => {
-  const d = avatarDisplay.value
-  if (!d || !avatarActive.value || avatarShowStalled.value || hasPending.value) {
-    return null
-  }
-  const left = Math.ceil(d.tick_seconds - d.seconds_into_tick)
-  return Math.max(0, left)
-})
-
-/**
- * 当前方向有效挂机速率（浏览器实时计算：基础速率 × 当前时辰/天气/标签）。
- * 数据来自角色面板 + 世界轮询已有的 idle_preview，不额外请求服务器。
- *
- * @returns 展示文案，如「修为 +12」
- */
 const poolGainLabel = computed(() => {
   const ch = character.value
   if (!ch) return ''
@@ -121,52 +90,12 @@ const poolGainLabel = computed(() => {
   )
 })
 
-/**
- * 化身本片预计：用 dual_idle_preview 基础速率 × 当前世界环境乘区（展示用）。
- */
-const avatarPoolGainLabel = computed(() => {
-  const ch = character.value
-  const preview = ch?.dual_idle_preview
-  const dir = avatarDirection.value
-  if (!ch || !preview) return ''
-  // 构造临时角色字段复用同一套客户端公式
-  const synthetic: typeof ch = {
-    ...ch,
-    idle_direction: dir,
-    idle_cultivation_per_tick: preview.avatar_cultivation_per_tick ?? 0,
-    idle_body_per_tick: preview.avatar_body_per_tick ?? 0,
-    idle_crafting_per_tick: preview.avatar_crafting_per_tick ?? 0,
-    // 化身暂不套本体灵根标签，避免高估
-    idle_env: undefined,
-  }
-  return formatTickGainLabel(
-    synthetic,
-    worldStore.idlePreview,
-    worldStore.shichen,
-    worldStore.weather,
-    dir,
-  )
-})
-
-const avatarStonesPerTick = computed(
-  () => character.value?.dual_idle_preview?.avatar_stones_per_tick ?? 0,
-)
-
 function triggerCreditFlash(): void {
   creditFlash.value = true
   if (creditFlashTimer !== null) clearTimeout(creditFlashTimer)
   creditFlashTimer = setTimeout(() => {
     creditFlash.value = false
     creditFlashTimer = null
-  }, 1200)
-}
-
-function triggerAvatarCreditFlash(): void {
-  avatarCreditFlash.value = true
-  if (avatarFlashTimer !== null) clearTimeout(avatarFlashTimer)
-  avatarFlashTimer = setTimeout(() => {
-    avatarCreditFlash.value = false
-    avatarFlashTimer = null
   }, 1200)
 }
 
@@ -177,21 +106,10 @@ watch(
   },
 )
 
-watch(
-  () => avatarDisplay.value?.predicted_ticks ?? 0,
-  (next, prev) => {
-    if (next > prev && avatarActive.value) triggerAvatarCreditFlash()
-  },
-)
-
 onBeforeUnmount(() => {
   if (creditFlashTimer !== null) {
     clearTimeout(creditFlashTimer)
     creditFlashTimer = null
-  }
-  if (avatarFlashTimer !== null) {
-    clearTimeout(avatarFlashTimer)
-    avatarFlashTimer = null
   }
 })
 
@@ -204,14 +122,14 @@ function formatSettleLog(data: {
 }): string {
   const parts: string[] = []
   if (data.gained_cultivation) parts.push(`修为 +${data.gained_cultivation}`)
-  if (data.gained_body) parts.push(`炼体度 +${data.gained_body}`)
+  if (data.gained_body) parts.push(`淬体度 +${data.gained_body}`)
   if (data.gained_crafting) parts.push(`制造业经验 +${data.gained_crafting}`)
   parts.push(`灵石 -${data.spent_spirit_stones}`)
-  return `结算 ${data.settled_ticks} 片：${parts.join('，')}`
+  return `结算 ${data.settled_ticks} 周天：${parts.join('，')}`
 }
 
 /**
- * 切换到指定方向，或停止。
+ * 切换到指定方向，或再次点击停止。
  *
  * @param target - 目标方向
  */
@@ -232,31 +150,47 @@ async function setDirection(target: IdleDirection): Promise<void> {
       }
       return
     }
+    if (!isMining.value && !canEnterIdle.value && target !== 'none') {
+      const reason = enterIdleBlockHint.value || '当前不可修炼'
+      ElMessage.warning(reason)
+      emit('log', reason, 'warning')
+      return
+    }
     const data = await characterStore.setDirection(target)
     const names: Record<string, string> = {
-      spirit: '修灵',
-      body: '炼体',
-      crafting: '制造业',
+      spirit: '修炼',
+      body: '淬体',
+      crafting: '制造业修炼',
+      none: '待机',
     }
+    ElMessage.success(`已开始${names[target] ?? target}`)
     emit('log', `开始${names[target] ?? target}。`, 'success')
     if (data.settled_ticks > 0) {
       emit('log', formatSettleLog(data), 'success')
     }
-    if (data.character.is_stalled) {
-      emit('log', '灵石不足，修炼停滞；可通过战斗获取灵石。', 'warning')
-      ElMessage.warning('灵石不足，修炼停滞')
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : '切换修炼失败'
+    ElMessage.error(msg)
+    emit('log', msg, 'warning')
+  } finally {
+    busy.value = false
+  }
+}
+
+/** 结束采矿（修炼区不提供开始采矿入口）。 */
+async function stopMining(): Promise<void> {
+  if (busy.value || !character.value) return
+  busy.value = true
+  try {
+    const data = await characterStore.setDirection('none')
+    emit('log', '已结束采矿。', 'info')
+    if (data.settled_ticks > 0) {
+      emit('log', formatSettleLog(data), 'success')
     }
   } catch (e: unknown) {
-    const err = e as Error & { code?: number }
-    if (err.code === 40030) {
-      ElMessage.warning(err.message || '请先领取离线收益')
-      emit('needClaimOffline')
-      emit('log', err.message, 'warning')
-      return
-    }
-    const message = e instanceof Error ? e.message : '修炼操作失败'
-    ElMessage.error(message)
-    emit('log', message, 'warning')
+    const msg = e instanceof Error ? e.message : '结束采矿失败'
+    ElMessage.error(msg)
+    emit('log', msg, 'warning')
   } finally {
     busy.value = false
   }
@@ -266,37 +200,44 @@ async function setDirection(target: IdleDirection): Promise<void> {
 <template>
   <el-card shadow="never" class="idle-panel">
     <template #header>
-      <el-text tag="b">修炼区</el-text>
+      <div class="idle-header">
+        <el-text tag="b">修炼区</el-text>
+        <div class="idle-header-actions">
+          <el-button type="warning" size="small" @click="allocateOpen = true">
+            资源分配
+          </el-button>
+          <el-button type="danger" size="small" @click="advanceOpen = true">
+            进阶
+          </el-button>
+        </div>
+      </div>
     </template>
 
     <template v-if="character">
-      <!-- —— 本体线程 —— -->
       <div class="thread-block">
         <div class="thread-title">
           <el-text tag="b" size="small">本体</el-text>
           <el-tag size="small" type="info">{{ character.idle_direction_name }}</el-tag>
         </div>
 
-        <el-descriptions :column="1" size="small" class="idle-desc">
+        <!-- 修炼/淬体/制造业修炼：仅环境修正行；采矿保留速度与推算 -->
+        <el-descriptions
+          v-if="isMining"
+          :column="1"
+          size="small"
+          class="idle-desc"
+        >
           <el-descriptions-item label="预估速度">
-            <template v-if="isActive">
-              每 {{ character.idle_tick_seconds }}s：{{ poolGainLabel }}
-              <template v-if="(character.idle_stones_per_tick ?? 0) > 0">
-                / 灵石 -{{ character.idle_stones_per_tick }}
-              </template>
-              <template v-else> / 不耗灵石</template>
-            </template>
-            <template v-else>—</template>
+            每 {{ character.idle_tick_seconds }}s：{{ poolGainLabel }} / 耗战斗体力
           </el-descriptions-item>
-          <el-descriptions-item v-if="display && isActive" label="实时推算">
-            修为池 {{ display.cultivation_points }} · 炼体
-            {{ display.body_tempering_points }} · 制造业 {{ display.crafting_exp }} · 灵石
-            {{ display.spirit_stones }}
+          <el-descriptions-item v-if="display" label="实时推算">
+            灵石 {{ display.spirit_stones }} · 自开始起满一段后结算灵石并扣体力
           </el-descriptions-item>
         </el-descriptions>
 
         <IdleEnvPanel
           :idle-env="character.idle_env"
+          :world-idle-preview="worldStore.idlePreview"
           :direction="direction"
         />
 
@@ -319,11 +260,33 @@ async function setDirection(target: IdleDirection): Promise<void> {
           />
           <div class="idle-tick-meta">
             <el-text size="small" type="info">
-              本片预计（实时环境）：{{ poolGainLabel }}
+              本周天预计（实时环境）：{{ poolGainLabel }}
             </el-text>
             <el-text v-if="creditFlash" size="small" type="success" class="idle-tick-flash">
-              本片收益已并入池
+              本周天收益已并入池
             </el-text>
+          </div>
+        </div>
+
+        <div v-else-if="isMining && display" class="idle-tick">
+          <div class="idle-tick-label">
+            <el-text size="small">本回合采矿</el-text>
+            <el-text size="small" type="info">
+              <template v-if="hasPending">已暂停</template>
+              <template v-else-if="secondsLeftInTick != null">
+                还剩 {{ secondsLeftInTick }}s
+              </template>
+            </el-text>
+          </div>
+          <el-progress
+            :percentage="hasPending ? 0 : miningTickPercent"
+            :stroke-width="12"
+            :striped="!hasPending"
+            :striped-flow="!hasPending"
+            status="warning"
+          />
+          <div class="idle-tick-meta">
+            <el-text size="small" type="info">{{ miningGainHint }}</el-text>
           </div>
         </div>
 
@@ -346,8 +309,12 @@ async function setDirection(target: IdleDirection): Promise<void> {
         />
 
         <el-alert
-          v-if="isActive"
-          :title="`当前：${modeLabel} — 请先停止修炼后再开战/炼丹炼器/突破/渡劫`"
+          v-if="isBusy"
+          :title="
+            isMining
+              ? '当前：采矿中 — 占用修炼状态，不可开战/炼丹炼器/突破/渡劫；消耗战斗体力（与生活属性体力同源）'
+              : `当前：${modeLabel} — 请先停止修炼后再开战/炼丹炼器/突破/渡劫`
+          "
           type="success"
           show-icon
           :closable="false"
@@ -361,7 +328,7 @@ async function setDirection(target: IdleDirection): Promise<void> {
             :disabled="startDisabled('spirit')"
             @click="setDirection('spirit')"
           >
-            {{ direction === 'spirit' ? '停止修灵' : '修灵' }}
+            {{ direction === 'spirit' ? '停止修炼' : '修炼' }}
           </el-button>
           <el-button
             :type="direction === 'body' ? 'primary' : 'default'"
@@ -369,7 +336,7 @@ async function setDirection(target: IdleDirection): Promise<void> {
             :disabled="startDisabled('body')"
             @click="setDirection('body')"
           >
-            {{ direction === 'body' ? '停止炼体' : '炼体' }}
+            {{ direction === 'body' ? '停止淬体' : '淬体' }}
           </el-button>
           <el-button
             :type="direction === 'crafting' ? 'primary' : 'default'"
@@ -377,103 +344,19 @@ async function setDirection(target: IdleDirection): Promise<void> {
             :disabled="startDisabled('crafting')"
             @click="setDirection('crafting')"
           >
-            {{ direction === 'crafting' ? '停止制造业' : '制造业' }}
+            {{ direction === 'crafting' ? '停止制造业修炼' : '制造业修炼' }}
           </el-button>
           <el-button
-            v-if="isActive"
+            v-if="isMining"
+            type="warning"
             :loading="busy"
             :disabled="hasPending"
-            @click="setDirection(direction as IdleDirection)"
+            @click="stopMining"
           >
-            停止修炼
+            结束采矿
           </el-button>
         </div>
       </div>
-
-      <!-- —— 化身线程（只读进度；切方向去化身页） —— -->
-      <div v-if="hasAvatar" class="thread-block avatar-thread">
-        <div class="thread-title">
-          <el-text tag="b" size="small">化身</el-text>
-          <el-tag size="small" type="warning">
-            {{ directionNames[avatarDirection] ?? avatarDirection }}
-          </el-tag>
-          <el-button size="small" text type="primary" @click="router.push('/avatar')">
-            管理
-          </el-button>
-        </div>
-
-        <el-descriptions :column="1" size="small" class="idle-desc">
-          <el-descriptions-item label="预估速度">
-            <template v-if="avatarActive">
-              每 {{ character.idle_tick_seconds }}s：{{ avatarPoolGainLabel }}
-              <template v-if="avatarStonesPerTick > 0">
-                / 灵石 -{{ avatarStonesPerTick }}
-              </template>
-              <template v-else> / 不耗灵石</template>
-            </template>
-            <template v-else>待机（去化身页安排方向）</template>
-          </el-descriptions-item>
-          <el-descriptions-item v-if="avatarDisplay && avatarActive" label="实时推算">
-            修为池 {{ avatarDisplay.cultivation_points }} · 炼体
-            {{ avatarDisplay.body_tempering_points }} · 制造业
-            {{ avatarDisplay.crafting_exp }}
-          </el-descriptions-item>
-        </el-descriptions>
-
-        <div v-if="avatarActive && avatarDisplay" class="idle-tick idle-tick-avatar">
-          <div class="idle-tick-label">
-            <el-text size="small">化身本回合</el-text>
-            <el-text size="small" type="info">
-              <template v-if="avatarShowStalled || hasPending">已暂停</template>
-              <template v-else-if="avatarSecondsLeft != null">
-                还剩 {{ avatarSecondsLeft }}s
-              </template>
-            </el-text>
-          </div>
-          <el-progress
-            :percentage="avatarShowStalled || hasPending ? 0 : avatarTickPercent"
-            :stroke-width="12"
-            color="#e6a23c"
-            :striped="avatarActive && !avatarShowStalled && !hasPending"
-            :striped-flow="avatarActive && !avatarShowStalled && !hasPending"
-            :status="avatarCreditFlash ? 'success' : undefined"
-          />
-          <div class="idle-tick-meta">
-            <el-text size="small" type="info">
-              本片预计（实时环境）：{{ avatarPoolGainLabel }}
-            </el-text>
-            <el-text
-              v-if="avatarCreditFlash"
-              size="small"
-              type="success"
-              class="idle-tick-flash"
-            >
-              化身本片收益已并入池
-            </el-text>
-          </div>
-        </div>
-
-        <el-alert
-          v-if="avatarShowStalled && avatarActive"
-          title="灵石不足，化身线程停滞（与本体共享灵石池）"
-          type="warning"
-          show-icon
-          :closable="false"
-          class="idle-stall"
-        />
-      </div>
-
-      <el-alert
-        v-else
-        title="金丹后可凝练化身，并行挂机进度将显示于此"
-        type="info"
-        :closable="false"
-        class="idle-stall"
-      >
-        <el-button size="small" text type="primary" @click="router.push('/avatar')">
-          前往化身
-        </el-button>
-      </el-alert>
 
       <el-alert
         v-if="hasPending"
@@ -486,10 +369,46 @@ async function setDirection(target: IdleDirection): Promise<void> {
     </template>
 
     <el-empty v-else description="暂无角色" :image-size="48" />
+
+    <el-dialog
+      v-model="allocateOpen"
+      title="资源分配"
+      width="520px"
+      destroy-on-close
+      append-to-body
+      class="idle-feature-dialog"
+    >
+      <AllocatePanel @log="(msg, level) => emit('log', msg, level)" />
+    </el-dialog>
+
+    <el-dialog
+      v-model="advanceOpen"
+      title="进阶"
+      width="560px"
+      destroy-on-close
+      append-to-body
+      class="idle-feature-dialog"
+    >
+      <BreakthroughPanel @log="(msg, level) => emit('log', msg, level)" />
+    </el-dialog>
   </el-card>
 </template>
 
 <style scoped>
+.idle-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.idle-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
 .thread-block {
   margin-bottom: 0.85rem;
 }
@@ -501,11 +420,6 @@ async function setDirection(target: IdleDirection): Promise<void> {
   margin-bottom: 0.35rem;
 }
 
-.avatar-thread {
-  padding-top: 0.75rem;
-  border-top: 1px dashed rgba(230, 162, 60, 0.45);
-}
-
 .idle-desc {
   margin-bottom: 0.5rem;
 }
@@ -515,10 +429,6 @@ async function setDirection(target: IdleDirection): Promise<void> {
   padding: 0.5rem 0.6rem;
   border-radius: 6px;
   background: linear-gradient(180deg, rgba(64, 158, 255, 0.08), transparent);
-}
-
-.idle-tick-avatar {
-  background: linear-gradient(180deg, rgba(230, 162, 60, 0.12), transparent);
 }
 
 .idle-tick-label {

@@ -1,16 +1,20 @@
 <script setup lang="ts">
 /**
- * 天道商店页（M7 L8 · /shop）：会员帽 / 货架 / 沙盒加点。
+ * 商店中心（/shop）：坊市 / 拍卖行 / 天道商店。
  */
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import AuthSessionBar from '../components/AuthSessionBar.vue'
+import BazaarPanel from '../components/market/BazaarPanel.vue'
+import MarketView from './MarketView.vue'
 import { useCharacterStore } from '../stores/character'
 import { useCommerceStore } from '../stores/commerce'
 import { createLogEntry, type GameLogEntry } from '../types/gameLog'
 
-type ShopMode = 'member' | 'tiandao'
+type ShopHubMode = 'bazaar' | 'auction' | 'tiandao'
+
+const MODE_SET = new Set<string>(['bazaar', 'auction', 'tiandao'])
 
 const route = useRoute()
 const router = useRouter()
@@ -20,17 +24,30 @@ const commerceStore = useCommerceStore()
 const logEntries = ref<GameLogEntry[]>([])
 const busy = ref(false)
 const sandboxAmount = ref(500)
+const tiandaoTab = ref<'member' | 'shelf'>('member')
 
-const mode = computed<ShopMode>(() =>
-  route.query.mode === 'tiandao' ? 'tiandao' : 'member',
-)
+const mode = computed<ShopHubMode>(() => {
+  const m = route.query.mode
+  if (typeof m === 'string' && MODE_SET.has(m)) {
+    return m as ShopHubMode
+  }
+  // 兼容旧深链 member/tiandao → 天道商店
+  if (m === 'member' || m === 'tiandao') {
+    return 'tiandao'
+  }
+  return 'bazaar'
+})
 
 function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
   logEntries.value = [...logEntries.value.slice(-49), createLogEntry(message, level)]
 }
 
-function setMode(next: ShopMode): void {
-  void router.replace({ query: { ...route.query, mode: next } })
+function setMode(next: ShopHubMode): void {
+  const query: Record<string, string> = { mode: next }
+  if (next === 'auction') {
+    query.sub = typeof route.query.sub === 'string' ? route.query.sub : 'listings'
+  }
+  void router.replace({ query })
 }
 
 async function run(fn: () => Promise<string | null>, okHint?: string): Promise<void> {
@@ -60,9 +77,22 @@ onMounted(async () => {
   }
   const err = await commerceStore.refresh()
   if (err) pushLog(err, 'warning')
-  else pushLog('天道商店已就绪：会员 / 货架 / 沙盒。', 'info')
-  if (route.query.mode !== 'member' && route.query.mode !== 'tiandao') {
-    void router.replace({ query: { ...route.query, mode: 'member' } })
+  pushLog('商店中心已就绪：坊市 / 拍卖行 / 天道商店。', 'info')
+
+  const m = String(route.query.mode ?? '')
+  if (m === 'member') {
+    tiandaoTab.value = 'member'
+    void router.replace({ query: { mode: 'tiandao' } })
+    return
+  }
+  if (m === 'tiandao' && !MODE_SET.has(m)) {
+    // unreachable; keep shelf
+  }
+  if (m === 'tiandao') {
+    tiandaoTab.value = 'shelf'
+  }
+  if (!MODE_SET.has(m) && m !== 'member') {
+    void router.replace({ query: { mode: 'bazaar' } })
   }
 })
 </script>
@@ -73,129 +103,158 @@ onMounted(async () => {
 
     <div class="page-title">
       <el-button size="small" @click="router.push('/hall')">← 回大厅</el-button>
-      <el-text tag="b" size="large">天道商店</el-text>
-      <el-text type="info" size="small">M7 L8 · 会员 / 沙盒</el-text>
+      <el-text tag="b" size="large">商店</el-text>
+      <el-text type="info" size="small">坊市 · 拍卖行 · 天道</el-text>
       <div class="mode-nav">
         <el-button
           size="small"
-          :type="mode === 'member' ? 'primary' : 'default'"
-          @click="setMode('member')"
+          :type="mode === 'bazaar' ? 'primary' : 'default'"
+          @click="setMode('bazaar')"
         >
-          会员
+          坊市
+        </el-button>
+        <el-button
+          size="small"
+          :type="mode === 'auction' ? 'primary' : 'default'"
+          @click="setMode('auction')"
+        >
+          拍卖行
         </el-button>
         <el-button
           size="small"
           :type="mode === 'tiandao' ? 'primary' : 'default'"
           @click="setMode('tiandao')"
         >
-          货架
+          天道商店
         </el-button>
       </div>
     </div>
 
-    <el-alert
-      v-if="commerceStore.shop?.boundary_zh"
-      :title="commerceStore.shop.boundary_zh"
-      type="warning"
-      show-icon
-      :closable="false"
-      class="boundary"
-    />
-
     <div class="main-grid">
       <div class="main-left">
-        <el-card shadow="never">
-          <template #header>
-            <el-text tag="b">当前状态</el-text>
-          </template>
-          <el-descriptions :column="1" size="small" border>
-            <el-descriptions-item label="会员">
-              {{ commerceStore.me?.membership?.label_zh || commerceStore.me?.membership?.tier }}
-            </el-descriptions-item>
-            <el-descriptions-item label="挂机帽">
-              {{ commerceStore.me?.membership?.idle_cap_hours ?? 12 }} 时辰
-              <el-text size="small" type="info">（过期回落十二时辰）</el-text>
-            </el-descriptions-item>
-            <el-descriptions-item label="到期">
-              {{ commerceStore.me?.membership?.expires_at || '—' }}
-            </el-descriptions-item>
-            <el-descriptions-item label="天道点">
-              {{ commerceStore.me?.tiandao_points ?? 0 }}
-            </el-descriptions-item>
-          </el-descriptions>
-        </el-card>
+        <BazaarPanel v-if="mode === 'bazaar'" @log="pushLog" />
 
-        <el-card v-if="mode === 'member'" shadow="never" class="mt">
-          <template #header>
-            <el-text tag="b">开通会员</el-text>
-          </template>
-          <el-text size="small" type="info" class="hint">
-            会员·一 18 时辰 / 会员·二 24 时辰；开通耗天道点。
-          </el-text>
-          <div class="actions">
-            <el-button
-              type="primary"
-              size="small"
-              :loading="busy"
-              @click="run(() => commerceStore.openMembership('tier1'))"
-            >
-              开通会员·一
-            </el-button>
-            <el-button
-              type="success"
-              size="small"
-              :loading="busy"
-              @click="run(() => commerceStore.openMembership('tier2'))"
-            >
-              开通会员·二
-            </el-button>
-          </div>
-        </el-card>
+        <MarketView v-else-if="mode === 'auction'" embedded />
 
-        <el-card v-else shadow="never" class="mt">
-          <template #header>
-            <el-text tag="b">货架</el-text>
-          </template>
-          <div
-            v-for="item in commerceStore.shop?.items || []"
-            :key="item.item_id"
-            class="item-row"
-          >
-            <div>
-              <el-text>{{ item.label_zh }}</el-text>
-              <el-text size="small" type="info" class="hint">
-                耗天道点 {{ item.tiandao_cost ?? 0 }}
-              </el-text>
-            </div>
-            <el-button
-              size="small"
-              type="primary"
-              :loading="busy"
-              @click="run(() => commerceStore.buy(item.item_id))"
-            >
-              兑换
-            </el-button>
-          </div>
-        </el-card>
-
-        <el-card shadow="never" class="mt">
-          <template #header>
-            <el-text tag="b">沙盒加点</el-text>
-          </template>
-          <el-text size="small" type="info" class="hint">
-            仅开发/沙盒开关开启时可用；非真支付。
-          </el-text>
-          <el-input-number v-model="sandboxAmount" :min="1" :max="10000" size="small" />
-          <el-button
-            class="mt"
-            size="small"
+        <template v-else>
+          <el-alert
+            v-if="commerceStore.shop?.boundary_zh"
+            :title="commerceStore.shop.boundary_zh"
             type="warning"
-            :loading="busy"
-            @click="run(() => commerceStore.sandboxGrant(sandboxAmount))"
-          >
-            发放天道点
-          </el-button>
-        </el-card>
+            show-icon
+            :closable="false"
+            class="boundary"
+          />
+
+          <div class="sub-nav">
+            <el-button
+              size="small"
+              :type="tiandaoTab === 'member' ? 'primary' : 'default'"
+              @click="tiandaoTab = 'member'"
+            >
+              会员
+            </el-button>
+            <el-button
+              size="small"
+              :type="tiandaoTab === 'shelf' ? 'primary' : 'default'"
+              @click="tiandaoTab = 'shelf'"
+            >
+              货架
+            </el-button>
+          </div>
+
+          <el-card shadow="never">
+            <template #header>
+              <el-text tag="b">当前状态</el-text>
+            </template>
+            <el-descriptions :column="1" size="small" border>
+              <el-descriptions-item label="会员">
+                {{ commerceStore.me?.membership?.label_zh || commerceStore.me?.membership?.tier }}
+              </el-descriptions-item>
+              <el-descriptions-item label="挂机帽">
+                {{ commerceStore.me?.membership?.idle_cap_hours ?? 12 }} 时辰
+              </el-descriptions-item>
+              <el-descriptions-item label="到期">
+                {{ commerceStore.me?.membership?.expires_at || '—' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="天道点">
+                {{ commerceStore.me?.tiandao_points ?? 0 }}
+              </el-descriptions-item>
+            </el-descriptions>
+          </el-card>
+
+          <el-card v-if="tiandaoTab === 'member'" shadow="never" class="mt">
+            <template #header>
+              <el-text tag="b">开通会员</el-text>
+            </template>
+            <el-text size="small" type="info" class="hint">
+              会员·一 18 时辰 / 会员·二 24 时辰；开通耗天道点。
+            </el-text>
+            <div class="actions">
+              <el-button
+                type="primary"
+                size="small"
+                :loading="busy"
+                @click="run(() => commerceStore.openMembership('tier1'))"
+              >
+                开通会员·一
+              </el-button>
+              <el-button
+                type="success"
+                size="small"
+                :loading="busy"
+                @click="run(() => commerceStore.openMembership('tier2'))"
+              >
+                开通会员·二
+              </el-button>
+            </div>
+          </el-card>
+
+          <el-card v-else shadow="never" class="mt">
+            <template #header>
+              <el-text tag="b">货架</el-text>
+            </template>
+            <div
+              v-for="item in commerceStore.shop?.items || []"
+              :key="item.item_id"
+              class="item-row"
+            >
+              <div>
+                <el-text>{{ item.label_zh }}</el-text>
+                <el-text size="small" type="info" class="hint">
+                  耗天道点 {{ item.tiandao_cost ?? 0 }}
+                </el-text>
+              </div>
+              <el-button
+                size="small"
+                type="primary"
+                :loading="busy"
+                @click="run(() => commerceStore.buy(item.item_id))"
+              >
+                兑换
+              </el-button>
+            </div>
+          </el-card>
+
+          <el-card shadow="never" class="mt">
+            <template #header>
+              <el-text tag="b">沙盒加点</el-text>
+            </template>
+            <el-text size="small" type="info" class="hint">
+              仅开发/沙盒开关开启时可用；非真支付。
+            </el-text>
+            <el-input-number v-model="sandboxAmount" :min="1" :max="10000" size="small" />
+            <el-button
+              class="mt"
+              size="small"
+              type="warning"
+              :loading="busy"
+              @click="run(() => commerceStore.sandboxGrant(sandboxAmount))"
+            >
+              发放天道点
+            </el-button>
+          </el-card>
+        </template>
       </div>
 
       <aside class="main-side">
@@ -206,6 +265,12 @@ onMounted(async () => {
           <div v-for="e in logEntries.slice(-8)" :key="e.id" class="log-line">
             <el-text size="small">{{ e.message }}</el-text>
           </div>
+        </el-card>
+        <el-card shadow="never">
+          <template #header>
+            <el-text tag="b" size="small">灵石</el-text>
+          </template>
+          <el-text>{{ characterStore.character?.spirit_stones ?? '—' }}</el-text>
         </el-card>
       </aside>
     </div>
@@ -225,10 +290,15 @@ onMounted(async () => {
   gap: 0.5rem 0.75rem;
   margin: 0.75rem 0 1rem;
 }
-.mode-nav {
+.mode-nav,
+.sub-nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.35rem;
   width: 100%;
+}
+.sub-nav {
+  margin-bottom: 0.75rem;
 }
 .boundary {
   margin-bottom: 1rem;

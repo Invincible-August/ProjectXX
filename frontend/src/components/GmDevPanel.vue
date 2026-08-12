@@ -612,7 +612,7 @@ async function forceYuanyingPeak(): Promise<void> {
         <el-form-item label="境界进度">
           <el-input-number v-model="realmProgress" :min="0" :step="50" />
         </el-form-item>
-        <el-form-item label="炼体度池">
+        <el-form-item label="淬体度池">
           <el-input-number v-model="bodyPoints" :min="0" :step="20" />
         </el-form-item>
         <el-form-item label="制造业经验池">

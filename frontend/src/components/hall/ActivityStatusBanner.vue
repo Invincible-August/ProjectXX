@@ -18,7 +18,12 @@ const { activity, modeLabel } = useActivityGate()
   >
     <template v-if="activity.mode === 'idle'" #default>
       <el-text size="small">
-        修炼中无法开战、炼丹炼器、突破或渡劫；请先在修炼区停止修炼。
+        <template v-if="activity.idle_direction === 'sect_mining'">
+          采矿中无法开战、炼丹炼器、突破或渡劫；请先在修炼区结束采矿（或于矿脉停止）。
+        </template>
+        <template v-else>
+          修炼中无法开战、炼丹炼器、突破或渡劫；请先在修炼区停止修炼。
+        </template>
       </el-text>
     </template>
     <template v-else-if="activity.mode === 'craft'" #default>

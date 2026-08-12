@@ -34,12 +34,21 @@ export function parseUtcMs(iso: string): number {
 }
 
 /**
- * 是否处于可产出挂机方向。
+ * 是否处于可产出挂机方向（修灵/炼体/制造业；不含采矿）。
  *
  * @param direction - idle_direction
  */
 export function isProductiveDirection(direction: string): boolean {
   return direction === 'spirit' || direction === 'body' || direction === 'crafting'
+}
+
+/**
+ * 是否占用修炼态（含采矿挂机，与开战/工坊等互斥）。
+ *
+ * @param direction - idle_direction
+ */
+export function isIdleBusyDirection(direction: string): boolean {
+  return isProductiveDirection(direction) || direction === 'sect_mining'
 }
 
 /**
@@ -70,10 +79,10 @@ function snapshotWithoutTickProgress(
 }
 
 /**
- * 由已过去秒数推算本片内进度（仅动画用）。
+ * 由已过去秒数推算本周天内进度（仅动画用）。
  *
  * @param elapsedSec - 相对 last_settled_at 的已过秒数
- * @param tickSeconds - 片长
+ * @param tickSeconds - 一周天时长（秒）
  */
 export function computeTickProgress(
   elapsedSec: number,
@@ -141,7 +150,7 @@ function applyPoolGain(
  *
  * @param character - 服务端权威角色
  * @param nowMs - 当前 epoch ms
- * @param envAwarePoolRate - 可选：浏览器算出的本片有效产出（与「本片预计」一致）
+ * @param envAwarePoolRate - 可选：浏览器算出的本周天有效产出（与「本周天预计」一致）
  */
 export function predictIdleDisplay(
   character: CharacterPublic,
@@ -159,6 +168,41 @@ export function predictIdleDisplay(
     required == null || required <= 0
       ? 0
       : Math.min(1, (character.realm_progress ?? 0) / required)
+
+  // 采矿：仅驱动片内进度条；灵石/体力由服务端自开始锚点满 tick 结算（首段不扣）
+  if (
+    character.status === 'normal' &&
+    character.idle_direction === 'sect_mining' &&
+    !character.offline_pending
+  ) {
+    const lastMs = parseUtcMs(character.last_settled_at)
+    if (!Number.isFinite(lastMs)) {
+      return snapshotWithoutTickProgress(
+        baseCultivation,
+        baseBody,
+        baseCrafting,
+        baseStones,
+        realmRatio,
+        false,
+        0,
+        tickSeconds,
+      )
+    }
+    const elapsedSec = Math.max(0, (nowMs - lastMs) / 1000)
+    const progress = computeTickProgress(elapsedSec, tickSeconds)
+    return {
+      cultivation_points: baseCultivation,
+      body_tempering_points: baseBody,
+      crafting_exp: baseCrafting,
+      spirit_stones: baseStones,
+      cultivation_progress_ratio: realmRatio,
+      is_stalled: false,
+      predicted_ticks: 0,
+      tick_progress_ratio: progress.tick_progress_ratio,
+      seconds_into_tick: progress.seconds_into_tick,
+      tick_seconds: tickSeconds,
+    }
+  }
 
   if (
     character.status !== 'normal' ||
@@ -425,10 +469,15 @@ export function resolveNextDueMs(
   nextTickAt: string | null | undefined,
 ): number | null {
   if (!character) return null
-  if (!isProductiveDirection(character.idle_direction) || character.status !== 'normal') {
+  if (!isIdleBusyDirection(character.idle_direction) || character.status !== 'normal') {
     return null
   }
-  if (character.is_stalled || character.offline_pending) return null
+  if (
+    (isProductiveDirection(character.idle_direction) && character.is_stalled) ||
+    character.offline_pending
+  ) {
+    return null
+  }
 
   if (nextTickAt) {
     const ms = parseUtcMs(nextTickAt)

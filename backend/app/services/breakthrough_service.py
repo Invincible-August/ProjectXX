@@ -42,8 +42,8 @@ from app.services.realm_config import (
 logger = logging.getLogger(__name__)
 
 _ADVANCE_TYPE_LABEL_ZH = {
-    "layer": "层进阶",
-    "major": "跨境突破",
+    "layer": "同境升层/升期",
+    "major": "跨入下一大境",
 }
 
 
@@ -1262,6 +1262,7 @@ def preview_breakthrough_for_character(character: Character) -> dict:
         spirit_stone_cost=stone_cost,
         success_rate=rule.success_rate,
         advance_type=advance_type,
+        advance_type_label_zh=_ADVANCE_TYPE_LABEL_ZH.get(advance_type),
         next_realm_display=next_display,
         grade_preview=grade_preview,
     ).to_dict()

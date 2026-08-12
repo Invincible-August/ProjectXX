@@ -1158,6 +1158,221 @@ class TradeService:
             await CharacterService(self._session).enrich_public(character)
         ).model_dump(mode="json")
 
+    # ----- NPC 坊市 -----
+
+    def _bazaar_cfg(self) -> dict[str, Any]:
+        """trade.yaml bazaar 段。"""
+        raw = getattr(self._cfg(), "bazaar", None) or {}
+        return dict(raw) if isinstance(raw, dict) else {}
+
+    def _bazaar_item_spec(self, item_id: str) -> dict[str, Any] | None:
+        """解析单个坊市货架条目；不存在或禁用返回 None。"""
+        items = dict(self._bazaar_cfg().get("items") or {})
+        body = items.get(item_id)
+        if not isinstance(body, dict) or not bool(body.get("enabled", True)):
+            return None
+        return body
+
+    def _bazaar_prices(self, item_id: str, body: dict[str, Any]) -> tuple[int, int]:
+        """
+        返回 (buy_price, sell_price)。
+
+        sell_price 缺省时按 buy_price × sell_ratio_default。
+        """
+        buy = int(body.get("buy_price") or 0)
+        if "sell_price" in body and body.get("sell_price") is not None:
+            sell = int(body.get("sell_price") or 0)
+        else:
+            ratio = float(self._bazaar_cfg().get("sell_ratio_default") or 0.4)
+            sell = max(0, int(buy * ratio))
+        return buy, sell
+
+    async def list_bazaar(self, user: User) -> dict[str, Any]:
+        """
+        坊市货架 + 玩家可回收摘要。
+
+        Returns:
+            dict: label / hint / items / inventory_sellable / spirit_stones
+        """
+        require_trade_enabled()
+        character = await self._gate.require_character(user)
+        cfg = self._bazaar_cfg()
+        inv_cfg = get_game_config().inventory
+        bag = await self._inv.list_bags(character)
+        owned: dict[str, int] = {}
+        for row in bag.get("normal_items") or []:
+            iid = str(row.get("item_id") or "")
+            if not iid:
+                continue
+            owned[iid] = owned.get(iid, 0) + int(row.get("quantity") or 0)
+
+        catalog: list[dict[str, Any]] = []
+        sellable: list[dict[str, Any]] = []
+        items_raw = dict(cfg.get("items") or {})
+        for item_id, body in items_raw.items():
+            if not isinstance(body, dict) or not bool(body.get("enabled", True)):
+                continue
+            defn = inv_cfg.items.get(str(item_id))
+            buy, sell = self._bazaar_prices(str(item_id), body)
+            label = str(body.get("label_zh") or (defn.name if defn else item_id))
+            entry = {
+                "item_id": str(item_id),
+                "label_zh": label,
+                "item_type": defn.item_type if defn else "material",
+                "buy_price": buy,
+                "sell_price": sell,
+                "owned": int(owned.get(str(item_id), 0)),
+            }
+            catalog.append(entry)
+            if sell > 0 and owned.get(str(item_id), 0) > 0:
+                sellable.append({**entry, "owned": int(owned[str(item_id)])})
+
+        return {
+            "label_zh": str(cfg.get("label_zh") or "坊市"),
+            "hint_zh": str(cfg.get("hint_zh") or ""),
+            "max_qty_per_deal": int(cfg.get("max_qty_per_deal") or 99),
+            "items": catalog,
+            "inventory_sellable": sellable,
+            "spirit_stones": int(character.spirit_stones),
+        }
+
+    async def bazaar_buy(self, user: User, *, item_id: str, quantity: int) -> dict[str, Any]:
+        """用灵石向坊市购买固定货架道具。"""
+        require_trade_enabled()
+        character, _ = await self._gate.prepare_for_play(user, settle=True)
+        self._reject_if_ferry_or_tribulation(character)
+        qty = int(quantity)
+        max_q = int(self._bazaar_cfg().get("max_qty_per_deal") or 99)
+        if qty <= 0 or qty > max_q:
+            raise AppError(code=40000, message=f"购买数量须为 1～{max_q}", http_status=400)
+        body = self._bazaar_item_spec(item_id)
+        if body is None:
+            raise AppError(code=40000, message="商品不存在或已下架", http_status=404)
+        buy, _ = self._bazaar_prices(item_id, body)
+        if buy <= 0:
+            raise AppError(code=40000, message="该商品暂不可购买", http_status=400)
+        total = buy * qty
+        if int(character.spirit_stones) < total:
+            raise AppError(code=40000, message="灵石不足", http_status=400)
+        inv_cfg = get_game_config().inventory
+        defn = inv_cfg.items.get(item_id)
+        if defn is None:
+            raise AppError(code=40000, message="物品目录缺失该商品", http_status=400)
+        await self._ledger.adjust_spirit_stones(
+            character,
+            delta=-total,
+            reason="bazaar_buy",
+            note_zh=f"坊市购入 {defn.name}×{qty}",
+            ref_type="bazaar",
+            ref_id=item_id,
+        )
+        await self._inv.add_item(
+            character.id,
+            item_type=defn.item_type,
+            item_id=item_id,
+            quantity=qty,
+            bag_kind="normal",
+        )
+        logger.info(
+            "bazaar buy character=%s item=%s qty=%s cost=%s",
+            character.id,
+            item_id,
+            qty,
+            total,
+        )
+        return {
+            "item_id": item_id,
+            "quantity": qty,
+            "spirit_stones_spent": total,
+            "spirit_stones": int(character.spirit_stones),
+            "message": f"已购入「{defn.name}」×{qty}（-{total} 灵石）",
+            "catalog": await self.list_bazaar(user),
+        }
+
+    async def bazaar_sell(self, user: User, *, item_id: str, quantity: int) -> dict[str, Any]:
+        """将背包道具按坊市收购价出售换灵石（仅普通袋）。"""
+        require_trade_enabled()
+        character, _ = await self._gate.prepare_for_play(user, settle=True)
+        self._reject_if_ferry_or_tribulation(character)
+        qty = int(quantity)
+        max_q = int(self._bazaar_cfg().get("max_qty_per_deal") or 99)
+        if qty <= 0 or qty > max_q:
+            raise AppError(code=40000, message=f"出售数量须为 1～{max_q}", http_status=400)
+        body = self._bazaar_item_spec(item_id)
+        if body is None:
+            raise AppError(code=40000, message="坊市不收购该道具", http_status=404)
+        _, sell = self._bazaar_prices(item_id, body)
+        if sell <= 0:
+            raise AppError(code=40000, message="该商品暂不可出售", http_status=400)
+        inv_cfg = get_game_config().inventory
+        defn = inv_cfg.items.get(item_id)
+        # 绑定物不可卖给坊市（与交易行一致）
+        if defn is not None:
+            ok, reason = item_may_trade(
+                tradable=bool(defn.tradable),
+                bound=bool(defn.bound),
+                unique=bool(getattr(defn, "unique", False)),
+            )
+            if not ok:
+                raise AppError(code=40000, message=reason or "不可出售", http_status=400)
+        bag = await self._inv.list_bags(character)
+        normal_qty = sum(
+            int(r.get("quantity") or 0)
+            for r in (bag.get("normal_items") or [])
+            if str(r.get("item_id")) == item_id
+        )
+        if normal_qty < qty:
+            raise AppError(code=40055, message="背包数量不足（仅普通袋可售）", http_status=400)
+        remaining = qty
+        from app.db.models.inventory_item import InventoryItem
+        from app.domain.inventory_rules import apply_remove
+
+        result = await self._session.execute(
+            select(InventoryItem)
+            .where(
+                InventoryItem.character_id == character.id,
+                InventoryItem.item_id == item_id,
+                InventoryItem.bag_kind == "normal",
+            )
+            .order_by(InventoryItem.id),
+        )
+        for row in result.scalars().all():
+            if remaining <= 0:
+                break
+            new_qty, removed = apply_remove(int(row.quantity), remaining)
+            remaining -= removed
+            if new_qty <= 0:
+                await self._session.delete(row)
+            else:
+                row.quantity = new_qty
+        await self._session.flush()
+        if remaining > 0:
+            raise AppError(code=40055, message="背包数量不足（仅普通袋可售）", http_status=400)
+        total = sell * qty
+        await self._ledger.adjust_spirit_stones(
+            character,
+            delta=total,
+            reason="bazaar_sell",
+            note_zh=f"坊市出售 {(defn.name if defn else item_id)}×{qty}",
+            ref_type="bazaar",
+            ref_id=item_id,
+        )
+        logger.info(
+            "bazaar sell character=%s item=%s qty=%s gain=%s",
+            character.id,
+            item_id,
+            qty,
+            total,
+        )
+        return {
+            "item_id": item_id,
+            "quantity": qty,
+            "spirit_stones_gained": total,
+            "spirit_stones": int(character.spirit_stones),
+            "message": f"已出售「{defn.name if defn else item_id}」×{qty}（+{total} 灵石）",
+            "catalog": await self.list_bazaar(user),
+        }
+
 
 def _face_status_zh(status: str) -> str:
     return {

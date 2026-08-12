@@ -12,9 +12,10 @@ from typing import Mapping
 # 挂机方向 id → 中文
 IDLE_DIRECTION_LABEL_ZH: dict[str, str] = {
     "none": "停止",
-    "spirit": "修灵",
-    "body": "炼体",
-    "crafting": "制造业",
+    "spirit": "修炼",
+    "body": "淬体",
+    "crafting": "制造业修炼",
+    "sect_mining": "采矿",
 }
 
 # 渡劫会话 phase → 中文
@@ -27,10 +28,10 @@ TRIBULATION_PHASE_LABEL_ZH: dict[str, str] = {
     "fallen": "陨落",
 }
 
-# 突破进阶类型（与 breakthrough_service 对齐）
+# 突破进阶类型（玩家可见文案，避免「层进阶」难懂）
 ADVANCE_TYPE_LABEL_ZH: dict[str, str] = {
-    "layer": "层进阶",
-    "major": "跨境突破",
+    "layer": "同境升层/升期",
+    "major": "跨入下一大境",
 }
 
 

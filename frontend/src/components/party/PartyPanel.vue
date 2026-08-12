@@ -130,7 +130,7 @@ function techLine(m: PartyMemberItem): string {
     <template #header>
       <div class="hdr">
         <el-text tag="b">队伍</el-text>
-        <el-button size="small" @click="router.push('/friends')">道友</el-button>
+        <el-button size="small" @click="router.push('/social?mode=friends')">道友</el-button>
       </div>
     </template>
 

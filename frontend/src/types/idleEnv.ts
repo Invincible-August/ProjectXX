@@ -50,5 +50,7 @@ export interface IdleEnvBundle {
   spirit: IdleDirectionEnvPreview
   body: IdleDirectionEnvPreview
   crafting: IdleDirectionEnvPreview
+  /** 采矿个人灵石/周天（可选；旧包无此键） */
+  sect_mining?: IdleDirectionEnvPreview
   tags_applied: string[]
 }

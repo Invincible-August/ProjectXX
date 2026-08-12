@@ -76,7 +76,7 @@ export interface WorldEnvPublic {
   }
   /**
    * 世界级挂机预览（无角色灵根/功法标签）。
-   * 前端用它实时算「本片预计」，不额外请求。
+   * 前端用它实时算「本周天预计」，不额外请求。
    */
   idle_preview?: import('./idleEnv').IdleEnvBundle | null
 }

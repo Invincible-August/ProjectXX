@@ -4,7 +4,7 @@
 import { computed } from 'vue'
 import { useCharacterStore } from '../stores/character'
 import type { ActivitySnapshot } from '../types/activity'
-import { isProductiveDirection } from '../utils/idlePredict'
+import { isIdleBusyDirection, isProductiveDirection } from '../utils/idlePredict'
 
 /**
  * 本地兜底推导活动快照（服务端字段缺失时）。
@@ -16,7 +16,7 @@ function deriveLocalActivity(): ActivitySnapshot {
   const status = ch?.status ?? 'normal'
   const idle = ch?.idle_direction ?? 'none'
   const craftRunning = ch?.craft_jobs_summary?.running ?? 0
-  const productive = isProductiveDirection(idle)
+  const productive = isIdleBusyDirection(idle)
 
   let mode: ActivitySnapshot['mode'] = 'free'
   let modeLabel = '空闲'
@@ -34,13 +34,27 @@ function deriveLocalActivity(): ActivitySnapshot {
     modeLabel = '进阶中'
   } else if (productive) {
     mode = 'idle'
-    modeLabel = '修炼中'
+    modeLabel =
+      idle === 'sect_mining'
+        ? '采矿中'
+        : idle === 'spirit'
+          ? '修炼中'
+          : idle === 'body'
+            ? '淬体中'
+            : idle === 'crafting'
+              ? '制造业修炼中'
+              : '修炼中'
   } else if (craftRunning > 0) {
     mode = 'craft'
     modeLabel = `工坊进行中（${craftRunning}）`
   }
 
-  const stopIdleMsg = productive ? '修炼中不可操作，请先停止修炼' : null
+  const stopIdleMsg =
+    productive
+      ? idle === 'sect_mining'
+        ? '采矿中不可操作，请先结束采矿'
+        : '修炼中不可操作，请先停止修炼'
+      : null
   const craftMsg =
     craftRunning > 0 ? '工坊仍有进行中任务，请先完成后再修炼' : null
   const statusMsg =
@@ -56,12 +70,14 @@ function deriveLocalActivity(): ActivitySnapshot {
     can_start_craft: status === 'normal' && !productive,
     can_start_battle: status === 'normal' && !productive,
     can_breakthrough: status === 'normal' && !productive,
+    can_quench: status === 'normal' && !productive,
     can_start_tribulation: status === 'normal' && !productive,
     blockers: {
       enter_idle: statusMsg || craftMsg,
       start_craft: statusMsg || stopIdleMsg,
       start_battle: statusMsg || stopIdleMsg,
       breakthrough: statusMsg || stopIdleMsg,
+      quench: statusMsg || stopIdleMsg,
       start_tribulation: statusMsg || stopIdleMsg,
     },
   }
@@ -83,6 +99,9 @@ export function useActivityGate() {
   const canStartCraft = computed(() => activity.value.can_start_craft)
   const canStartBattle = computed(() => activity.value.can_start_battle)
   const canBreakthrough = computed(() => activity.value.can_breakthrough)
+  const canQuench = computed(
+    () => activity.value.can_quench ?? activity.value.can_breakthrough,
+  )
 
   function blockReason(
     key: keyof ActivitySnapshot['blockers'],
@@ -98,6 +117,7 @@ export function useActivityGate() {
     canStartCraft,
     canStartBattle,
     canBreakthrough,
+    canQuench,
     blockReason,
   }
 }

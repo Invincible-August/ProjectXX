@@ -64,6 +64,11 @@ _CHARACTER_TABLE_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
     ("sect_id", "INTEGER"),
     # M7 L7：性别 male|female（可空，存量补选）
     ("gender", "VARCHAR(16)"),
+    # 炼体九境（对照主修锻体→大乘）
+    ("body_temper_stage", "VARCHAR(32) NOT NULL DEFAULT 'refine_skin'"),
+    ("body_temper_layer", "INTEGER NOT NULL DEFAULT 1"),
+    ("body_temper_layer_label", "VARCHAR(32) NOT NULL DEFAULT 'layer_1'"),
+    ("body_temper_progress", "BIGINT NOT NULL DEFAULT 0"),
 )
 
 # inventory_items 表补列
@@ -261,6 +266,23 @@ _FACE_TRADE_SESSION_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
     ("peer_locked", "INTEGER NOT NULL DEFAULT 0"),
 )
 
+# M7-V+ 宗门深化：存量表补列
+_SECT_TABLE_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
+    ("grade", "VARCHAR(32) NOT NULL DEFAULT 'hut'"),
+    ("specialty", "VARCHAR(32)"),
+    ("announcement", "VARCHAR(256)"),
+    ("spirit_stone_pool", "BIGINT NOT NULL DEFAULT 0"),
+    ("buffs_json", "TEXT"),
+)
+
+_SECT_MEMBER_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
+    ("rank", "VARCHAR(32) NOT NULL DEFAULT 'laborer'"),
+    ("last_appoint_game_day", "INTEGER"),
+    ("salary_claimed_game_day", "INTEGER"),
+)
+
+_SECT_RANK_BACKFILL_MIGRATION_ID = "m7v_sect_rank_backfill_v1"
+
 
 def _patch_sqlite_table_columns(
     connection: Connection,
@@ -282,6 +304,82 @@ def _patch_sqlite_table_columns(
             text(f"ALTER TABLE {table} ADD COLUMN {column_name} {column_ddl}"),
         )
         logger.info("sqlite column patched table=%s column=%s", table, column_name)
+
+
+_SECT_FORMATION_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
+    ("attr_json", "TEXT"),
+)
+
+_SECT_HERB_PLOT_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
+    ("hosted", "BOOLEAN NOT NULL DEFAULT 0"),
+)
+
+
+def _patch_sqlite_sect_columns(connection: Connection) -> None:
+    """补齐宗门深化列（grade/specialty/rank 等）。"""
+    _patch_sqlite_table_columns(
+        connection,
+        table="sects",
+        patches=_SECT_TABLE_COLUMN_PATCHES,
+    )
+    _patch_sqlite_table_columns(
+        connection,
+        table="sect_members",
+        patches=_SECT_MEMBER_COLUMN_PATCHES,
+    )
+    _patch_sqlite_table_columns(
+        connection,
+        table="sect_formation_state",
+        patches=_SECT_FORMATION_COLUMN_PATCHES,
+    )
+    _patch_sqlite_table_columns(
+        connection,
+        table="sect_herb_plots",
+        patches=_SECT_HERB_PLOT_COLUMN_PATCHES,
+    )
+
+
+def _backfill_sect_member_ranks(connection: Connection) -> None:
+    """
+    将旧 role 映射到 M7-V+ rank，并同步 NPC 宗 grade/specialty。
+
+    旧映射：founder→founder，leader→leader，elder→outer_elder，member→outer_disciple。
+    """
+    if _schema_migration_applied(connection, _SECT_RANK_BACKFILL_MIGRATION_ID):
+        return
+    # 仅当 sect_members 表存在时执行
+    tables = {
+        row[0]
+        for row in connection.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'"),
+        ).fetchall()
+    }
+    if "sect_members" not in tables:
+        _record_schema_migration(connection, _SECT_RANK_BACKFILL_MIGRATION_ID)
+        return
+    mapping = (
+        ("founder", "founder"),
+        ("leader", "leader"),
+        ("elder", "outer_elder"),
+        ("member", "outer_disciple"),
+    )
+    for old_role, new_rank in mapping:
+        connection.execute(
+            text(
+                "UPDATE sect_members SET rank = :rank "
+                "WHERE role = :role AND (rank IS NULL OR rank = 'laborer' OR rank = :role)",
+            ),
+            {"rank": new_rank, "role": old_role},
+        )
+    # 创派/掌门：以 role 为准再写一遍（避免 laborer 默认挡住）
+    connection.execute(
+        text("UPDATE sect_members SET rank = 'founder' WHERE role = 'founder'"),
+    )
+    connection.execute(
+        text("UPDATE sect_members SET rank = 'leader' WHERE role = 'leader'"),
+    )
+    _record_schema_migration(connection, _SECT_RANK_BACKFILL_MIGRATION_ID)
+    logger.info("sect member rank backfill applied id=%s", _SECT_RANK_BACKFILL_MIGRATION_ID)
 
 
 def _patch_sqlite_dao_contest_columns(connection: Connection) -> None:
@@ -467,9 +565,11 @@ async def prepare_database(engine: AsyncEngine) -> None:
             await connection.run_sync(_patch_sqlite_missing_pet_columns)
             await connection.run_sync(_patch_sqlite_dao_contest_columns)
             await connection.run_sync(_patch_sqlite_face_trade_columns)
+            await connection.run_sync(_patch_sqlite_sect_columns)
             await connection.run_sync(_backfill_peak_major_realm)
             await connection.run_sync(_backfill_reincarnation_bonus_rows)
             await connection.run_sync(_ensure_schema_migrations_table)
+            await connection.run_sync(_backfill_sect_member_ranks)
             await connection.run_sync(_ensure_performance_indexes)
 
             def _maybe_migrate_m1_pool(conn: Connection) -> None:

@@ -1,11 +1,12 @@
 /**
  * M7 L4 聊天 Pinia store：频道 / 会话消息 / 发送 / WS 推送 / 轮询降级。
  *
- * 默认 ``session_ephemeral``：不拉服务端历史；退出登录 / 关闭浏览器清空本会话消息。
+ * 非私聊默认 ``session_ephemeral``；私聊走独立弹窗并拉服务端 history。
  */
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import {
+  clearDmChat,
   fetchChatChannels,
   fetchChatHistory,
   fetchPartyMe,
@@ -73,8 +74,14 @@ export const useChatStore = defineStore('chat', () => {
   const lastError = ref('')
   const dockOpen = ref(false)
   const draft = ref('')
-  /** 由 GET /chat/channels 下发；默认 true */
+  /** 由 GET /chat/channels 下发；默认 true（仅约束非私聊坞） */
   const sessionEphemeral = ref(true)
+  const dmHistoryLimit = ref(100)
+  /** 独立私聊弹窗 */
+  const dmDialogOpen = ref(false)
+  const dmChannelRef = ref<string | null>(null)
+  const dmMessages = ref<ChatMessageItem[]>([])
+  const dmDraft = ref('')
 
   let pollTimer: number | null = null
   let wsUnsub: (() => void) | null = null
@@ -86,6 +93,14 @@ export const useChatStore = defineStore('chat', () => {
 
   const activeChannel = computed(
     () => channels.value.find((c) => c.channel_ref === activeChannelRef.value) ?? null,
+  )
+
+  const dmChannels = computed(() =>
+    channels.value.filter((c) => c.channel_type === 'dm' && c.can_access && c.channel_ref),
+  )
+
+  const dmActiveChannel = computed(
+    () => channels.value.find((c) => c.channel_ref === dmChannelRef.value) ?? null,
   )
 
   /**
@@ -146,6 +161,10 @@ export const useChatStore = defineStore('chat', () => {
     lastError.value = ''
     dockOpen.value = false
     activeChannelRef.value = null
+    dmDialogOpen.value = false
+    dmChannelRef.value = null
+    dmMessages.value = []
+    dmDraft.value = ''
     party.value = null
     pendingInvites.value = []
     waitingInvite.value = null
@@ -178,6 +197,9 @@ export const useChatStore = defineStore('chat', () => {
     channels.value = envelope.data.items ?? []
     if (typeof envelope.data.session_ephemeral === 'boolean') {
       sessionEphemeral.value = envelope.data.session_ephemeral
+    }
+    if (typeof envelope.data.dm_history_limit === 'number') {
+      dmHistoryLimit.value = Math.max(1, Math.floor(envelope.data.dm_history_limit))
     }
     syncBadge(
       Number(envelope.data.unread_total ?? 0),
@@ -216,7 +238,11 @@ export const useChatStore = defineStore('chat', () => {
     loading.value = true
     lastError.value = ''
     try {
-      const envelope = await fetchChatHistory({ channel_ref: channelRef, limit: 50 })
+      const lim =
+        channelRef.startsWith('dm:')
+          ? dmHistoryLimit.value
+          : 50
+      const envelope = await fetchChatHistory({ channel_ref: channelRef, limit: lim })
       if (envelope.code !== 0 || !envelope.data) {
         messages.value = []
         const msg = envelope.message || `加载历史失败（code=${envelope.code}）`
@@ -243,6 +269,42 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  /**
+   * Load DM history into the dialog list (does not disturb dock ``messages``).
+   *
+   * @param channelRef - dm channel_ref
+   */
+  async function loadDmHistory(channelRef: string): Promise<string | null> {
+    loading.value = true
+    lastError.value = ''
+    try {
+      const envelope = await fetchChatHistory({
+        channel_ref: channelRef,
+        limit: dmHistoryLimit.value,
+      })
+      if (envelope.code !== 0 || !envelope.data) {
+        dmMessages.value = []
+        const msg = envelope.message || `加载私聊失败（code=${envelope.code}）`
+        lastError.value = msg
+        return msg
+      }
+      const items = (envelope.data.items ?? [])
+        .map((item) => normalizeChatMessage(item))
+        .filter((item): item is ChatMessageItem => item != null)
+      dmMessages.value = items
+      sessionMessagesByChannel.value = {
+        ...sessionMessagesByChannel.value,
+        [channelRef]: [...items],
+      }
+      void _syncAllChannelSubscriptions()
+      await markChatRead(channelRef)
+      await refreshChannels()
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function selectChannel(channelRef: string | null): Promise<void> {
     _persistActiveSessionMessages()
     activeChannelRef.value = channelRef
@@ -250,11 +312,22 @@ export const useChatStore = defineStore('chat', () => {
       messages.value = []
       return
     }
-    if (sessionEphemeral.value) {
-      await enterChannelLive(channelRef)
-    } else {
+    // 坞内不切私聊（私聊走弹窗）；若误传 dm 则仍拉历史
+    if (channelRef.startsWith('dm:') || !sessionEphemeral.value) {
       await loadHistory(channelRef)
+    } else {
+      await enterChannelLive(channelRef)
     }
+  }
+
+  /**
+   * Select a DM thread inside the dialog and load persisted history.
+   *
+   * @param channelRef - dm channel_ref
+   */
+  async function selectDm(channelRef: string): Promise<string | null> {
+    dmChannelRef.value = channelRef
+    return loadDmHistory(channelRef)
   }
 
   async function send(bodyZh?: string): Promise<string | null> {
@@ -490,6 +563,25 @@ export const useChatStore = defineStore('chat', () => {
           messages.value = [...messages.value, msg]
         }
       }
+      // 私聊弹窗当前会话
+      if (channelRef === dmChannelRef.value) {
+        if (!dmMessages.value.some((m) => m.id === msg.id)) {
+          dmMessages.value = [...dmMessages.value, msg]
+        }
+      }
+      return
+    }
+    if (envelope.type === WsType.CHAT_DM_CLEARED) {
+      const p = envelope.payload as { channel_ref?: string }
+      const cref = String(p.channel_ref || '')
+      if (!cref) return
+      const nextCache = { ...sessionMessagesByChannel.value }
+      delete nextCache[cref]
+      sessionMessagesByChannel.value = nextCache
+      if (dmChannelRef.value === cref) {
+        dmMessages.value = []
+      }
+      void refreshChannels()
       return
     }
     if (envelope.type === WsType.CHAT_UNREAD) {
@@ -579,11 +671,16 @@ export const useChatStore = defineStore('chat', () => {
    * 若当前未选频道，自动选中可进入的世界频道。
    */
   async function ensureWorldChannelSelected(): Promise<void> {
+    // 坞不再承载私聊：若当前误留在 dm，改回世界频
+    if (activeChannelRef.value?.startsWith('dm:')) {
+      activeChannelRef.value = null
+    }
     if (activeChannelRef.value) {
       const stillOk = channels.value.some(
         (c) =>
           c.channel_ref === activeChannelRef.value &&
           c.can_access &&
+          c.channel_type !== 'dm' &&
           Boolean(c.channel_ref),
       )
       if (stillOk) {
@@ -602,18 +699,25 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /**
-   * 打开聊天坞并切入与指定道友的私聊频。
+   * 打开独立私聊弹窗；可选预选道友。
    *
    * @param peerCharacterId - 对方角色 id
    */
-  async function openDm(peerCharacterId: number): Promise<string | null> {
-    const peerId = Number(peerCharacterId)
-    if (!peerId) return '对方无效'
+  async function openDmDialog(peerCharacterId?: number | null): Promise<string | null> {
     await startSessionListening()
-    dockOpen.value = true
-    startPollingFallback()
-    const dm = channels.value.find((c) => {
-      if (c.channel_type !== 'dm') return false
+    await refreshChannels()
+    dmDialogOpen.value = true
+    const peerId = Number(peerCharacterId || 0)
+    if (!peerId) {
+      // 无指定时：优先第一个有未读，否则第一个会话
+      const unread = dmChannels.value.find((c) => Number(c.unread) > 0)
+      const first = unread || dmChannels.value[0]
+      if (first?.channel_ref) {
+        return selectDm(first.channel_ref)
+      }
+      return null
+    }
+    const dm = dmChannels.value.find((c) => {
       if (Number(c.peer_character_id) === peerId) return true
       const parts = String(c.channel_ref || '').split(':')
       return parts[0] === 'dm' && parts.slice(1).map(Number).includes(peerId)
@@ -621,8 +725,94 @@ export const useChatStore = defineStore('chat', () => {
     if (!dm?.channel_ref) {
       return '尚未生成私聊频道，请确认已结为道友后重试'
     }
-    await selectChannel(dm.channel_ref)
-    return null
+    return selectDm(dm.channel_ref)
+  }
+
+  function closeDmDialog(): void {
+    dmDialogOpen.value = false
+  }
+
+  /**
+   * @deprecated 兼容旧调用：改为打开私聊弹窗
+   */
+  async function openDm(peerCharacterId: number): Promise<string | null> {
+    return openDmDialog(peerCharacterId)
+  }
+
+  /**
+   * Send in the active DM dialog thread.
+   */
+  async function sendDm(bodyZh?: string): Promise<string | null> {
+    const ch = dmActiveChannel.value
+    if (!ch?.channel_ref || !ch.can_send) {
+      return ch?.lock_reason_zh || '当前私聊不可发言'
+    }
+    const text = (bodyZh ?? dmDraft.value).trim()
+    if (!text) return '消息不可为空'
+    loading.value = true
+    try {
+      const envelope = await sendChatMessage({
+        channel_type: 'dm',
+        channel_ref: ch.channel_ref,
+        body_zh: text,
+        peer_character_id: ch.peer_character_id,
+        peer_name: ch.peer_name,
+      })
+      if (envelope.code !== 0 || !envelope.data) {
+        const msg = envelope.message || `发送失败（code=${envelope.code}）`
+        lastError.value = msg
+        return msg
+      }
+      dmDraft.value = ''
+      const msg = normalizeChatMessage(envelope.data.message)
+      if (msg) {
+        if (!dmMessages.value.some((m) => m.id === msg.id)) {
+          dmMessages.value = [...dmMessages.value, msg]
+        }
+        const cref = ch.channel_ref
+        const cached = sessionMessagesByChannel.value[cref] ?? []
+        if (!cached.some((m) => m.id === msg.id)) {
+          sessionMessagesByChannel.value = {
+            ...sessionMessagesByChannel.value,
+            [cref]: [...cached, msg],
+          }
+        }
+      }
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /**
+   * Clear current DM thread on server and locally.
+   */
+  async function clearDm(): Promise<string | null> {
+    const cref = dmChannelRef.value
+    if (!cref) return '未选择私聊会话'
+    loading.value = true
+    try {
+      const envelope = await clearDmChat({ channel_ref: cref })
+      if (envelope.code !== 0) {
+        const msg = envelope.message || `清空失败（code=${envelope.code}）`
+        lastError.value = msg
+        return msg
+      }
+      dmMessages.value = []
+      const nextCache = { ...sessionMessagesByChannel.value }
+      delete nextCache[cref]
+      sessionMessagesByChannel.value = nextCache
+      if (typeof envelope.data?.dm_unread_peers === 'number') {
+        syncBadge(
+          Number(envelope.data.unread_total ?? unreadTotal.value),
+          envelope.data.dm_unread_peers,
+        )
+      }
+      await refreshChannels()
+      return null
+    } finally {
+      loading.value = false
+    }
   }
 
   function closeDock(): void {
@@ -681,6 +871,13 @@ export const useChatStore = defineStore('chat', () => {
     messages,
     unreadTotal,
     dmUnreadPeers,
+    dmChannels,
+    dmDialogOpen,
+    dmChannelRef,
+    dmActiveChannel,
+    dmMessages,
+    dmDraft,
+    dmHistoryLimit,
     party,
     pendingInvites,
     waitingInvite,
@@ -693,8 +890,12 @@ export const useChatStore = defineStore('chat', () => {
     refreshChannels,
     refreshPartyMe,
     loadHistory,
+    loadDmHistory,
     selectChannel,
+    selectDm,
     send,
+    sendDm,
+    clearDm,
     createParty,
     inviteToParty,
     acceptPartyInvite,
@@ -707,6 +908,8 @@ export const useChatStore = defineStore('chat', () => {
     startSessionListening,
     openDock,
     openDm,
+    openDmDialog,
+    closeDmDialog,
     closeDock,
     clearSession,
     bindPageHideClear,

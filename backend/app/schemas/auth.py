@@ -260,3 +260,10 @@ class AuthMeResult(BaseModel):
     display_name: str
     has_character: bool
     created_at: datetime
+
+
+class ChangePasswordRequest(BaseModel):
+    """POST /auth/change-password。"""
+
+    old_password: str = Field(min_length=1, max_length=64)
+    new_password: str = Field(min_length=8, max_length=64)

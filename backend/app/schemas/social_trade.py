@@ -67,3 +67,10 @@ class FaceTradeLockRequest(BaseModel):
     """锁定己方面交报价（托管）。"""
 
     version: int = Field(ge=1, description="客户端持有的会话版本")
+
+
+class BazaarDealRequest(BaseModel):
+    """坊市购买或出售。"""
+
+    item_id: str = Field(min_length=1, description="物品目录 id")
+    quantity: int = Field(default=1, ge=1, description="数量")

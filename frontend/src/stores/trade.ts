@@ -5,6 +5,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import {
   bidAuction,
+  buyFromBazaar,
   buyListing,
   cancelListing,
   createAuction,
@@ -17,11 +18,14 @@ import {
   faceLock,
   faceOffer,
   faceReject,
+  fetchBazaar,
   listAuctions,
   listListings,
+  sellToBazaar,
 } from '../api/trade'
 import type {
   AuctionLot,
+  BazaarCatalogPayload,
   FaceSession,
   Listing,
   TradeItemLine,
@@ -35,6 +39,8 @@ export const useTradeStore = defineStore('trade', () => {
   const auctions = ref<AuctionLot[]>([])
   /** 当前面交会话（单会话工作台） */
   const faceSession = ref<FaceSession | null>(null)
+  /** NPC 坊市货架 */
+  const bazaar = ref<BazaarCatalogPayload | null>(null)
   const loading = ref(false)
   const lastMessage = ref('')
   const lastError = ref('')
@@ -489,10 +495,111 @@ export const useTradeStore = defineStore('trade', () => {
     faceSession.value = { ...s, peer_online: online }
   }
 
+  /** 刷新 NPC 坊市货架 */
+  async function refreshBazaar(): Promise<string | null> {
+    loading.value = true
+    lastError.value = ''
+    try {
+      const envelope = await fetchBazaar()
+      if (envelope.code !== 0 || !envelope.data) {
+        bazaar.value = null
+        const msg = envelope.message || `加载坊市失败（code=${envelope.code}）`
+        lastError.value = msg
+        return msg
+      }
+      bazaar.value = envelope.data
+      const ch = useCharacterStore().character
+      if (ch && typeof envelope.data.spirit_stones === 'number') {
+        useCharacterStore().applyCharacter({
+          ...ch,
+          spirit_stones: envelope.data.spirit_stones,
+        })
+      }
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /**
+   * 向坊市购买。
+   *
+   * @param itemId - 物品 id
+   * @param quantity - 数量
+   */
+  async function bazaarBuy(itemId: string, quantity: number): Promise<string | null> {
+    if (quantity < 1) {
+      const msg = '数量须为正整数'
+      lastError.value = msg
+      return msg
+    }
+    loading.value = true
+    try {
+      const envelope = await buyFromBazaar(itemId, quantity)
+      if (envelope.code !== 0 || !envelope.data) {
+        const msg = envelope.message || `购买失败（code=${envelope.code}）`
+        lastError.value = msg
+        return msg
+      }
+      if (envelope.data.catalog) {
+        bazaar.value = envelope.data.catalog
+      }
+      const ch = useCharacterStore().character
+      if (ch && typeof envelope.data.spirit_stones === 'number') {
+        useCharacterStore().applyCharacter({
+          ...ch,
+          spirit_stones: envelope.data.spirit_stones,
+        })
+      }
+      lastMessage.value = envelope.data.message || '购买成功'
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /**
+   * 向坊市出售换灵石。
+   *
+   * @param itemId - 物品 id
+   * @param quantity - 数量
+   */
+  async function bazaarSell(itemId: string, quantity: number): Promise<string | null> {
+    if (quantity < 1) {
+      const msg = '数量须为正整数'
+      lastError.value = msg
+      return msg
+    }
+    loading.value = true
+    try {
+      const envelope = await sellToBazaar(itemId, quantity)
+      if (envelope.code !== 0 || !envelope.data) {
+        const msg = envelope.message || `出售失败（code=${envelope.code}）`
+        lastError.value = msg
+        return msg
+      }
+      if (envelope.data.catalog) {
+        bazaar.value = envelope.data.catalog
+      }
+      const ch = useCharacterStore().character
+      if (ch && typeof envelope.data.spirit_stones === 'number') {
+        useCharacterStore().applyCharacter({
+          ...ch,
+          spirit_stones: envelope.data.spirit_stones,
+        })
+      }
+      lastMessage.value = envelope.data.message || '出售成功'
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     listings,
     auctions,
     faceSession,
+    bazaar,
     loading,
     lastMessage,
     lastError,
@@ -513,5 +620,8 @@ export const useTradeStore = defineStore('trade', () => {
     cancelFace,
     clearFaceSession,
     applyPresence,
+    refreshBazaar,
+    bazaarBuy,
+    bazaarSell,
   }
 })

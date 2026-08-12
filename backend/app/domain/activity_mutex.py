@@ -33,7 +33,10 @@ class Activity(str, Enum):
     """工坊开工；须先停修炼。"""
 
     BREAKTHROUGH = "breakthrough"
-    """突破 attempt；须先停修炼且非渡劫/引渡。"""
+    """修为突破 attempt；须先停修炼且非渡劫/引渡。"""
+
+    QUENCH = "quench"
+    """炼体淬体（晋炼体境）；互斥同突破。"""
 
     START_TRIBULATION = "start_tribulation"
     """开渡劫会话；开渡时清空 idle_direction。"""
@@ -52,16 +55,20 @@ ERR_SECRET_REALM = 40077  # 秘境占用（占位）
 
 def is_productive_idle(idle_direction: str | None) -> bool:
     """
-    是否处于本体修炼中。
+    是否处于本体挂机占用中（含采矿，与修灵/炼体/制造业同等互斥）。
 
     Args:
         idle_direction: 角色挂机方向。
 
     Returns:
-        True 表示 spirit/body/crafting。
+        True 表示 spirit/body/crafting/sect_mining。
     """
-    return (idle_direction or "none") in {"spirit", "body", "crafting"}
-
+    return (idle_direction or "none") in {
+        "spirit",
+        "body",
+        "crafting",
+        "sect_mining",
+    }
 
 def assert_can_perform(
     *,
@@ -154,9 +161,10 @@ def assert_can_perform(
         )
 
     if is_productive_idle(idle):
+        busy_label = "采矿" if idle == "sect_mining" else "修炼"
         raise AppError(
             code=ERR_STOP_IDLE_FIRST,
-            message=f"修炼中不可{_activity_label(activity)}，请先停止修炼",
+            message=f"{busy_label}中不可{_activity_label(activity)}，请先结束{busy_label}",
             http_status=409,
         )
 
@@ -174,6 +182,7 @@ def _activity_label(activity: Activity) -> str:
         Activity.START_BATTLE: "开战",
         Activity.START_CRAFT: "开工坊炼丹/炼器",
         Activity.BREAKTHROUGH: "突破",
+        Activity.QUENCH: "淬体",
         Activity.START_TRIBULATION: "进入渡劫",
         Activity.ENTER_SECRET_REALM: "进入秘境",
         Activity.ENTER_IDLE: "进入修炼",
@@ -231,9 +240,12 @@ def build_activity_snapshot(
         mode_label = "进阶中"
     elif productive:
         mode = "idle"
-        mode_label = {"spirit": "修灵中", "body": "炼体中", "crafting": "制造业挂机中"}.get(
-            idle, "修炼中",
-        )
+        mode_label = {
+            "spirit": "修炼中",
+            "body": "淬体中",
+            "crafting": "制造业修炼中",
+            "sect_mining": "采矿中",
+        }.get(idle, "修炼中")
     elif crafting > 0:
         mode = "craft"
         mode_label = f"工坊进行中（{crafting}）"
@@ -261,6 +273,7 @@ def build_activity_snapshot(
     can_start_craft, block_craft = _probe(Activity.START_CRAFT)
     can_start_battle, block_battle = _probe(Activity.START_BATTLE)
     can_breakthrough, block_bt = _probe(Activity.BREAKTHROUGH)
+    can_quench, block_quench = _probe(Activity.QUENCH)
     can_tribulation, block_trib = _probe(Activity.START_TRIBULATION)
 
     return {
@@ -274,12 +287,14 @@ def build_activity_snapshot(
         "can_start_craft": can_start_craft,
         "can_start_battle": can_start_battle,
         "can_breakthrough": can_breakthrough,
+        "can_quench": can_quench,
         "can_start_tribulation": can_tribulation,
         "blockers": {
             "enter_idle": block_enter_idle,
             "start_craft": block_craft,
             "start_battle": block_battle,
             "breakthrough": block_bt,
+            "quench": block_quench,
             "start_tribulation": block_trib,
         },
     }
