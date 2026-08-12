@@ -118,7 +118,7 @@ async function onSell(item: BazaarItem): Promise<void> {
               :max="tradeStore.bazaar?.max_qty_per_deal || 99"
               size="small"
               controls-position="right"
-              @update:model-value="(v) => setQty(row.item_id, Number(v))"
+              @update:model-value="(v: number | undefined) => setQty(row.item_id, Number(v))"
             />
           </template>
         </el-table-column>
@@ -176,7 +176,7 @@ async function onSell(item: BazaarItem): Promise<void> {
             :max="Math.min(row.owned, tradeStore.bazaar?.max_qty_per_deal || 99)"
             size="small"
             controls-position="right"
-            @update:model-value="(v) => setQty(row.item_id, Number(v))"
+            @update:model-value="(v: number | undefined) => setQty(row.item_id, Number(v))"
           />
           <el-button
             size="small"

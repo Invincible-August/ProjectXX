@@ -4,7 +4,7 @@
 import { computed } from 'vue'
 import { useCharacterStore } from '../stores/character'
 import type { ActivitySnapshot } from '../types/activity'
-import { isIdleBusyDirection, isProductiveDirection } from '../utils/idlePredict'
+import { isIdleBusyDirection } from '../utils/idlePredict'
 
 /**
  * 本地兜底推导活动快照（服务端字段缺失时）。
