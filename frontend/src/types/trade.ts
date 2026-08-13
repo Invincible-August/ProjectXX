@@ -137,21 +137,25 @@ export interface FacePendingPayload {
 
 export interface BazaarItem {
   item_id: string
+  label_zh: string
+  buy_price: number
+  sell_price: number
+  owned: number
+  item_type?: string
   name?: string
-  buy_price?: number
-  sell_price?: number
-  [key: string]: unknown
 }
 
 export interface BazaarCatalogPayload {
+  label_zh?: string
+  hint_zh?: string
+  max_qty_per_deal?: number
   items?: BazaarItem[]
+  inventory_sellable?: BazaarItem[]
   spirit_stones?: number
-  [key: string]: unknown
 }
 
 export interface BazaarDealResult {
   message?: string
   catalog?: BazaarCatalogPayload
   spirit_stones?: number
-  [key: string]: unknown
 }

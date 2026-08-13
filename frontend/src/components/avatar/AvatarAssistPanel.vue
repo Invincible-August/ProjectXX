@@ -13,7 +13,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  log: [message: string, level?: 'info' | 'success' | 'warning' | 'error']
+  log: [message: string, level?: 'info' | 'success' | 'warning' | 'system']
 }>()
 
 const avatarStore = useAvatarStore()

@@ -36,8 +36,8 @@ export function notifyInviteJump(opts: {
   duration?: number
   /** 去重键，如 ``party:invite:12`` */
   dedupeKey?: string
-  /** 先跳转，再后台刷新，避免点了却迟迟不跳 */
-  afterNavigate?: () => void | Promise<void>
+  /** 先跳转，再后台刷新，避免点了却迟迟不跳（允许返回值被忽略） */
+  afterNavigate?: () => unknown | Promise<unknown>
 }): void {
   const message = String(opts.message || '').trim()
   if (!message) return

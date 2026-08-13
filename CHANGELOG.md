@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- **修复前端生产构建类型错误（第二批）**：`inviteNotify.afterNavigate` 放宽返回类型；`BazaarCatalogPayload` 补全 `inventory_sellable` 等字段；`AvatarAssistPanel` 日志 level 与 `GameLogLevel` 对齐；`style.css` 尾注释改为合法 UTF-8（2026-08-13）
+
 - **ATTR v1.3 叠层封装 + 计划收口**：`domain/combat.py` 引入 `AdditiveSource` / `apply_aliases` / `public_combat_final_summary` / `engine_unit_core_from_final`；`CombatCalculator` 与面板同源；道友卡修正为 `magic_atk`/`magic_def`（消灭 `mag_atk` 分叉）；[`ATTR战斗属性占位设计.md`](./ATTR战斗属性占位设计.md) **v1.3**；[`开发计划.md`](./开发计划.md) **v3.2** / [`后续待完成.md`](./后续待完成.md) §0.1：M7 出口打磨收口，下一主线明确 **M8（ATTR-D02）**（2026-08-13）
 
 - **玩法壳 WS 长连接**：壳内切页不再反复「正在连接仙界…」；大厅首屏欢迎只一次；WS `connect` 幂等保活，登出/离开玩法壳才断开；重连后自动重订聊天房（2026-08-13）
