@@ -112,7 +112,7 @@ async def trade_face_invite(
     svc: TradeService = Depends(get_trade_service),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """发起面交（pending_invite）。"""
+    """发起交易（pending_invite）。"""
     return success(
         await svc.face_invite(
             current_user,
@@ -122,13 +122,31 @@ async def trade_face_invite(
     )
 
 
+@router.get("/face/pending", response_model=None)
+async def trade_face_pending(
+    svc: TradeService = Depends(get_trade_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """收到的待接受交易邀请（大厅邀请列表）。"""
+    return success(await svc.face_list_pending(current_user))
+
+
+@router.get("/face/invite-options", response_model=None)
+async def trade_face_invite_options(
+    svc: TradeService = Depends(get_trade_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """交易快捷选人：道友 / 道侣 / 同门 / 师徒。"""
+    return success(await svc.face_invite_options(current_user))
+
+
 @router.get("/face/{session_id}", response_model=None)
 async def trade_face_get(
     session_id: int,
     svc: TradeService = Depends(get_trade_service),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """面交状态。"""
+    """交易会话状态。"""
     return success(await svc.face_get(current_user, session_id))
 
 
@@ -138,7 +156,7 @@ async def trade_face_accept(
     svc: TradeService = Depends(get_trade_service),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """受邀方接受面交 → browsing。"""
+    """受邀方接受交易 → browsing。"""
     return success(await svc.face_accept(current_user, session_id))
 
 
@@ -148,7 +166,7 @@ async def trade_face_reject(
     svc: TradeService = Depends(get_trade_service),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """受邀方拒绝面交。"""
+    """受邀方拒绝交易。"""
     return success(await svc.face_reject(current_user, session_id))
 
 
@@ -159,7 +177,7 @@ async def trade_face_offer(
     svc: TradeService = Depends(get_trade_service),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """更新面交草稿报价（不托管）。"""
+    """更新交易草稿报价（不托管）。"""
     return success(
         await svc.face_set_offer(
             current_user,
@@ -167,6 +185,9 @@ async def trade_face_offer(
             items=[x.model_dump() for x in body.items],
             spirit_stones=body.spirit_stones,
             version=body.version,
+            vessel_offer=(
+                body.vessel_offer.model_dump() if body.vessel_offer is not None else None
+            ),
         ),
     )
 
@@ -191,7 +212,7 @@ async def trade_face_confirm(
     svc: TradeService = Depends(get_trade_service),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """确认面交（双方已锁定）。"""
+    """确认交易（双方已锁定）。"""
     return success(
         await svc.face_confirm(current_user, session_id, version=body.version),
     )
@@ -203,7 +224,7 @@ async def trade_face_cancel(
     svc: TradeService = Depends(get_trade_service),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """取消面交并退回已托管侧。"""
+    """取消交易并退回已托管侧。"""
     return success(await svc.face_cancel(current_user, session_id))
 
 

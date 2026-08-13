@@ -80,6 +80,8 @@ class Character(Base):
     tiandao_points: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # 待领取离线明细 JSON；无则 null
     pending_offline_json: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # 待领取事件日志 JSON（如师傅传授）；在线 WS 直推，离线攒至领取离线收益时展示
+    pending_event_logs_json: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     # 最近一次因离线帽截断的时刻（审计/展示）
     offline_capped_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -155,6 +157,24 @@ class Character(Base):
     )
     # M7 L7：道途阴阳（male|female）；存量可空，进双修前补选
     gender: Mapped[str | None] = mapped_column(String(16), nullable=True, default=None)
+
+    # 道友资料可见性：False=遮掩天机
+    friend_profile_visible: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+    )
+    # 离线时供道友查看的最近资料快照 JSON
+    friend_profile_snapshot_json: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        default=None,
+    )
+    friend_profile_snapshot_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        default=None,
+    )
 
     # M1 挂机切片锚点：创角时写入当前 UTC
     last_settled_at: Mapped[datetime] = mapped_column(

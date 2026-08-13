@@ -176,6 +176,13 @@ export interface CharacterPublic {
   combat?: CombatAttrBlock | null
   /** ATTR 生活属性块 */
   life?: LifeAttrBlock | null
+  /** 战斗体力（惰性恢复后）：left/cap/regen_per_minute/next_point_in_seconds */
+  battle_stamina?: {
+    left: number
+    cap: number
+    next_point_in_seconds?: number
+    regen_per_minute?: number
+  } | null
   /** M2：已投入当前档的境界进度（突破门槛） */
   realm_progress: number
   /** 最近跨境品阶键；无跨境为 none */
@@ -199,6 +206,13 @@ export interface CharacterPublic {
     idle_cap_hours?: number
   } | null
   offline_pending: OfflinePending | null
+  /** 待领取事件日志（师傅传授等）；有离线收益时随领取带回，否则前端 ack 清空 */
+  pending_event_logs?: Array<{
+    message: string
+    level?: string
+    source?: string
+    at?: string
+  }>
   technique_summary?: TechniqueSummaryItem[]
   constitution_summary?: ConstitutionSummary
   // --- M4 双线程成长 ---

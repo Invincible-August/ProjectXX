@@ -83,6 +83,7 @@ class CharacterService:
 
         from app.db.models.reincarnation_bonus import CharacterReincarnationBonus
         from app.domain.combat import (
+            AdditiveSource,
             PRIMARY_KEYS,
             assemble_combat_attr_block,
             assemble_life_attr_block,
@@ -139,11 +140,13 @@ class CharacterService:
                 primary[pk] = 0
 
         labels = {k: a.label_zh for k, a in cfg.attrs.items()}
+        attr_categories = {k: a.category for k, a in cfg.attrs.items()}
         # defaults：抗性/法攻等从 attrs.default 与顶层 defaults 合并
         defaults: dict[str, float] = dict(cfg.defaults)
         for key, adef in cfg.attrs.items():
             defaults.setdefault(key, float(adef.default))
 
+        allowed = tuple(cfg.entity_profiles.get(entity_kind) or ())
         combat = assemble_combat_attr_block(
             CombatAttrAssembleInput(
                 realm_phys_atk=realm_atk,
@@ -152,17 +155,28 @@ class CharacterService:
                 rein_mult=rein_mult,
                 grade_atk_mul=grade_atk_mul,
                 grade_hp_mul=grade_hp_mul,
-                technique_phys_atk=tech_atk,
-                technique_hp=tech_hp,
-                constitution_phys_atk=cons_atk,
-                constitution_hp=cons_hp,
+                additive_sources=(
+                    AdditiveSource(
+                        source_id="technique",
+                        label_zh="功法",
+                        amounts={"phys_atk": float(tech_atk), "hp": float(tech_hp)},
+                    ),
+                    AdditiveSource(
+                        source_id="constitution",
+                        label_zh="体质",
+                        amounts={"phys_atk": float(cons_atk), "hp": float(cons_hp)},
+                    ),
+                ),
                 primary=primary,
                 primary_map=dict(cfg.primary_map),
                 defaults=defaults,
                 labels=labels,
+                aliases=dict(cfg.aliases),
                 channels=dict(cfg.channels),
                 schema_version=cfg.schema_version,
                 entity_kind=entity_kind,
+                allowed_categories=allowed,
+                attr_categories=attr_categories,
                 growth={
                     "physique": int(growth_attrs.get("physique", 0) or 0),
                     "reincarnation_growth": float(
@@ -244,6 +258,7 @@ class CharacterService:
         final_hp: int | None = None,
         combat: dict | None = None,
         life: dict | None = None,
+        battle_stamina: dict | None = None,
         has_avatar: bool = False,
         avatar_summary: dict | None = None,
         divine_sense: dict | None = None,
@@ -266,6 +281,7 @@ class CharacterService:
         """将 ORM 实体转为对外 CharacterPublic。"""
         from app.domain.activity_mutex import build_activity_snapshot
         from app.domain.env_preview import parse_spirit_root_tags_json
+        from app.domain.event_logs import parse_pending_event_logs
         from app.services.grade_service import GradeService
         from app.services.idle_service import IdleService
 
@@ -428,6 +444,7 @@ class CharacterService:
             base_hp=final_hp if final_hp is not None else base_hp,
             combat=combat,
             life=life,
+            battle_stamina=battle_stamina,
             realm_progress=int(character.realm_progress),
             breakthrough_grade=grade_id,
             breakthrough_grade_name=grade_name,
@@ -450,6 +467,7 @@ class CharacterService:
                 "idle_cap_hours": offline_cap_hours_for_tier(character.membership_tier),
             },
             offline_pending=pending,
+            pending_event_logs=parse_pending_event_logs(character),
             technique_summary=technique_summary or [],
             constitution_summary=constitution_summary or {"equipped": []},
             has_avatar=has_avatar,
@@ -683,6 +701,41 @@ class CharacterService:
         except Exception:  # noqa: BLE001
             logger.exception("chat unread failed character_id=%s", character.id)
 
+        divine_sense = await avatar_svc.get_sense(character)
+        craft_jobs_summary = await craft_svc.jobs_summary(character.id)
+        inventory_count = await inv_svc.count_items(character.id)
+        pets_count = await pet_svc.count_pets(character.id)
+
+        # 惰性战斗体力：放在所有 await 之后，避免脏写触发 expire 导致 sync to_public 绿线错误
+        from app.services.stamina_service import StaminaService
+
+        battle_stamina = StaminaService(self._session).read(character)
+        if isinstance(life_block, dict):
+            final_life = dict(life_block.get("final") or {})
+            final_life["stamina"] = int(battle_stamina.get("left") or 0)
+            labels = dict(life_block.get("labels") or {})
+            labels["stamina"] = labels.get("stamina") or "战斗体力"
+            life_block = {**life_block, "final": final_life, "labels": labels}
+        await self._session.flush()
+        await self._session.refresh(character)
+        # refresh 清掉非 ORM 属性，重新挂永久加成摘要
+        if bonus_row is not None:
+            setattr(
+                character,
+                "_permanent_bonus_public",
+                {
+                    "initial_attr_bonus": float(bonus_row.initial_attr_bonus),
+                    "minor_growth_bonus": float(bonus_row.minor_growth_bonus),
+                    "major_growth_bonus": float(bonus_row.major_growth_bonus),
+                    "break_rate_bonus": float(bonus_row.break_rate_bonus),
+                    "lifetime_applied_growth": float(bonus_row.lifetime_applied_growth),
+                    "constitution_slots_bought": int(bonus_row.constitution_slots_bought),
+                    "spirit_root_slots_bought": int(bonus_row.spirit_root_slots_bought),
+                },
+            )
+        else:
+            setattr(character, "_permanent_bonus_public", {})
+
         return self.to_public(
             character,
             technique_summary=tech_sum,
@@ -692,12 +745,13 @@ class CharacterService:
             final_hp=final_hp,
             combat=combat_block,
             life=life_block,
+            battle_stamina=battle_stamina,
             has_avatar=avatar_panel is not None,
             avatar_summary=avatar_panel,
-            divine_sense=await avatar_svc.get_sense(character),
-            craft_jobs_summary=await craft_svc.jobs_summary(character.id),
-            inventory_count=await inv_svc.count_items(character.id),
-            pets_count=await pet_svc.count_pets(character.id),
+            divine_sense=divine_sense,
+            craft_jobs_summary=craft_jobs_summary,
+            inventory_count=inventory_count,
+            pets_count=pets_count,
             dual_idle_preview=dual_preview,
             tribulation=tribulation_summary,
             world_env=world_env,
@@ -818,6 +872,40 @@ class CharacterService:
             character,
             offline_pending=IdleService.parse_offline_pending(character),
         )
+
+    async def ack_pending_event_logs(self, user: User) -> dict:
+        """
+        确认并清空待领取事件日志（在线客户端已展示后调用）。
+
+        有离线 pending 时不在此清空，改由领取离线收益一并带回。
+
+        Args:
+            user: 当前用户。
+
+        Returns:
+            dict: ``cleared`` 条数与最新 ``character``。
+        """
+        from app.domain.event_logs import parse_pending_event_logs, take_pending_event_logs
+        from app.services.idle_service import IdleService
+
+        character = await self.get_by_user_id(user.id)
+        if character is None:
+            raise AppError(code=40005, message="尚未创建角色", http_status=404)
+        if IdleService.parse_offline_pending(character) is not None:
+            return {
+                "cleared": 0,
+                "skipped": True,
+                "character": self.public_to_dict(await self.enrich_public(character)),
+            }
+        before = len(parse_pending_event_logs(character))
+        take_pending_event_logs(character)
+        await self._session.flush()
+        await self._session.refresh(character)
+        return {
+            "cleared": before,
+            "skipped": False,
+            "character": self.public_to_dict(await self.enrich_public(character)),
+        }
 
 
 # ---------------------------------------------------------------------------

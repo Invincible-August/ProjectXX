@@ -1,5 +1,5 @@
 # =====================================================================
-# 用途：邮件与赠送（M7 L3）
+# 用途：邮件（M7 L3 · 附物发信并入邮件，原赠送日限仍用 gift 块）
 # 后台域：mail（content）
 # =====================================================================
 
@@ -7,24 +7,28 @@
 retain_days: 30
 # 未领附件过期策略：return_sender | destroy
 expire_unclaimed: return_sender
-# 单封附件物品行上限
-max_attachment_lines: 8
+# 单封附件物品种类上限（管理后台可调）
+max_attachment_lines: 6
 # 单封附件灵石上限（0=不限）
 max_attachment_spirit_stones: 1000000
 # 玩家信正文最大字数
 max_body_len: 500
 # 列表默认条数
 list_limit: 50
+# 宗门群发最低职位 order（掌门=9，含掌门/大长老/太上/祖师）
+sect_broadcast_min_rank_order: 9
+# 群发收件人上限
+broadcast_max_recipients: 100
 
-# 赠送（D9）
+# 附物发信日限（原 gift；附带道具/灵石时生效）
 gift:
-  # 日次数上限
+  # 日次数上限（按收件人次计）
   daily_count_cap: 20
   # 日灵石估价上限（物品按占位单价 spirit_value 累加 + 现金灵石）
   daily_spirit_value_cap: 50000
   # 物品缺省估价（无配置 spirit_value 时）
   default_item_spirit_value: 10
-  # 是否要求道友（L3 宗门友好度阈值延后，仅道友）
+  # 单发附物是否要求道友（群发除外）
   require_friend: true
-  # 赠送成功是否给发送方回执系统信
+  # 单发附物成功是否给发送方回执系统信
   receipt_to_sender: true

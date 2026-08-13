@@ -20,23 +20,18 @@ export interface FriendItem {
   peer_major_realm_name?: string | null
   /** 对方修灵池 */
   peer_cultivation_points?: number
-  /** 是否在线（WS / 开发假定） */
+  /** 是否在线（WS Hub 真实在线） */
   online?: boolean
-  /** 化身助战是否可邀 */
+  /** 化身是否可「邀请化身」（开关开 + 助战体力够 + 非忙碌） */
   assist_available?: boolean
 }
 
 /** GET /friends 载荷 */
 export interface FriendListPayload {
-  /** 已结交道友 */
   friends: FriendItem[]
-  /** 待我确认的申请 */
   incoming: FriendItem[]
-  /** 我发出的待确认申请 */
   outgoing: FriendItem[]
-  /** 活跃道友数 */
   friend_count: number
-  /** 上限（配置） */
   max_friends: number
 }
 
@@ -51,4 +46,38 @@ export interface FriendActionResult {
   message?: string
   friendship_id?: number
   friend_count?: number
+}
+
+/** GET/PUT /friends/privacy */
+export interface FriendPrivacyPayload {
+  friend_profile_visible: boolean
+  snapshot_at?: string | null
+  message?: string
+}
+
+/** GET /friends/profile/{id} */
+export interface FriendProfileCard {
+  character_id: number
+  name: string
+  major_realm: string
+  major_realm_name?: string
+  realm_stage: number
+  realm_stage_label?: string
+  realm_progress: number
+  cultivation_required?: number | null
+  cultivation_points: number
+  body_temper?: Record<string, unknown> | null
+  technique_summary: Array<Record<string, unknown>>
+  combat_final: {
+    phys_atk: number
+    magic_atk: number
+    hp: number
+    phys_def: number
+    magic_def: number
+    speed: number
+  }
+  life?: Record<string, unknown> | null
+  online: boolean
+  source: 'live' | 'snapshot' | 'fallback' | string
+  snapshot_at?: string | null
 }

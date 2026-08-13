@@ -8,6 +8,7 @@ import { ElMessage } from 'element-plus'
 import AuthSessionBar from '../components/AuthSessionBar.vue'
 import AvatarCondensePanel from '../components/avatar/AvatarCondensePanel.vue'
 import AvatarFeaturesPanel from '../components/avatar/AvatarFeaturesPanel.vue'
+import AvatarAssistPanel from '../components/avatar/AvatarAssistPanel.vue'
 import AvatarIdlePanel from '../components/avatar/AvatarIdlePanel.vue'
 import AvatarStaminaPanel from '../components/avatar/AvatarStaminaPanel.vue'
 import AvatarTransferPanel from '../components/avatar/AvatarTransferPanel.vue'
@@ -48,6 +49,9 @@ const workshopUnlocked = computed(
 )
 const soloUnlocked = computed(
   () => features.value.find((f) => f.feature_id === 'solo_battle')?.unlocked ?? false,
+)
+const friendAssistUnlocked = computed(
+  () => features.value.find((f) => f.feature_id === 'friend_assist')?.unlocked ?? false,
 )
 
 function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
@@ -166,6 +170,11 @@ onMounted(async () => {
           </el-card>
 
           <AvatarStaminaPanel v-if="avatar.stamina" :stamina="avatar.stamina" />
+          <AvatarAssistPanel
+            v-if="friendAssistUnlocked"
+            :avatar="avatar"
+            @log="pushLog"
+          />
           <AvatarIdlePanel :avatar="avatar" :features="features" @log="pushLog" />
           <AvatarTransferPanel :avatar="avatar" @log="pushLog" />
 

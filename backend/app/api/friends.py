@@ -1,4 +1,4 @@
-"""道友 HTTP 路由（M7 L2）。"""
+"""道友 HTTP 路由（M7 L2 · 含资料隐私与查看）。"""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends
 from app.core.deps import get_current_user, get_friend_service
 from app.db.models import User
 from app.schemas.common import success
-from app.schemas.social_trade import FriendApplyRequest
+from app.schemas.social_trade import FriendApplyRequest, FriendPrivacyUpdateRequest
 from app.services.friend_service import FriendService
 
 router = APIRouter(prefix="/friends", tags=["friends"])
@@ -20,6 +20,40 @@ async def friends_list(
 ) -> dict:
     """道友列表与申请。"""
     return success(await svc.list_friends(current_user))
+
+
+@router.get("/privacy", response_model=None)
+async def friends_privacy_get(
+    svc: FriendService = Depends(get_friend_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """读取本人道友资料可见开关。"""
+    return success(await svc.get_privacy(current_user))
+
+
+@router.put("/privacy", response_model=None)
+async def friends_privacy_put(
+    body: FriendPrivacyUpdateRequest,
+    svc: FriendService = Depends(get_friend_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """设置是否允许道友查看修为/功法/属性。"""
+    return success(
+        await svc.set_privacy(
+            current_user,
+            friend_profile_visible=body.friend_profile_visible,
+        ),
+    )
+
+
+@router.get("/profile/{character_id}", response_model=None)
+async def friends_profile(
+    character_id: int,
+    svc: FriendService = Depends(get_friend_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """查看道友资料（在线实时 / 离线快照；遮掩则 40130）。"""
+    return success(await svc.get_friend_profile(current_user, character_id))
 
 
 @router.post("", response_model=None)

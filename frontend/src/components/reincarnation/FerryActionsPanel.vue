@@ -179,8 +179,10 @@ async function onEnter(): Promise<void> {
         {{ cost }} {{ costLabel }}（当前持有 {{ currentStones }} {{ costLabel }}）
       </el-descriptions-item>
       <el-descriptions-item v-if="socialCosts" label="求援对照">
-        道友引渡 {{ socialCosts.friend_cost }} / 同门 {{ socialCosts.sect_cost }}
-        {{ costLabel }}（由救援者支付，低于自救）
+        普渡 {{ socialCosts.friend_cost }} / 亲友
+        {{ socialCosts.kin_cost ?? socialCosts.friend_cost }} / 同门
+        {{ socialCosts.sect_cost }}
+        {{ costLabel }}（由救援者在社交·引渡支付）
       </el-descriptions-item>
       <el-descriptions-item
         v-if="(ferry?.self_rescue_cooldown_total_seconds ?? 0) > 0"

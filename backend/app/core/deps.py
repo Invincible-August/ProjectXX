@@ -52,6 +52,7 @@ from app.services.sect_service import SectService
 from app.services.sect_org_service import SectOrgService
 from app.services.sect_facility_service import SectFacilityService
 from app.services.friend_service import FriendService
+from app.services.bond_service import BondService
 from app.services.trade_service import TradeService
 from app.services.mail_service import MailService
 from app.services.chat_service import ChatService
@@ -423,6 +424,11 @@ def get_friend_service(session: AsyncSession = Depends(get_db)) -> FriendService
     return FriendService(session)
 
 
+def get_bond_service(session: AsyncSession = Depends(get_db)) -> BondService:
+    """提供请求级 ``BondService``（道侣/炉鼎）。"""
+    return BondService(session)
+
+
 def get_trade_service(session: AsyncSession = Depends(get_db)) -> TradeService:
     """提供请求级 ``TradeService``（M7 L2 交易）。"""
     return TradeService(session)
@@ -500,6 +506,7 @@ __all__ = [
     "get_sect_org_service",
     "get_sect_facility_service",
     "get_friend_service",
+    "get_bond_service",
     "get_trade_service",
     "get_mail_service",
     "get_chat_service",

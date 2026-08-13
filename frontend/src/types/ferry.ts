@@ -3,13 +3,15 @@
  */
 import type { CharacterPublic } from './character'
 
-/** 道友/同门引渡成本摘要（救援者支付） */
+/** 道友/同门/亲友引渡成本摘要（救援者支付） */
 export interface SocialRescueCosts {
   same_region_stub?: boolean
   friend_cost: number
+  kin_cost?: number
   sect_cost: number
   self_rescue_cost: number
   friend_cheaper_by?: number
+  kin_cheaper_by?: number
   sect_cheaper_by?: number
   payer_label_zh?: string
 }
@@ -38,9 +40,32 @@ export interface FerryPublic {
   social_rescue?: SocialRescueCosts
 }
 
+/** 引渡救援类别 */
+export type FerryRescueCategory = 'universal' | 'sect' | 'kin'
+
+/** 可救援目标 */
+export interface FerryRescueTarget {
+  character_id: number
+  name: string
+  major_realm?: string | null
+  major_realm_name?: string | null
+  relations: string[]
+  relation_labels_zh: string[]
+  deadline_at?: string | null
+  rescue_mode: 'friend' | 'sect' | 'kin' | string
+}
+
+/** GET /ferry/rescue-targets */
+export interface FerryRescueTargetsPayload {
+  category: FerryRescueCategory | string
+  category_label_zh: string
+  items: FerryRescueTarget[]
+  costs: SocialRescueCosts
+}
+
 /** POST /ferry/rescue */
 export interface FerryRescueRequest {
-  mode: 'friend' | 'sect'
+  mode: 'friend' | 'sect' | 'kin'
   target_character_id?: number | null
   target_name?: string | null
 }

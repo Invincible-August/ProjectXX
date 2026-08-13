@@ -3,16 +3,15 @@
 > 依据：`开发计划.md` **§0.6.2** · `project修仙.md` §4 / §7 / §23（GDD **不写公式**，本文件写 **字段与叠层契约**）· 现行 `build_combat_stats` / 自走棋引擎 / 灵宠面板  
 > 目标：锁死 **统一属性 schema**（战斗 + 非战斗）、**承载实体清单**、**人物面板派生层**、**来源拆解与叠乘顺序**；数值用占位曲线即可跑通；**正式曲线与满表 → M13 填数，不再重设计字段**  
 > 对应延后项：**ATTR-D01**（本文消化设计）；喂入装备/傀儡 → **ATTR-D02（M8）**；野怪满模板 → **ATTR-D03（M9）**；满曲线 → **M13**  
-> 版本：v1.2 · 2026-08-12  
-> **不单开属性里程碑**：ATTR-D01 已作为 P2 竖切落地（大厅嵌入，无独立路由）
-
+> 版本：v1.3 · 2026-08-13  
+> **不单开属性里程碑**：ATTR-D01 已作为 P2 竖切落地（大厅嵌入，无独立路由）；v1.3 强化 domain 叠层封装与对外摘要键统一
 ---
 
 ## 0. 与 M13 的边界（必读）
 
 | 阶段 | 做什么 | 不做什么 |
 | --- | --- | --- |
-| **现在（ATTR-D01）** | **已落地**：字段名、中文 label、实体适用面、叠层、面板拆解；YAML/ADM；`build_combat_attrs` + `CharacterPublic` | 追求平衡的正式曲线 |
+| **现在（ATTR-D01）** | **已落地**：字段名、中文 label、实体适用面、叠层、面板拆解；YAML/ADM；`build_combat_attrs` + `CharacterPublic`；**v1.3** domain `AdditiveSource` 封装 | 追求平衡的正式曲线 |
 | **M8（ATTR-D02）** | 装备/丹药/符箓/傀儡 **写入同一 schema**；打开 IDLE-R01 / DICE-R01 通道开关 | 把装备数值调到终局 |
 | **M9（ATTR-D03）** | 野怪/NPC/Boss **挂同一 schema 的模板行** | AI 行为 |
 | **M13** | 替换 `realms.yaml` / 成长表 / 词条系数等为 **正式曲线与全量表** | **重新发明属性字段或另起第二套面板** |
@@ -525,14 +524,15 @@ ADM 域：`combat_attrs`（或并入 `realms` 高危说明）；字段一律 `la
 
 | 位置 | 动作 |
 | --- | --- |
-| `domain/combat.py` | `CombatStats` → `CombatAttrBlock`（+ 别名 `atk`/`defense`） |
-| `CharacterService.build_combat_stats` | 升级为 `build_combat_attrs` / `build_life_attrs` |
-| `autochess` unit 构建 | 读 final 核心键；`atk`←`phys_atk` |
-| 前端 `CharacterPanel` | 分栏：战斗 / 抗性 / 根基 / 生活；可折叠 breakdown |
-| 怪/Boss/大阵模板 | 同注册表校验 |
-| 单测 | 同源字段；别名；通道关闭；entity_profile 裁剪 |
+| `domain/combat.py` | **权威叠层**：`AdditiveSource` + `assemble_combat_attr_block`；`apply_aliases` / `public_combat_final_summary` / `engine_unit_core_from_final`；`CombatCalculator` 委托同一路径 |
+| `CharacterService.build_combat_attrs` | 读 YAML + 贡献源 → domain 组装；`entity_profiles` 裁剪 labels |
+| `FriendService` 资料卡 | `combat_final` **必须**用 `magic_atk`/`magic_def`（禁止 `mag_atk` 分叉） |
+| `autochess` unit 构建 | 读 final 核心键；`atk`←`phys_atk`（可经 `engine_unit_core_from_final`） |
+| 前端 `CharacterPanel` / 道友卡 | 分栏：战斗 / 抗性 / 根基 / 生活；键名与 schema 一致 |
+| 怪/Boss/大阵模板 | 同注册表校验（→ ATTR-D03） |
+| 单测 | `test_combat_attrs`：同源字段；别名；通道关闭；AdditiveSource；对外摘要 |
 
-**实现优先级建议**：不阻塞 M7 社交主线；可作为 **P2 并行小竖切**（先 schema YAML + 面板分栏，不改伤害）。
+**实现优先级建议**：不阻塞 M7 社交主线；可作为 **P2 并行小竖切**（先 schema YAML + 面板分栏，不改伤害）。**v1.3 已落地封装**；喂装备 → ATTR-D02（M8）。
 
 ---
 
@@ -556,8 +556,8 @@ ADM 域：`combat_attrs`（或并入 `realms` 高危说明）；字段一律 `la
 
 | ID | 本文后状态 | 说明 |
 | --- | --- | --- |
-| **ATTR-D01** | **已消化** | `combat_attrs.yaml` + `build_combat_attrs` + 面板；契约以本文 **v1.2** 为准 |
-| **ATTR-D02** | 待做 · M8 | 打开 equipment/puppet 通道 |
+| **ATTR-D01** | **已消化** | `combat_attrs.yaml` + `build_combat_attrs` + 面板；契约以本文 **v1.3** 为准 |
+| **ATTR-D02** | 待做 · M8 | 打开 equipment/puppet 通道（`AdditiveSource` 已预留） |
 | **ATTR-D03** | 待做 · M9 | 怪物/NPC/Boss 模板满字段 |
 | **M13 AO1** | 填正式曲线 | **禁止**改键名而无迁移说明 |
 
@@ -570,6 +570,7 @@ ADM 域：`combat_attrs`（或并入 `realms` 高危说明）；字段一律 `la
 | 2026-08-11 | **v1.0**：澄清 M13=填数非设计；锁 CombatAttrBlock、叠层、五类映射、面板 breakdown、ADM 注册表占位 |
 | 2026-08-12 | **v1.1**：实体扩至玩家/化身/灵宠/傀儡/NPC/怪/Boss/宗门大阵；战斗键拆物法攻防+命中闪避+七维抗性+力敏智悟根；新增 `LifeAttrBlock`（体力/心魔天劫抗/吐纳/耐力/灵巧/精密/心性）；`atk`/`defense` 别名锁定；适用面矩阵与 `primary_map` |
 | 2026-08-12 | **v1.2**：ATTR-D01 代码落地——`combat_attrs.yaml`、ADM 域、`build_combat_attrs`/`LifeAttrBlock`、`CharacterPublic.combat`+`life`、`GET /characters/me/combat`、大厅分栏与 breakdown；单测 `test_combat_attrs` |
+| 2026-08-13 | **v1.3**：domain 叠层抽象——`AdditiveSource` 泛化加算、主键映射泛化进任意战斗键、`apply_aliases` / `public_combat_final_summary` / `engine_unit_core_from_final`；`CombatCalculator` 与面板同源；道友卡修正为 `magic_atk`/`magic_def`（消灭 `mag_atk` 分叉）；`entity_profiles` 裁剪 labels |
 
 ---
 

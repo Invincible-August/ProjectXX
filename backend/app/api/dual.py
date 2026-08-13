@@ -44,8 +44,10 @@ async def dual_invite(
             current_user,
             technique_id=body.technique_id,
             target_character_id=body.target_character_id,
-            target_name=body.target_name,
+            bond_kind=body.bond_kind,
+            inviter_role=body.inviter_role,
             dice_seed=body.dice_seed,
+            target_name=body.target_name,
         ),
     )
 
@@ -82,6 +84,26 @@ async def dual_settle(
     return success(await svc.settle(current_user, session_id))
 
 
+@router.post("/{session_id}/undress", response_model=None)
+async def dual_undress(
+    session_id: int,
+    svc: DualCultivationService = Depends(get_dual_cultivation_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """受邀方宽衣。"""
+    return success(await svc.undress(current_user, session_id))
+
+
+@router.post("/{session_id}/start", response_model=None)
+async def dual_start(
+    session_id: int,
+    svc: DualCultivationService = Depends(get_dual_cultivation_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """邀请方开始双修（高潮循环并结算）。"""
+    return success(await svc.start(current_user, session_id))
+
+
 @router.post("/{session_id}/cancel", response_model=None)
 async def dual_cancel(
     session_id: int,
@@ -95,9 +117,9 @@ async def dual_cancel(
 @router.get("/ranks", response_model=None)
 async def dual_ranks(
     board: str | None = Query(default=None),
-    limit: int = Query(default=20, ge=1, le=100),
+    limit: int = Query(default=100, ge=1, le=100),
     svc: DualCultivationService = Depends(get_dual_cultivation_service),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """四榜。"""
+    """时长榜（默认前 100）。"""
     return success(await svc.ranks(current_user, board=board, limit=limit))

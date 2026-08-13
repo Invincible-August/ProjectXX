@@ -7,7 +7,9 @@ import type { ApiResponse } from '../types/api'
 import type {
   FerryMutationResult,
   FerryPublic,
+  FerryRescueCategory,
   FerryRescueRequest,
+  FerryRescueTargetsPayload,
 } from '../types/ferry'
 
 /** GET /ferry/me */
@@ -17,6 +19,25 @@ export async function fetchFerry(): Promise<ApiResponse<FerryPublic | null>> {
     return response.data
   } catch (error: unknown) {
     return envelopeFromAxiosError<FerryPublic | null>(error)
+  }
+}
+
+/**
+ * GET /ferry/rescue-targets — 按类别列出待引渡目标。
+ *
+ * @param category - universal | sect | kin
+ */
+export async function fetchRescueTargets(
+  category: FerryRescueCategory = 'universal',
+): Promise<ApiResponse<FerryRescueTargetsPayload>> {
+  try {
+    const response = await http.get<ApiResponse<FerryRescueTargetsPayload>>(
+      '/ferry/rescue-targets',
+      { params: { category } },
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
   }
 }
 
@@ -33,7 +54,7 @@ export async function selfRescue(): Promise<ApiResponse<FerryMutationResult>> {
 }
 
 /**
- * POST /ferry/rescue — 道友/同门引渡（救援者支付）。
+ * POST /ferry/rescue — 普渡/同门/亲友引渡（救援者支付）。
  *
  * @param body - mode + 目标道号或角色 id
  */

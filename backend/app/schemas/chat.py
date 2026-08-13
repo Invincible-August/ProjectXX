@@ -30,9 +30,11 @@ class ChatDmClearRequest(BaseModel):
 
 
 class PartyActionRequest(BaseModel):
-    """组队 / 邀请 / 应答 / 离队 / 踢人。"""
+    """组队 / 邀请 / 应答 / 离队 / 踢人 / 转团队。"""
 
-    action: str = Field(description="create|invite|accept|reject|leave|kick")
+    action: str = Field(
+        description="create|invite|accept|reject|leave|kick|convert_to_team|convert_to_party",
+    )
     peer_character_id: int | None = None
     peer_name: str | None = None
     # accept / reject 时必填

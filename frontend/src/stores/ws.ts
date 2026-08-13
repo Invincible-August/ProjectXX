@@ -112,6 +112,11 @@ export const useWsStore = defineStore('ws', () => {
       status.value = next as WsConnectionStatus
       if (detail) lastError.value = detail
       seq.value = client.seq
+      if (next === 'open') {
+        void import('./gameLog').then(({ useGameLogStore }) => {
+          useGameLogStore().announceRealmLinked()
+        })
+      }
       if (next === 'reconnecting' || (next === 'closed' && detail)) {
         const now = Date.now()
         if (now - lastDisconnectToastAt > 8_000) {

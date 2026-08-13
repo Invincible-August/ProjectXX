@@ -1,6 +1,9 @@
 <script setup lang="ts">
 /**
  * 根壳：玩法页显示 WorldClockBar + WsStatusBadge + ChatDock；具体页面由 <RouterView /> 渲染。
+ *
+ * WS 为玩法壳级长连接：壳内切页只 ``connect()`` 幂等保活，不反复断连；
+ * 离开玩法壳（登录/创角等）或登出才断开。
  */
 import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
@@ -9,6 +12,7 @@ import WsStatusBadge from './components/layout/WsStatusBadge.vue'
 import ChatDock from './components/layout/ChatDock.vue'
 import DmDialog from './components/social/DmDialog.vue'
 import FerryDeathDialog from './components/reincarnation/FerryDeathDialog.vue'
+import { useCharacterStore } from './stores/character'
 import { useChatStore } from './stores/chat'
 import { useWorldStore } from './stores/world'
 import { useWsStore } from './stores/ws'
@@ -17,19 +21,20 @@ const route = useRoute()
 const worldStore = useWorldStore()
 const wsStore = useWsStore()
 const chatStore = useChatStore()
+const characterStore = useCharacterStore()
 
 const showWorldBar = computed(() => Boolean(route.meta.showWorldBar))
 
-// 进入玩法壳时开环境轮询 + WS；离开时停（避免登录页空转）
+// 进入玩法壳：环境轮询 + WS 长连接 + 挂机 sync；壳内路由切换不触发本 watch
 watch(
   showWorldBar,
   (show) => {
+    characterStore.setPlayShellActive(show)
     if (show) {
       worldStore.startPoll()
+      // 已 OPEN/CONNECTING 时 connect 为空操作，保持长连接
       wsStore.connect()
-      // 关浏览器 / 关标签时清空本会话聊天与已结束机缘本地态
       chatStore.bindPageHideClear()
-      // 进玩法壳即开始收齐各频道消息（不依赖聊天坞打开）
       void chatStore.startSessionListening()
     } else {
       worldStore.stopPoll()

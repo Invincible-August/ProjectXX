@@ -29,9 +29,19 @@ export const WsType = {
   PARTY_INVITE: 'party.invite',
   PARTY_UPDATE: 'party.update',
   PRESENCE_CHANGED: 'presence.changed',
+  FRIEND_REQUEST: 'friend.request',
+  FRIEND_UPDATE: 'friend.update',
+  BOND_REQUEST: 'bond.request',
+  BOND_UPDATE: 'bond.update',
+  DUAL_INVITE: 'dual.invite',
+  DUAL_UPDATE: 'dual.update',
+  FACE_INVITE: 'face.invite',
+  FACE_UPDATE: 'face.update',
   HERITAGE_CREATED: 'heritage.created',
   HERITAGE_CLAIMED: 'heritage.claimed',
   HERITAGE_EXPIRED: 'heritage.expired',
+  /** 事件日志直推（师傅传授等）；在线徒弟写入大厅日志 */
+  GAME_LOG: 'game.log',
 } as const
 
 export type WsTypeValue = (typeof WsType)[keyof typeof WsType]

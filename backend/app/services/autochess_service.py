@@ -506,7 +506,7 @@ class AutochessService:
                     character,
                     action_key="solo_battle",
                 )
-        # 道友助战客串：开战扣主人化身 stamina（action_key=assist_battle）
+        # 道友助战客串：开战扣主人「助战专用体力」（与探索 stamina 隔离）
         await self._spend_guest_assist_actions(character, preset_units)
         formation = self._formations.get_formation_def(preset.formation_id, character)
         units = await self._attacker_units(character, preset_units)
@@ -523,13 +523,14 @@ class AutochessService:
         preset_units: list[dict[str, Any]],
     ) -> None:
         """
-        PVE 开战：对编成中每位客串化身扣主人 ``assist_battle`` 体力/日行动。
-
-        奖励仍归借用人（攻方）；此处只扣主人化身资源。
+        PVE 开战：对编成中客串化身扣主人「助战专用体力」。
         """
-        from app.services.avatar_assist_service import parse_guest_unit_uid
+        from app.services.avatar_assist_service import (
+            AvatarAssistService,
+            parse_guest_unit_uid,
+        )
 
-        av_svc = AvatarService(self._session)
+        assist_svc = AvatarAssistService(self._session)
         seen_avatar_ids: set[int] = set()
         for unit in preset_units:
             guest_ids = parse_guest_unit_uid(str(unit.get("unit_uid", "")))
@@ -543,11 +544,7 @@ class AutochessService:
             owner_ch = await self._session.get(Character, int(owner_id))
             if guest_row is None or owner_ch is None:
                 raise AppError(code=40057, message="客串化身或主人不存在", http_status=400)
-            av_svc.spend_avatar_action(
-                guest_row,
-                owner_ch,
-                action_key="assist_battle",
-            )
+            assist_svc.spend_assist_battle(guest_row, owner_ch)
 
     @staticmethod
     def _reject_guest_units(preset_units: list[dict[str, Any]], *, mode: str) -> None:
@@ -762,6 +759,13 @@ class AutochessService:
 
         character.updated_at = current_time
         await self._session.flush()
+        # 普通 PVE：战斗结束后客串化身自动离队（秘境整场结束另调 end_for_secret_realm）
+        from app.services.avatar_assist_service import AvatarAssistService
+
+        await AvatarAssistService(self._session).end_active_for_borrower(
+            character.id,
+            reason="pve_battle_end",
+        )
         await self._session.refresh(character)
 
         logger.info(

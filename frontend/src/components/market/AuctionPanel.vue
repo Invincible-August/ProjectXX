@@ -6,6 +6,7 @@ import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useTradeStore } from '../../stores/trade'
 import type { AuctionLot } from '../../types/trade'
+import { parseNonNegInt } from '../../utils/intMoney'
 
 const emit = defineEmits<{
   log: [message: string, level?: 'info' | 'success' | 'warning' | 'system']
@@ -40,12 +41,17 @@ function offerSummary(lot: AuctionLot): string {
 
 async function onCreate(): Promise<void> {
   if (busy.value) return
+  const start = parseNonNegInt(formStart.value)
+  if (start === null || start < 1) {
+    ElMessage.warning('起拍灵石须为 ≥ 1 的整数')
+    return
+  }
   busy.value = true
   try {
     const err = await tradeStore.createLot(
       formItemId.value,
       Number(formQty.value),
-      Number(formStart.value),
+      start,
       formDuration.value ?? null,
     )
     if (err) {
@@ -63,7 +69,11 @@ async function onCreate(): Promise<void> {
 
 async function onBid(lot: AuctionLot): Promise<void> {
   if (busy.value) return
-  const amount = Number(bidAmounts.value[lot.id] ?? lot.current_price)
+  const amount = parseNonNegInt(bidAmounts.value[lot.id] ?? lot.current_price)
+  if (amount === null || amount < 1) {
+    ElMessage.warning('出价灵石须为 ≥ 1 的整数')
+    return
+  }
   busy.value = true
   try {
     const err = await tradeStore.bid(lot.id, amount)
@@ -106,7 +116,9 @@ async function onBid(lot: AuctionLot): Promise<void> {
       <el-input-number v-model="formQty" :min="1" size="small" />
       <el-input-number
         v-model="formStart"
-        :min="1"
+        :min="0"
+        :step="1"
+        :precision="0"
         size="small"
         :controls="false"
         placeholder="起拍"
@@ -145,7 +157,9 @@ async function onBid(lot: AuctionLot): Promise<void> {
         <div class="actions">
           <el-input-number
             v-model="bidAmounts[lot.id]"
-            :min="lot.current_price"
+            :min="0"
+            :step="1"
+            :precision="0"
             size="small"
             :controls="false"
             placeholder="出价"

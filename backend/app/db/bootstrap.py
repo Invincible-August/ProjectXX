@@ -37,6 +37,7 @@ _CHARACTER_TABLE_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
     ("membership_expires_at", "DATETIME"),
     ("tiandao_points", "INTEGER NOT NULL DEFAULT 0"),
     ("pending_offline_json", "TEXT"),
+    ("pending_event_logs_json", "TEXT"),
     ("offline_capped_at", "DATETIME"),
     # M3 体力 / 试炼傀儡
     ("stamina", "INTEGER NOT NULL DEFAULT 120"),
@@ -69,6 +70,10 @@ _CHARACTER_TABLE_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
     ("body_temper_layer", "INTEGER NOT NULL DEFAULT 1"),
     ("body_temper_layer_label", "VARCHAR(32) NOT NULL DEFAULT 'layer_1'"),
     ("body_temper_progress", "BIGINT NOT NULL DEFAULT 0"),
+    # 道友资料隐私 / 离线快照
+    ("friend_profile_visible", "BOOLEAN NOT NULL DEFAULT 1"),
+    ("friend_profile_snapshot_json", "TEXT"),
+    ("friend_profile_snapshot_at", "DATETIME"),
 )
 
 # inventory_items 表补列
@@ -103,6 +108,9 @@ _AVATAR_TABLE_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
     ("daily_actions_day", "VARCHAR(16) NOT NULL DEFAULT ''"),
     ("stamina_recovered_at", "DATETIME"),
     ("assist_friends_enabled", "INTEGER NOT NULL DEFAULT 0"),
+    ("assist_stamina", "INTEGER NOT NULL DEFAULT 0"),
+    ("assist_stamina_recovered_at", "DATETIME"),
+    ("assist_stamina_locked", "INTEGER NOT NULL DEFAULT 0"),
 )
 
 
@@ -544,6 +552,75 @@ def _ensure_performance_indexes(connection: Connection) -> None:
             logger.debug("skip index ensure sql=%s", sql[:80], exc_info=True)
 
 
+def _patch_sqlite_party_columns(connection: Connection) -> None:
+    """补齐 party_sessions.kind（队伍|团队）。"""
+    _patch_sqlite_table_columns(
+        connection,
+        table="party_sessions",
+        patches=(("kind", "VARCHAR(16) NOT NULL DEFAULT 'party'"),),
+    )
+
+
+def _patch_sqlite_dual_cultivation_columns(connection: Connection) -> None:
+    """补齐双修会话：道侣/炉鼎关系、角色位、强制接纳。"""
+    _patch_sqlite_table_columns(
+        connection,
+        table="dual_cultivation_sessions",
+        patches=(
+            ("bond_kind", "VARCHAR(16)"),
+            ("inviter_role", "VARCHAR(16) NOT NULL DEFAULT 'number_one'"),
+            ("auto_forced", "BOOLEAN NOT NULL DEFAULT 0"),
+            ("undress_expire_at", "DATETIME"),
+            ("invitee_undressed_at", "DATETIME"),
+            ("started_at", "DATETIME"),
+        ),
+    )
+
+
+def _patch_sqlite_character_bond_columns(connection: Connection) -> None:
+    """补齐炉鼎主人字段与期限。"""
+    _patch_sqlite_table_columns(
+        connection,
+        table="character_bonds",
+        patches=(
+            ("owner_character_id", "INTEGER"),
+            ("expires_at", "DATETIME"),
+        ),
+    )
+
+
+def _patch_sqlite_mentor_columns(connection: Connection) -> None:
+    """补齐师徒日课 / 传授 / 请学 / 亲传字段。"""
+    _patch_sqlite_table_columns(
+        connection,
+        table="mentor_bonds",
+        patches=(
+            ("is_direct", "BOOLEAN NOT NULL DEFAULT 0"),
+            ("direct_set_day_key", "VARCHAR(16)"),
+            ("direct_cleared_day_key", "VARCHAR(16)"),
+        ),
+    )
+    _patch_sqlite_table_columns(
+        connection,
+        table="mentor_pass_daily",
+        patches=(
+            ("lesson_kind", "VARCHAR(16)"),
+            ("lesson_dao_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("lesson_craft_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("lesson_technique_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("teach_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("study_count", "INTEGER NOT NULL DEFAULT 0"),
+        ),
+    )
+    _patch_sqlite_table_columns(
+        connection,
+        table="mentor_transmissions",
+        patches=(
+            ("last_study_day_key", "VARCHAR(16)"),
+        ),
+    )
+
+
 async def prepare_database(engine: AsyncEngine) -> None:
     """
     创建表结构、补齐 SQLite 缺列，并执行已登记的一次性数据迁移。
@@ -566,6 +643,10 @@ async def prepare_database(engine: AsyncEngine) -> None:
             await connection.run_sync(_patch_sqlite_dao_contest_columns)
             await connection.run_sync(_patch_sqlite_face_trade_columns)
             await connection.run_sync(_patch_sqlite_sect_columns)
+            await connection.run_sync(_patch_sqlite_party_columns)
+            await connection.run_sync(_patch_sqlite_dual_cultivation_columns)
+            await connection.run_sync(_patch_sqlite_character_bond_columns)
+            await connection.run_sync(_patch_sqlite_mentor_columns)
             await connection.run_sync(_backfill_peak_major_realm)
             await connection.run_sync(_backfill_reincarnation_bonus_rows)
             await connection.run_sync(_ensure_schema_migrations_table)

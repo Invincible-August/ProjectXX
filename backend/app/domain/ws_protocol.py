@@ -56,6 +56,18 @@ TYPE_HERITAGE_EXPIRED = "heritage.expired"
 # —— 道友化身助战 ——
 TYPE_AVATAR_ASSIST_INVITE = "avatar.assist.invite"
 
+# —— 道友申请 ——
+TYPE_FRIEND_REQUEST = "friend.request"
+TYPE_FRIEND_UPDATE = "friend.update"
+TYPE_BOND_REQUEST = "bond.request"
+TYPE_BOND_UPDATE = "bond.update"
+TYPE_DUAL_INVITE = "dual.invite"
+TYPE_DUAL_UPDATE = "dual.update"
+TYPE_FACE_INVITE = "face.invite"
+TYPE_FACE_UPDATE = "face.update"
+# 事件日志（师傅传授等）；在线直推，离线写入 pending_event_logs
+TYPE_GAME_LOG = "game.log"
+
 # —— 角色在线状态 ——
 TYPE_PRESENCE_CHANGED = "presence.changed"
 

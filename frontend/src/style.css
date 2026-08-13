@@ -1022,3 +1022,12 @@ button {
         display: none
     }
 }
+
+/* 右上角邀请/社交通知：整条可点跳转 */
+.invite-jump-notify {
+  cursor: pointer;
+}
+.invite-jump-notify:hover {
+  filter: brightness(1.06);
+}
+

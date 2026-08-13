@@ -19,6 +19,10 @@ social_rescue:
   friend:
     spirit_stone_cost: 100
     payer: rescuer
+  # 亲友引渡（道友/道侣/师徒/炉鼎）：成本同道友档
+  kin:
+    spirit_stone_cost: 100
+    payer: rescuer
   sect:
     spirit_stone_cost: 150
     payer: rescuer

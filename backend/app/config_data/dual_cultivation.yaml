@@ -1,33 +1,67 @@
 # =====================================================================
-# 用途：双修功法 / 掷骰档 / 四榜（M7 L7）
-# 后台域：dual_cultivation（balance）
+# 用途：双修功法 / 高潮循环 / 时长榜 / 体力消耗（邀约→宽衣→开始→自动结算）
+# 后台域：dual_cultivation（balance）——蛇蝎等初始设定均可在管理后台改
 # =====================================================================
 
-# 邀约过期秒
-invite_expire_sec: 300
-# 确认后可重掷次数（不含首次）
-max_rerolls: 1
+# 邀约等待秒（道侣超时取消；炉鼎超时自动接受）
+invite_expire_sec: 60
+# 宽衣等待秒（道侣超时取消；炉鼎超时自动宽衣）
+undress_expire_sec: 60
 # 开局消耗灵石（邀请方）
 spirit_stone_cost: 10
-# 上榜最低分（未达不占榜）
+# 修为差距归一化尺度（传功/双增/索取）
+cultivation_gap_scale: 500
+
+# 双修体力消耗（双方均扣；可在管理后台调）
+# mutual_gain：双方相同；transfer：传方>受方；extract：索取方>被索取方
+stamina_costs:
+  mutual_gain:
+    inviter: 10
+    invitee: 10
+  transfer:
+    giver: 15
+    receiver: 8
+  extract:
+    extractor: 15
+    target: 8
+
+# 高潮循环（每次循环≈1 抽插；时长=轮次×(1±jitter)）
+climax:
+  # 初始发射几率
+  base_chance: 0.03
+  # 每轮追加几率
+  growth_per_tick: 0.012
+  # 单轮几率上限
+  chance_cap: 0.85
+  # 最大抽插次数（防死循环）
+  max_ticks: 400
+  # 每轮秒数抖动 ±20%
+  tick_jitter: 0.2
+  # 环境修正占位（后续接双修环境）
+  env_mod: 0.0
+
+# 上榜最低分（时长榜单位：秒）
 rank_min_scores:
+  duration_total: 1
   number_one: 1
   zero: 1
 
-# 四榜展示名（机读键 → 中文）
+# 榜展示名（玩家可读）
 rank_labels:
-  male_number_one: 男修一号榜
-  male_zero: 男修零号榜
-  female_number_one: 女修一号榜
-  female_zero: 女修零号榜
+  duration_total: 双修时长总榜
+  male_number_one: 乾道·主动时长
+  male_zero: 乾道·承纳时长
+  female_number_one: 坤道·主动时长
+  female_zero: 坤道·承纳时长
 
-# 掷骰出目 → 效果档 + 时长/倍率（须覆盖 dice 区间）
+# 兼容旧掷骰档（后台/测用保留；主流程改高潮循环）
 dice_tiers:
   - { min_roll: 1, max_roll: 4, effect_tier: low, yield_mult: 0.8, duration_sec: 20, label_zh: 浅缘 }
   - { min_roll: 5, max_roll: 8, effect_tier: mid, yield_mult: 1.0, duration_sec: 40, label_zh: 合契 }
   - { min_roll: 9, max_roll: 20, effect_tier: high, yield_mult: 1.3, duration_sec: 60, label_zh: 天成 }
+max_rerolls: 0
 
-# 双修功法（与战斗功法解耦）
+# 双修功法
 techniques:
   twin_moon_mutual:
     label: 双月同修
@@ -36,24 +70,35 @@ techniques:
     realm_min: body_tempering
     cooldown_sec: 30
     base_yield: 50
-    # 一号榜贡献分（双方各加）
-    number_one_score: 10
-    # 零号榜风姿分（mutual 双方各加）
-    zero_score: 5
+    # 对发射几率的加成（正=更易；负=更难）
+    climax_mod: 0.05
+    number_one_score: 0
+    zero_score: 0
   jade_dew_transfer:
     label: 玉露传功
     mode: transfer
-    # inviter_to_invitee | invitee_to_inviter
     transfer_direction: inviter_to_invitee
     require_opposite_gender: false
     realm_min: body_tempering
     cooldown_sec: 30
-    base_yield: 40
-    # 传方扣修为池（不足则拒）
-    transfer_cost_from_giver: 20
-    # 传方耗灵石（可选）
+    base_yield: 100
+    transfer_cost_from_giver: 100
     giver_spirit_stone_cost: 5
-    number_one_score: 8
-    # 仅受方计零号榜
-    zero_score_receiver: 12
+    climax_mod: 0.02
+    number_one_score: 0
+    zero_score_receiver: 0
     zero_score_giver: 0
+  # 蛇蝎索取：从对方处取修为（被索取过低→初始转化率0；索取方过低→初始为负）
+  serpent_extract:
+    label: 蛇蝎索取
+    mode: extract
+    # inviter_from_invitee = 邀请方索取受邀方
+    extract_direction: inviter_from_invitee
+    require_opposite_gender: false
+    realm_min: body_tempering
+    cooldown_sec: 30
+    base_yield: 100
+    extract_cost_from_target: 100
+    climax_mod: 0.04
+    number_one_score: 0
+    zero_score: 0

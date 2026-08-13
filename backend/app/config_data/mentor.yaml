@@ -7,8 +7,10 @@
 max_apprentices: 3
 # 徒弟同时只能有一位师傅
 max_masters_per_apprentice: 1
-# 师傅相对徒弟至少高出几个大境界档（0=不限）
+# 师傅相对徒弟至少高出几个大境界档（收徒门槛）
 min_realm_gap: 1
+# 大境界差 ≤ auto_graduate_max_gap 时自动出师（0=同境界即出师）
+auto_graduate_max_gap: 0
 # 申请过期秒（0=不过期）
 request_expire_sec: 86400
 # 解除/叛师后冷却秒
@@ -18,24 +20,73 @@ keep_on_reincarnation: true
 # 解除后师承频历史：readonly | deny
 history_after_dissolve: readonly
 
-# 传功占位：徒弟修为池（cultivation_points）小加成
+# 日课三选一：传道 / 授业 / 解惑（每日每师徒键仅一次）
+daily_lesson:
+  # 弟子突破需求占比上限（100% = 1.0）
+  apprentice_need_ratio: 1.0
+  # 师傅资源占比上限（10% = 0.1）
+  master_pool_ratio: 0.1
+  # 传道可选资源
+  dao_resources: [spirit, body]
+  # 兼容旧字段（已废弃：固定传功）
+  legacy_pass_enabled: false
+
+# 兼容旧配置键（读服务时仍可回退）
 pass_cultivation:
   apprentice_spirit_pool_gain: 30
   master_spirit_stone_cost: 20
-  daily_cap_per_bond: 3
+  daily_cap_per_bond: 1
 
-# 师徒任务样本（至少 1 条）
+# 传授：功法 / 丹方·炼器·符箓·阵法·傀儡图纸（每日一次，可多日累计）
+teach:
+  # 每日每师徒键可传授次数
+  daily_cap: 1
+  # 默认需传授次数（条目未写 teach_sessions / teach_tier 时）
+  default_sessions: 1
+  # 按阶梯的传授天数
+  sessions_by_tier:
+    t1: 1
+    t2: 3
+    t3: 7
+    t4: 10
+  # 配方默认阶梯（可被配方 teach_tier 覆盖）
+  recipe_branch_tier:
+    alchemy: t1
+    smithing: t1
+    talisman: t1
+    array: t2
+    puppet: t2
+  # 功法默认阶梯
+  technique_default_tier: t1
+  # 传授完成：功法给弟子 +1 级（不超过师傅等级与 max_level）
+  technique_complete_level_gain: 1
+
+# 徒弟请学：指定师傅已掌握的功法，每日一次，可叠加师傅未学完的同种传授进度
+study:
+  daily_cap: 1
+  # 每次请学增加的传授进度（学习次数）
+  progress_gain: 1
+
+# 亲传弟子（师傅可点名，名额独立于收徒上限）
+direct_disciple:
+  max_count: 3
+  # 亲传：授业/解惑每日次数各 +1；传道与传授（传功）次数不变
+  craft_lesson_bonus: 1
+  technique_lesson_bonus: 1
+  # 同一人：指定后隔日方可解除；解除当日不可再指定
+  cooldown_days: 1
+
+# 师徒任务样本（手动出师仍可要求）
 quests:
   first_lesson:
     name: 初传心法
-    description: 完成一次传功或计次修习
+    description: 完成一次日课（传道/授业/解惑）
     target_count: 1
-    # 出师前须完成
     required_for_graduate: true
     reward_apprentice_spirit_pool: 80
     reward_master_spirit_stones: 50
 
-# 出师奖励（额外，徒弟加 cultivation_points）
+# 出师奖励（自动/手动出师共用）
 graduate:
   apprentice_spirit_pool: 100
   master_spirit_stones: 100

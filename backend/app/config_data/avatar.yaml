@@ -102,8 +102,21 @@ stamina:
   allow_stamina_transfer: false
 
 # —— 道友化身助战（化神 friend_assist 解锁后）——
+# 邀请化身：主人开开关则立即入队；关→「化身正在闭关中」；已有会话→「化身正在助战中」
+# 助战体力独立槽（不受探索/独战体力与任何加成影响）；PVE 战后自动离队；秘境整场结束离队
 friend_assist:
-  # 邀请过期秒数（0=不过期；读时惰性清理）
+  # 兼容旧 invited 态过期（0=不过期；读时惰性清理）
   invite_expire_sec: 86400
-  # 仅 development：假定主人在线（须手动 accept）；关则离线自动 accept
+  # 仅 development：Presence 假定在线（与助战入队无关；邀请已改为开关即入队）
   assist_dev_assume_online: false
+  # 助战专用体力（与化身探索/独战体力隔离；无加成；仅随境界变容）
+  stamina_base_cap: 50
+  stamina_cap_by_major:
+    huashen: 60
+    lianxu: 80
+    heti: 100
+    dacheng: 120
+  stamina_recovery_per_hour: 3
+  battle_cost: 10
+  # 体力归零后须恢复到上限的该比例才可再助战
+  resume_ratio: 0.2

@@ -92,8 +92,17 @@ async def party_me(
     svc: ChatService = Depends(get_chat_service),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """当前队伍。"""
+    """当前队伍 / 待处理与发出的邀请。"""
     return success(await svc.party_me(current_user))
+
+
+@router.get("/party/invite-options", response_model=None)
+async def party_invite_options(
+    svc: ChatService = Depends(get_chat_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """组队邀请快捷目标：道友 / 同门 / 师徒。"""
+    return success(await svc.party_invite_options(current_user))
 
 
 @router.post("/party", response_model=None)
@@ -102,7 +111,7 @@ async def party_action(
     svc: ChatService = Depends(get_chat_service),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """组队 / 离队。"""
+    """组队 / 邀请 / 应答 / 离队 / 踢人 / 转团队。"""
     return success(
         await svc.party_action(
             current_user,

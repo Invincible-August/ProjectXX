@@ -87,7 +87,7 @@ class ChatUnread(Base):
 
 
 class PartySession(Base):
-    """最小队伍会话（仅服务 party 频）。"""
+    """队伍 / 团队会话（共用 party 频；kind=party|team）。"""
 
     __tablename__ = "party_sessions"
 
@@ -99,6 +99,8 @@ class PartySession(Base):
     )
     # open | disbanded
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="open", index=True)
+    # party=队伍(≤5) | team=团队(≤40)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, default="party", index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

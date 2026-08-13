@@ -216,3 +216,45 @@ def test_claim_insufficient_stones_40038(tmp_path: Path) -> None:
                 assert character.pending_offline_json is not None
 
     _run(_body())
+
+
+def test_online_presence_long_gap_auto_settles_no_pending(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """WS 仍在线时：长缺口带帽直接入账，不留下 offline_pending。"""
+
+    class _OnlinePresence:
+        def is_online(self, character_id: int) -> bool:
+            _ = character_id
+            return True
+
+    monkeypatch.setattr(
+        "app.services.presence_service.get_presence",
+        lambda: _OnlinePresence(),
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "offline_online_auto.db") as factory:
+            async with factory() as session:
+                user = await _prepare(session, "onlineauto@example.com")
+                character = await character_service.get_character_by_user_id(session, user.id)
+                assert character is not None
+                start = datetime(2026, 8, 1, 0, 0, 0, tzinfo=timezone.utc)
+                character.last_settled_at = start
+                character.idle_direction = "spirit"
+                character.spirit_stones = 100000
+                character.cultivation_points = 0
+                await session.commit()
+
+                now = start + timedelta(minutes=20)
+                result = idle_service.prepare_offline_or_settle(character, now=now)
+                await session.commit()
+
+                assert not isinstance(result, dict)
+                assert character.pending_offline_json is None
+                assert character.cultivation_points > 0
+                assert result is not None
+                assert result.ticks == 20  # 20min / 60s tick
+
+    _run(_body())

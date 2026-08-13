@@ -136,6 +136,21 @@ const shownCrafting = computed(() => {
   return props.character?.crafting_exp ?? 0
 })
 
+/** 战斗体力：优先惰性恢复后的 battle_stamina */
+const battleStaminaLine = computed(() => {
+  const ch = props.character
+  if (!ch) return '—'
+  const bs = ch.battle_stamina
+  if (bs && typeof bs.left === 'number' && typeof bs.cap === 'number') {
+    return `${bs.left} / ${bs.cap}`
+  }
+  const lifeStamina = ch.life?.final?.stamina
+  if (lifeStamina !== undefined && lifeStamina !== null) {
+    return String(lifeStamina)
+  }
+  return '—'
+})
+
 /** 炼体程度：炼体九境展示（炼皮→道体） */
 const bodyDegreeLabel = computed(() => {
   const ch = props.character
@@ -327,6 +342,16 @@ function formatBreakdownLine(row: Record<string, unknown>): string {
         <el-descriptions-item label="灵石">
           {{ shownStones }}
           <el-text v-if="characterStore.display" size="small" type="info">（推算）</el-text>
+        </el-descriptions-item>
+        <el-descriptions-item label="战斗体力">
+          {{ battleStaminaLine }}
+          <el-text
+            v-if="character.battle_stamina?.regen_per_minute"
+            size="small"
+            type="info"
+          >
+            （{{ character.battle_stamina.regen_per_minute }}/分）
+          </el-text>
         </el-descriptions-item>
         <el-descriptions-item label="修为池">
           {{ shownCultivationPool }}

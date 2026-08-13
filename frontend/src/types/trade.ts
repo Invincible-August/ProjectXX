@@ -1,44 +1,35 @@
 /**
- * M7 L2 交易行 / 拍卖 / 面交领域类型（对齐 TradeService）。
+ * M7 L2 交易行 / 拍卖 / 社交交易领域类型（对齐 TradeService）。
  */
 
-import type { CharacterPublic } from './character'
-
-/** 物品行（上架 / 报价） */
 export interface TradeItemLine {
   item_id: string
   quantity: number
 }
 
-/** 交易行挂单 */
 export interface Listing {
   id: number
-  /** fixed_price | barter */
   mode: string
-  mode_label_zh: string
+  mode_label_zh?: string
   seller_character_id: number
   seller_name: string
   offer_items: TradeItemLine[]
   price_spirit_stones: number
   ask_items: TradeItemLine[]
-  /** open | sold | cancelled */
   status: string
-  fee_paid: number
+  fee_paid?: number
 }
 
-/** GET /trade/listings */
 export interface ListingListPayload {
   items: Listing[]
 }
 
-/** 上架 / 购买 / 撤单结果 */
 export interface ListingMutationResult {
   message?: string
   listing?: Listing
-  character?: CharacterPublic
+  character?: import('./character').CharacterPublic
 }
 
-/** 拍卖拍品 */
 export interface AuctionLot {
   id: number
   seller_character_id: number
@@ -46,40 +37,44 @@ export interface AuctionLot {
   offer_items: TradeItemLine[]
   start_price: number
   current_price: number
-  current_bidder_id: number | null
-  /** open | sold | unsold */
+  current_bidder_id?: number | null
   status: string
-  ends_at: string | null
+  ends_at?: string | null
 }
 
-/** GET /trade/auctions */
 export interface AuctionListPayload {
   items: AuctionLot[]
 }
 
-/** 上架拍卖 / 出价结果 */
 export interface AuctionMutationResult {
   message?: string
   lot?: AuctionLot
-  character?: CharacterPublic
+  character?: import('./character').CharacterPublic
 }
 
-/** 面交单侧报价 */
+/** 交易单侧报价 */
 export interface FaceOffer {
   items: TradeItemLine[]
   spirit_stones: number
+  vessel_offer?: { hours: number } | null
 }
 
-/** 面交会话 */
+/** 交易炉鼎要约上下文 */
+export interface FaceVesselContext {
+  relation?: string | null
+  are_companions?: boolean
+  can_offer_become?: boolean
+  can_offer_extend?: boolean
+  vessel_min_hours?: number
+  vessel_max_hours?: number
+  [key: string]: unknown
+}
+
+/** 交易会话 */
 export interface FaceSession {
   id: number
-  /**
-   * pending_invite | browsing | locking | confirming |
-   * committed | cancelled | expired
-   */
   status: string
-  status_label_zh: string
-  /** 乐观锁版本；改草稿 / 锁定 / 确认须携带 */
+  status_label_zh?: string
   version: number
   initiator_id: number
   initiator_name: string
@@ -91,47 +86,72 @@ export interface FaceSession {
   peer_locked: boolean
   initiator_confirmed: boolean
   peer_confirmed: boolean
-  /** 当前视角：initiator | peer */
-  you_are: string
-  /** 对方是否在线（WsHub / 开发假定） */
-  peer_online: boolean
-  expires_at: string | null
+  you_are: 'initiator' | 'peer' | string
+  peer_online?: boolean
+  expires_at?: string | null
+  vessel_context?: FaceVesselContext | null
 }
 
-/** 面交 invite / get / offer / lock / confirm / cancel 结果 */
+/** 交易 invite / get / offer / lock / confirm / cancel 结果 */
 export interface FaceMutationResult {
   message?: string
   session?: FaceSession
-  character?: CharacterPublic
+  character?: import('./character').CharacterPublic
+  vessel?: Record<string, unknown> | null
 }
 
-/** NPC 坊市货架行 */
+/** 快捷选人目标 */
+export interface FaceInviteTarget {
+  character_id: number
+  name: string
+  online?: boolean
+  role?: string
+  role_label_zh?: string
+  bond_id?: number
+}
+
+/** GET /trade/face/invite-options */
+export interface FaceInviteOptions {
+  friends: FaceInviteTarget[]
+  companions: FaceInviteTarget[]
+  sect_members: FaceInviteTarget[]
+  mentors: FaceInviteTarget[]
+  face_max_item_lines: number
+  face_timeout_sec?: number
+}
+
+/** GET /trade/face/pending 单项 */
+export interface FacePendingInvite {
+  session_id: number
+  from_character_id: number
+  from_name: string
+  status: string
+  expires_at?: string | null
+  invite_kind?: string
+  invite_kind_label_zh?: string
+}
+
+export interface FacePendingPayload {
+  items: FacePendingInvite[]
+}
+
 export interface BazaarItem {
   item_id: string
-  label_zh: string
-  item_type: string
-  buy_price: number
-  sell_price: number
-  owned: number
+  name?: string
+  buy_price?: number
+  sell_price?: number
+  [key: string]: unknown
 }
 
-/** GET /trade/bazaar */
 export interface BazaarCatalogPayload {
-  label_zh: string
-  hint_zh: string
-  max_qty_per_deal: number
-  items: BazaarItem[]
-  inventory_sellable: BazaarItem[]
-  spirit_stones: number
+  items?: BazaarItem[]
+  spirit_stones?: number
+  [key: string]: unknown
 }
 
-/** POST /trade/bazaar/buy|sell */
 export interface BazaarDealResult {
-  item_id: string
-  quantity: number
-  spirit_stones_spent?: number
-  spirit_stones_gained?: number
-  spirit_stones: number
   message?: string
   catalog?: BazaarCatalogPayload
+  spirit_stones?: number
+  [key: string]: unknown
 }

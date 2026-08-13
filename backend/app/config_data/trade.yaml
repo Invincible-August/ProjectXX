@@ -23,13 +23,13 @@ auction_fee_pct: 0.05
 # 结拍失败（流拍）退回：inventory=直回背包；mail=系统邮件（L3 默认）
 auction_unsold_refund: mail
 
-# 面交
+# 面交 / 社交交易
 face_timeout_sec: 120
-# 面交单次两侧物品行数上限
-face_max_item_lines: 8
-# 发起面交须为道友
+# 单侧可报价物品种类上限（4×4 格）
+face_max_item_lines: 16
+# 发起交易须有社交关系（道友/道侣/炉鼎/同门/师徒之一）
 face_require_friend: true
-# 发起面交须双方在线（WsHub）
+# 发起交易须双方在线（WsHub）
 face_require_online: true
 # 仅 development：跳过 WsHub 在线检查（单测/本地无 WS 时）
 face_dev_assume_online: true

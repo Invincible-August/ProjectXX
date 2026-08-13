@@ -46,12 +46,20 @@ class Avatar(Base):
         DateTime(timezone=True),
         nullable=True,
     )  # 体力恢复锚点
-    # 道友助战开关：1=允许好友在离线时自动借入；在线时仍须主人确认
+    # 道友助战开关：1=允许邀请化身；关则提示「化身正在闭关中」
     assist_friends_enabled: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
         default=0,
     )
+    # 助战专用体力（与探索/独战 stamina 隔离）
+    assist_stamina: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    assist_stamina_recovered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    # 助战体力归零后锁定，须恢复到阈值才可再助战
+    assist_stamina_locked: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # 化身挂机 settle 锚点
     last_settled_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

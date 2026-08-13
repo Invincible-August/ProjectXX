@@ -1,4 +1,4 @@
-"""M7 L6：拜师→传功任务→出师；道友引渡成本差。"""
+"""M7 L6：拜师→日课/传授→出师与自动出师；道友引渡成本差。"""
 
 from __future__ import annotations
 
@@ -59,8 +59,8 @@ async def _register(session, email: str, name: str):
     return user
 
 
-def test_mentor_apply_pass_graduate(tmp_path: Path) -> None:
-    """拜师→传功完成任务→出师；非法境界拒。"""
+def test_mentor_apply_lesson_graduate(tmp_path: Path) -> None:
+    """拜师→日课传道完成任务→出师；同境界拒拜。"""
 
     async def _body() -> None:
         async with open_test_session_factory(tmp_path / "mentor.db") as factory:
@@ -71,6 +71,7 @@ def test_mentor_apply_pass_graduate(tmp_path: Path) -> None:
                     master_u,
                     major_realm="foundation",
                     spirit_stones=5_000,
+                    cultivation_points=10_000,
                 )
                 await GmService(session).gm_set_character(
                     appr_u,
@@ -79,7 +80,6 @@ def test_mentor_apply_pass_graduate(tmp_path: Path) -> None:
                 )
                 await session.commit()
                 svc = MentorService(session)
-                # 徒弟拜师
                 applied = await svc.apply(
                     appr_u,
                     target_character_id=None,
@@ -93,12 +93,16 @@ def test_mentor_apply_pass_graduate(tmp_path: Path) -> None:
                 me = await svc.me(appr_u)
                 assert me["bond"]["status"] == "active"
                 assert me["channel_ref"] and me["channel_ref"].startswith("mentor:")
+                assert me["daily"] is not None
+                assert me["options"] is not None
 
-                # 传功推进任务
-                await svc.pass_cultivation(master_u)
+                # 日课传道推进任务
+                lesson = await svc.teach_lesson(master_u, kind="dao", resource="spirit")
                 await session.commit()
+                assert lesson["amount"] > 0
                 me2 = await svc.me(appr_u)
                 assert any(q["completed"] for q in me2["quests"])
+                assert me2["daily"]["lesson_done"] is True
 
                 graduated = await svc.graduate(appr_u)
                 await session.commit()
@@ -119,6 +123,394 @@ def test_mentor_apply_pass_graduate(tmp_path: Path) -> None:
                         intent="apprentice",
                     )
                 assert exc.value.code == 40150
+
+    _run(_body())
+
+
+def test_mentor_auto_graduate_same_major(tmp_path: Path) -> None:
+    """弟子追上师傅大境界时自动出师。"""
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "mentor_auto.db") as factory:
+            async with factory() as session:
+                master_u = await _register(session, "ma@example.com", "师尊丙")
+                appr_u = await _register(session, "aa@example.com", "弟子丁")
+                await GmService(session).gm_set_character(
+                    master_u,
+                    major_realm="foundation",
+                    cultivation_points=5_000,
+                )
+                await GmService(session).gm_set_character(
+                    appr_u,
+                    major_realm="body_tempering",
+                )
+                await session.commit()
+                svc = MentorService(session)
+                applied = await svc.apply(
+                    appr_u,
+                    target_name="师尊丙",
+                    target_character_id=None,
+                    intent="apprentice",
+                )
+                await session.commit()
+                await svc.accept(master_u, int(applied["bond_id"]))
+                await session.commit()
+
+                await GmService(session).gm_set_character(
+                    appr_u,
+                    major_realm="foundation",
+                )
+                await session.commit()
+                me = await svc.me(appr_u)
+                assert me["bond"] is None
+                assert me.get("auto_graduate_message")
+
+    _run(_body())
+
+
+def test_mentor_teach_recipe_and_daily_lesson_mutex(tmp_path: Path) -> None:
+    """传授配方可当日完成；日课三选一互斥。"""
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "mentor_teach.db") as factory:
+            async with factory() as session:
+                from app.db.models.mentor import CharacterCraftKnowledge
+
+                master_u = await _register(session, "mt@example.com", "师尊戊")
+                appr_u = await _register(session, "at@example.com", "弟子己")
+                await GmService(session).gm_set_character(
+                    master_u,
+                    major_realm="foundation",
+                    cultivation_points=8_000,
+                    crafting_exp=5_000,
+                )
+                await GmService(session).gm_set_character(
+                    appr_u,
+                    major_realm="qi_refining",
+                )
+                await session.commit()
+                svc = MentorService(session)
+                applied = await svc.apply(
+                    appr_u,
+                    target_name="师尊戊",
+                    target_character_id=None,
+                    intent="apprentice",
+                )
+                await session.commit()
+                await svc.accept(master_u, int(applied["bond_id"]))
+                await session.commit()
+
+                taught = await svc.teach_item(
+                    master_u,
+                    item_kind="recipe",
+                    item_id="pill_stamina_minor",
+                )
+                await session.commit()
+                assert taught["completed"] is True
+                appr = await character_service.get_character_by_user_id(session, appr_u.id)
+                from app.domain.event_logs import parse_pending_event_logs
+
+                pend_logs = parse_pending_event_logs(appr)
+                assert any("传授" in str(x.get("message") or "") for x in pend_logs)
+                know = (
+                    await session.execute(
+                        select(CharacterCraftKnowledge).where(
+                            CharacterCraftKnowledge.character_id == appr.id,
+                            CharacterCraftKnowledge.recipe_id == "pill_stamina_minor",
+                        ),
+                    )
+                ).scalar_one_or_none()
+                assert know is not None
+
+                await svc.teach_lesson(
+                    master_u,
+                    kind="craft",
+                    target_id="beginner_alchemy",
+                )
+                await session.commit()
+                with pytest.raises(AppError) as exc:
+                    await svc.teach_lesson(
+                        master_u,
+                        kind="dao",
+                        resource="spirit",
+                    )
+                assert exc.value.code == 40000
+
+    _run(_body())
+
+
+def test_mentor_apprentice_study_stacks_with_teach(tmp_path: Path) -> None:
+    """徒弟请学可叠加师傅未完成的同种功法传授；同日师傅传授+徒弟请学各一次。"""
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "mentor_study.db") as factory:
+            async with factory() as session:
+                from app.db.models.mentor import MentorTransmission
+                from app.db.models.technique import CharacterTechnique
+
+                master_u = await _register(session, "ms@example.com", "师尊庚")
+                appr_u = await _register(session, "as@example.com", "弟子辛")
+                await GmService(session).gm_set_character(
+                    master_u,
+                    major_realm="foundation",
+                    cultivation_points=8_000,
+                )
+                await GmService(session).gm_set_character(
+                    appr_u,
+                    major_realm="qi_refining",
+                )
+                await session.commit()
+                master = await character_service.get_character_by_user_id(session, master_u.id)
+                tech = (
+                    await session.execute(
+                        select(CharacterTechnique).where(
+                            CharacterTechnique.character_id == master.id,
+                            CharacterTechnique.technique_id == "basic_qi_art",
+                        ),
+                    )
+                ).scalar_one_or_none()
+                if tech is None:
+                    session.add(
+                        CharacterTechnique(
+                            character_id=master.id,
+                            technique_id="basic_qi_art",
+                            level=3,
+                        ),
+                    )
+                else:
+                    tech.level = max(int(tech.level or 0), 3)
+                await session.commit()
+
+                svc = MentorService(session)
+                applied = await svc.apply(
+                    appr_u,
+                    target_name="师尊庚",
+                    target_character_id=None,
+                    intent="apprentice",
+                )
+                await session.commit()
+                await svc.accept(master_u, int(applied["bond_id"]))
+                await session.commit()
+
+                # 强制多日传授：先写入进行中进度
+                bond = await svc.get_active_bond_for(master.id)
+                assert bond is not None
+                session.add(
+                    MentorTransmission(
+                        bond_id=bond.id,
+                        item_kind="technique",
+                        item_id="basic_qi_art",
+                        required_sessions=4,
+                        progress=1,
+                        status="active",
+                        last_day_key=None,
+                    ),
+                )
+                await session.commit()
+
+                taught = await svc.teach_item(
+                    master_u,
+                    item_kind="technique",
+                    item_id="basic_qi_art",
+                )
+                await session.commit()
+                assert taught["completed"] is False
+                assert taught["transmission"]["progress"] == 2
+
+                studied = await svc.study_technique(
+                    appr_u,
+                    technique_id="basic_qi_art",
+                )
+                await session.commit()
+                assert studied["completed"] is False
+                assert studied["transmission"]["progress"] == 3
+                assert studied["daily"]["study_done"] is True
+
+                with pytest.raises(AppError) as exc:
+                    await svc.study_technique(appr_u, technique_id="basic_qi_art")
+                assert exc.value.code == 40000
+
+                me = await svc.me(appr_u)
+                assert any(
+                    t["item_id"] == "basic_qi_art" and t["progress"] == 3
+                    for t in me["transmissions"]
+                )
+                assert me["options"]["study_techniques"]
+
+    _run(_body())
+
+
+def test_mentor_lineage_and_direct_lesson_bonus(tmp_path: Path) -> None:
+    """师承单含出师弟子；亲传授业次数+1，传授次数不变。"""
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "mentor_lineage.db") as factory:
+            async with factory() as session:
+                master_u = await _register(session, "ml@example.com", "师尊壬")
+                a1 = await _register(session, "a1@example.com", "弟子甲")
+                a2 = await _register(session, "a2@example.com", "弟子乙")
+                await GmService(session).gm_set_character(
+                    master_u,
+                    major_realm="foundation",
+                    cultivation_points=20_000,
+                    crafting_exp=8_000,
+                )
+                await GmService(session).gm_set_character(
+                    a1,
+                    major_realm="qi_refining",
+                )
+                await GmService(session).gm_set_character(
+                    a2,
+                    major_realm="qi_refining",
+                )
+                await session.commit()
+                svc = MentorService(session)
+
+                applied1 = await svc.apply(
+                    a1,
+                    target_name="师尊壬",
+                    target_character_id=None,
+                    intent="apprentice",
+                )
+                await session.commit()
+                await svc.accept(master_u, int(applied1["bond_id"]))
+                await session.commit()
+
+                applied2 = await svc.apply(
+                    a2,
+                    target_name="师尊壬",
+                    target_character_id=None,
+                    intent="apprentice",
+                )
+                await session.commit()
+                await svc.accept(master_u, int(applied2["bond_id"]))
+                await session.commit()
+
+                # 甲出师
+                await GmService(session).gm_set_character(a1, major_realm="foundation")
+                await session.commit()
+                me_a1_grad = await svc.me(a1)
+                assert me_a1_grad.get("auto_graduate_message") or me_a1_grad.get("bond") is None
+                lineage = (await svc.me(master_u))["lineage"]
+                assert lineage is not None
+                assert len(lineage["disciples"]) >= 2
+                assert lineage["disciples"][0]["ordinal_title_zh"] == "大弟子"
+                assert lineage["disciples"][1]["ordinal_title_zh"] == "二弟子"
+                assert any(d["graduated"] for d in lineage["disciples"])
+
+                appr2 = await character_service.get_character_by_user_id(session, a2.id)
+
+                # 指定乙为亲传
+                set_d = await svc.set_direct_disciples(
+                    master_u,
+                    apprentice_character_ids=[appr2.id],
+                )
+                await session.commit()
+                assert set_d["lineage"]["direct_count"] == 1
+
+                # 当日不可解除
+                with pytest.raises(AppError) as exc_clear:
+                    await svc.set_direct_disciples(
+                        master_u,
+                        apprentice_character_ids=[],
+                    )
+                assert exc_clear.value.code == 40000
+
+                # 亲传：授业两次；传授仍一日一次
+                await svc.teach_lesson(
+                    master_u,
+                    kind="craft",
+                    target_id="beginner_alchemy",
+                )
+                await session.commit()
+                await svc.teach_lesson(
+                    master_u,
+                    kind="craft",
+                    target_id="beginner_alchemy",
+                )
+                await session.commit()
+                with pytest.raises(AppError):
+                    await svc.teach_lesson(
+                        master_u,
+                        kind="craft",
+                        target_id="beginner_alchemy",
+                    )
+
+                taught = await svc.teach_item(
+                    master_u,
+                    item_kind="recipe",
+                    item_id="pill_stamina_minor",
+                )
+                await session.commit()
+                assert taught["daily"]["teach_done"] is True
+                with pytest.raises(AppError):
+                    await svc.teach_item(
+                        master_u,
+                        item_kind="recipe",
+                        item_id="pill_stamina_minor",
+                    )
+
+                from datetime import timedelta
+
+                from app.core.time_utils import now_utc
+                from app.db.models.mentor import MentorBond
+
+                bond2 = (
+                    await session.execute(
+                        select(MentorBond).where(
+                            MentorBond.apprentice_character_id == appr2.id,
+                            MentorBond.status == "active",
+                        ),
+                    )
+                ).scalar_one()
+                # 回拨指定日，模拟隔日可解除
+                bond2.direct_set_day_key = (
+                    now_utc() - timedelta(days=1)
+                ).strftime("%Y-%m-%d")
+                await session.commit()
+
+                cleared = await svc.set_direct_disciples(
+                    master_u,
+                    apprentice_character_ids=[],
+                )
+                await session.commit()
+                assert cleared["lineage"]["direct_count"] == 0
+
+                # 解除当日不可再指定同一人
+                with pytest.raises(AppError) as exc_re:
+                    await svc.set_direct_disciples(
+                        master_u,
+                        apprentice_character_ids=[appr2.id],
+                    )
+                assert exc_re.value.code == 40000
+
+                # 隔日可再指定
+                await session.refresh(bond2)
+                bond2.direct_cleared_day_key = (
+                    now_utc() - timedelta(days=1)
+                ).strftime("%Y-%m-%d")
+                await session.commit()
+                re_set = await svc.set_direct_disciples(
+                    master_u,
+                    apprentice_character_ids=[appr2.id],
+                )
+                await session.commit()
+                assert re_set["lineage"]["direct_count"] == 1
+
+                # 出师自动解除亲传
+                await GmService(session).gm_set_character(a2, major_realm="foundation")
+                await session.commit()
+                me_a2 = await svc.me(a2)
+                assert me_a2.get("bond") is None
+                lin2 = (await svc.me(master_u))["lineage"]
+                eth = next(d for d in lin2["disciples"] if d["character_id"] == appr2.id)
+                assert eth["graduated"] is True
+                assert eth["is_direct"] is False
+
+                # 已出师弟子仍可见师承单
+                me_a1 = await svc.me(a1)
+                assert me_a1["lineage"] is not None
+                assert any(d["graduated"] for d in me_a1["lineage"]["disciples"])
 
     _run(_body())
 

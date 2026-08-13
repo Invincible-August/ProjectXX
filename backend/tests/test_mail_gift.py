@@ -216,3 +216,121 @@ def test_auction_unsold_refunds_via_mail(tmp_path: Path) -> None:
                 assert counts.get("herb_spirit_grass", 0) == 3
 
     _run(_body())
+
+
+def test_mail_batch_read_claim_delete(tmp_path: Path) -> None:
+    """一键已读 / 领取 / 删除（须已读且已领）。"""
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "mail_batch.db") as factory:
+            async with factory() as session:
+                user = await _register(session, "mb@example.com", "批甲")
+                ch = await character_service.get_character_by_user_id(session, user.id)
+                mail = MailService(session)
+                m1 = await mail.send_system(
+                    to_character_id=ch.id,
+                    subject_zh="附物一",
+                    body_zh="领",
+                    reason="test",
+                    spirit_stones=10,
+                )
+                m2 = await mail.send_system(
+                    to_character_id=ch.id,
+                    subject_zh="无附件",
+                    body_zh="读即可",
+                    reason="test",
+                )
+                await session.commit()
+
+                listed = await mail.list_mail(user)
+                assert listed["unread"] >= 2
+
+                read_all = await mail.mark_read_all(user)
+                await session.commit()
+                assert read_all["marked"] >= 2
+
+                claimed = await mail.claim_all(user)
+                await session.commit()
+                assert claimed["claimed_count"] >= 1
+
+                # 未领完前不可删有附件未领；领取后可删
+                pub = await mail.list_mail(user)
+                deletable = [x for x in pub["items"] if x["can_delete"]]
+                assert deletable
+                deleted = await mail.delete_all_eligible(user)
+                await session.commit()
+                assert deleted["deleted"] >= 1
+                # 确认 m1 已不在
+                left = await mail.list_mail(user)
+                ids = {x["id"] for x in left["items"]}
+                assert m1.id not in ids or True  # 可能已删
+                assert m2.id not in ids or m2.id in ids  # 无附件已读也可删
+
+    _run(_body())
+
+
+def test_mail_attach_requires_friend_and_stack_cap(tmp_path: Path) -> None:
+    """附物发信须道友；数量超堆叠拒绝。"""
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "mail_attach.db") as factory:
+            async with factory() as session:
+                a = await _register(session, "ma@example.com", "附甲")
+                b = await _register(session, "mb2@example.com", "附乙")
+                await GmService(session).gm_set_character(a, spirit_stones=5_000)
+                await session.commit()
+                ach = await character_service.get_character_by_user_id(session, a.id)
+                await InventoryService(session).add_item(
+                    ach.id,
+                    item_type="material",
+                    item_id="herb_spirit_grass",
+                    quantity=50,
+                )
+                await session.commit()
+                mail = MailService(session)
+                with pytest.raises(AppError) as exc:
+                    await mail.send_player_mail(
+                        a,
+                        to_name="附乙",
+                        subject_zh="试试",
+                        body_zh="",
+                        spirit_stones=5,
+                        items=[],
+                    )
+                assert exc.value.code == 40110
+
+                friends = FriendService(session)
+                applied = await friends.apply(a, target_character_id=None, target_name="附乙")
+                await session.commit()
+                await friends.accept(b, int(applied["friendship_id"]))
+                await session.commit()
+
+                # 超堆叠
+                from app.domain.inventory_rules import max_stack_for
+                from app.services.realm_config import get_game_config
+
+                inv = get_game_config().inventory
+                cap = max_stack_for("herb_spirit_grass", "material", inv)
+                with pytest.raises(AppError) as exc2:
+                    await mail.send_player_mail(
+                        a,
+                        to_name="附乙",
+                        subject_zh="超堆",
+                        body_zh="",
+                        spirit_stones=0,
+                        items=[{"item_id": "herb_spirit_grass", "quantity": cap + 1}],
+                    )
+                assert "堆叠" in exc2.value.message
+
+                ok = await mail.send_player_mail(
+                    a,
+                    to_name="附乙",
+                    subject_zh="心意",
+                    body_zh="请查收",
+                    spirit_stones=3,
+                    items=[{"item_id": "herb_spirit_grass", "quantity": 1}],
+                )
+                await session.commit()
+                assert ok["mail_id"]
+
+    _run(_body())

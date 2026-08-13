@@ -4,15 +4,22 @@
 # =====================================================================
 
 max_friends: 50
+# 道侣上限（独立类目）
+max_companions: 20
+# 炉鼎上限（主人侧：可拥有的炉鼎数）
+max_vessels: 10
+# 面交炉鼎要约：最短/最长现实小时
+vessel_min_hours: 1
+vessel_max_hours: 720
 # 申请过期秒数（0=不过期；读时惰性清理）
 request_expire_sec: 604800
 # 轮回是否保留道友关系（D5 默认保留）
 keep_on_reincarnation: true
-# 列表是否附带在线（接 WS Hub）
+# 列表是否附带在线（接 WS Hub 真实在线，不含 DEV 假定）
 include_online: true
 # 兼容旧键
 include_online_stub: true
-# 仅 development：无 WS 时假定在线，便于单测/本地
-dev_assume_online: true
+# 仅 development：列表/门闸假定在线。默认关，避免本地永远显示「在线」
+dev_assume_online: false
 # 仅 development：助战邀请假定主人在线（须手动 accept）；缺省读 avatar.yaml
 assist_dev_assume_online: false

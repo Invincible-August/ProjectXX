@@ -234,6 +234,19 @@ class AvatarService:
             now=now,
             persist=persist_stamina,
         )
+        # 助战专用体力（与探索/独战 stamina 隔离；仅随境界变容）
+        if cap_idx.is_unlocked(character.major_realm, AvatarFeature.FRIEND_ASSIST):
+            from app.services.avatar_assist_service import AvatarAssistService
+
+            payload["assist_stamina"] = AvatarAssistService(
+                self._session,
+            ).refresh_assist_stamina(
+                avatar,
+                character,
+                persist=persist_stamina,
+            )
+        else:
+            payload["assist_stamina"] = None
         solo_ok = cap_idx.is_unlocked(character.major_realm, AvatarFeature.SOLO_BATTLE)
         payload["battle_modes"] = {
             "with_main": True,
@@ -354,6 +367,17 @@ class AvatarService:
         initial_stamina = 0
         if cap_idx.is_unlocked(character.major_realm, AvatarFeature.STAMINA):
             initial_stamina = cap_idx.stamina_cap(character.major_realm)
+        # 助战体力独立满额初始化（已解锁 friend_assist 时）
+        initial_assist_stamina = 0
+        assist_recovered_at = None
+        if cap_idx.is_unlocked(character.major_realm, AvatarFeature.FRIEND_ASSIST):
+            from app.domain.avatar_assist_stamina import assist_stamina_cap
+
+            initial_assist_stamina = assist_stamina_cap(
+                character_major=str(character.major_realm),
+                assist_cfg=avatar_cfg.friend_assist,
+            )
+            assist_recovered_at = created_at
         avatar = Avatar(
             character_id=character.id,
             name=f"{character.name}化身",
@@ -367,6 +391,9 @@ class AvatarService:
             daily_actions_used=0,
             daily_actions_day="",
             stamina_recovered_at=created_at if initial_stamina > 0 else None,
+            assist_stamina=initial_assist_stamina,
+            assist_stamina_recovered_at=assist_recovered_at,
+            assist_stamina_locked=0,
             last_settled_at=created_at,
             created_at=created_at,
         )

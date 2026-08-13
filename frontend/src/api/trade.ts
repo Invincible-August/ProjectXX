@@ -9,7 +9,9 @@ import type {
   AuctionMutationResult,
   BazaarCatalogPayload,
   BazaarDealResult,
+  FaceInviteOptions,
   FaceMutationResult,
+  FacePendingPayload,
   ListingListPayload,
   ListingMutationResult,
   TradeItemLine,
@@ -138,7 +140,7 @@ export async function bidAuction(
 }
 
 /**
- * POST /trade/face — 发起面交。
+ * POST /trade/face — 发起交易。
  *
  * @param body - peer_name 与 peer_character_id 二选一
  */
@@ -158,9 +160,37 @@ export async function faceInvite(body: {
 }
 
 /**
+ * GET /trade/face/pending — 收到的待接受交易邀请。
+ */
+export async function faceListPending(): Promise<ApiResponse<FacePendingPayload>> {
+  try {
+    const response = await http.get<ApiResponse<FacePendingPayload>>(
+      '/trade/face/pending',
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/**
+ * GET /trade/face/invite-options — 快捷选人。
+ */
+export async function faceInviteOptions(): Promise<ApiResponse<FaceInviteOptions>> {
+  try {
+    const response = await http.get<ApiResponse<FaceInviteOptions>>(
+      '/trade/face/invite-options',
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/**
  * GET /trade/face/{id}
  *
- * @param sessionId - 面交会话 id
+ * @param sessionId - 交易会话 id
  */
 export async function faceGet(
   sessionId: number,
@@ -186,6 +216,7 @@ export async function faceOffer(
   body: {
     items: TradeItemLine[]
     spirit_stones: number
+    vessel_offer?: { hours: number } | null
     version: number
   },
 ): Promise<ApiResponse<FaceMutationResult>> {

@@ -1,5 +1,5 @@
 /**
- * M7 L2 道友 HTTP API：list / apply / accept / reject。
+ * M7 L2 道友 HTTP API：list / apply / accept / reject / privacy / profile。
  */
 import { http } from './http'
 import { envelopeFromAxiosError } from './envelope'
@@ -8,6 +8,8 @@ import type {
   FriendActionResult,
   FriendApplyResult,
   FriendListPayload,
+  FriendPrivacyPayload,
+  FriendProfileCard,
 } from '../types/friends'
 
 /** GET /friends */
@@ -20,11 +22,7 @@ export async function listFriends(): Promise<ApiResponse<FriendListPayload>> {
   }
 }
 
-/**
- * POST /friends — 按道号或角色 id 申请。
- *
- * @param body - target_name 与 target_character_id 二选一
- */
+/** POST /friends — 按道号或角色 id 申请。 */
 export async function applyFriend(body: {
   target_name?: string | null
   target_character_id?: number | null
@@ -40,11 +38,7 @@ export async function applyFriend(body: {
   }
 }
 
-/**
- * POST /friends/{id}/accept
- *
- * @param friendshipId - 友谊行 id
- */
+/** POST /friends/{id}/accept */
 export async function acceptFriend(
   friendshipId: number,
 ): Promise<ApiResponse<FriendActionResult>> {
@@ -58,11 +52,7 @@ export async function acceptFriend(
   }
 }
 
-/**
- * POST /friends/{id}/reject
- *
- * @param friendshipId - 友谊行 id
- */
+/** POST /friends/{id}/reject */
 export async function rejectFriend(
   friendshipId: number,
 ): Promise<ApiResponse<FriendActionResult>> {
@@ -76,11 +66,7 @@ export async function rejectFriend(
   }
 }
 
-/**
- * DELETE /friends/{id} — 解除道友。
- *
- * @param friendshipId - 友谊行 id
- */
+/** DELETE /friends/{id} */
 export async function removeFriend(
   friendshipId: number,
 ): Promise<ApiResponse<FriendActionResult>> {
@@ -91,5 +77,48 @@ export async function removeFriend(
     return response.data
   } catch (error: unknown) {
     return envelopeFromAxiosError<FriendActionResult>(error)
+  }
+}
+
+/** GET /friends/privacy */
+export async function fetchFriendPrivacy(): Promise<
+  ApiResponse<FriendPrivacyPayload>
+> {
+  try {
+    const response = await http.get<ApiResponse<FriendPrivacyPayload>>(
+      '/friends/privacy',
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<FriendPrivacyPayload>(error)
+  }
+}
+
+/** PUT /friends/privacy */
+export async function updateFriendPrivacy(
+  friendProfileVisible: boolean,
+): Promise<ApiResponse<FriendPrivacyPayload>> {
+  try {
+    const response = await http.put<ApiResponse<FriendPrivacyPayload>>(
+      '/friends/privacy',
+      { friend_profile_visible: friendProfileVisible },
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<FriendPrivacyPayload>(error)
+  }
+}
+
+/** GET /friends/profile/{characterId} */
+export async function fetchFriendProfile(
+  characterId: number,
+): Promise<ApiResponse<FriendProfileCard>> {
+  try {
+    const response = await http.get<ApiResponse<FriendProfileCard>>(
+      `/friends/profile/${characterId}`,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<FriendProfileCard>(error)
   }
 }

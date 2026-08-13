@@ -13,11 +13,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.db.models import User
 from app.domain.combat import (
+    AdditiveSource,
     CombatAttrAssembleInput,
     CombatCalculator,
     assemble_combat_attr_block,
     assemble_life_attr_block,
+    engine_unit_core_from_final,
     map_primary_deltas,
+    public_combat_final_summary,
 )
 from app.schemas.auth import RegisterRequest
 from app.schemas.character import CreateCharacterRequest
@@ -123,6 +126,44 @@ def test_primary_map_adds_when_coeff_nonzero() -> None:
     )
     assert deltas["phys_atk"] == pytest.approx(5.0)
     assert deltas["magic_atk"] == pytest.approx(4.0)
+
+
+def test_additive_source_and_public_summary() -> None:
+    """AdditiveSource 加算 + 对外摘要键与 schema 一致。"""
+    block = assemble_combat_attr_block(
+        CombatAttrAssembleInput(
+            realm_phys_atk=10,
+            realm_hp=100,
+            realm_speed=8,
+            rein_mult=1.0,
+            grade_atk_mul=1.0,
+            grade_hp_mul=1.0,
+            additive_sources=(
+                AdditiveSource(
+                    source_id="equipment",
+                    label_zh="装备",
+                    amounts={"phys_atk": 3, "magic_atk": 2},
+                    enabled=True,
+                ),
+            ),
+            defaults={"magic_atk": 0, "phys_def": 0, "magic_def": 1, "mp": 0, "hit": 0, "dodge": 0},
+            labels={"phys_atk": "物理攻击", "magic_atk": "法术攻击"},
+        ),
+    )
+    assert block["final"]["phys_atk"] == 13
+    assert block["final"]["magic_atk"] == 2
+    summary = public_combat_final_summary(block["final"])
+    assert set(summary) == {
+        "phys_atk",
+        "magic_atk",
+        "hp",
+        "phys_def",
+        "magic_def",
+        "speed",
+    }
+    assert "mag_atk" not in summary
+    core = engine_unit_core_from_final(block["final"])
+    assert core["atk"] == core["phys_atk"] == 13
 
 
 def test_life_block_keys() -> None:

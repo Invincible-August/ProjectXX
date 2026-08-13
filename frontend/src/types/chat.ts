@@ -75,10 +75,22 @@ export interface PartyMemberItem {
 export interface PartyPayload {
   id: number
   status: string
+  /** party=队伍 | team=团队 */
+  kind?: 'party' | 'team' | string
+  kind_label_zh?: string
+  leader_label_zh?: string
   leader_character_id: number
+  member_count?: number
+  max_members?: number
   members: PartyMemberItem[]
   channel_ref: string
   room_id: string
+  restrictions?: {
+    allowed?: string[]
+    forbidden?: string[]
+    no_reward_non_team_boss?: boolean
+    summary_zh?: string
+  } | null
 }
 
 /** Incoming / serialized party invite */
@@ -97,4 +109,28 @@ export interface PartyInviteItem {
 export interface PartyMePayload {
   party: PartyPayload | null
   pending_invites: PartyInviteItem[]
+  outgoing_invites?: PartyInviteItem[]
+  limits?: {
+    party_max_members?: number
+    team_max_members?: number
+    invite_expire_sec?: number
+  }
+}
+
+export interface PartyInviteOptionsPayload {
+  friends: Array<{ character_id: number; name: string; online?: boolean }>
+  sect_members: Array<{
+    character_id: number
+    name: string
+    rank?: string
+    rank_label_zh?: string
+    online?: boolean
+  }>
+  mentor_peers: Array<{
+    character_id: number
+    name: string
+    role?: string
+    bond_id?: number
+    online?: boolean
+  }>
 }

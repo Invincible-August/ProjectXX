@@ -1,5 +1,5 @@
 """
-道友化身助战竖切：好友 → 开开关 → 邀请（离线自动 accept）→ bench 客串 → validate → spend。
+道友化身助战：开关 → 邀请化身立即入队 → bench 客串 → 助战体力扣减 → 战后离队。
 """
 
 from __future__ import annotations
@@ -73,10 +73,10 @@ async def _huashen_with_avatar(session, user: User) -> None:
     await session.commit()
 
 
-def test_friend_assist_auto_accept_bench_validate_spend(tmp_path: Path) -> None:
+def test_invite_avatar_join_bench_spend_assist_stamina_and_end(tmp_path: Path) -> None:
     """
-    主人开助战 → 道友邀请（主人离线自动 active）→ bench 含 guest →
-    validate 可上阵 → spend_avatar_action(assist_battle) 扣主人体力。
+    主人开助战 → 道友邀请立即 active → bench 含 guest →
+    spend_assist_battle 扣助战体力（不扣探索体力）→ 战后离队后可再邀。
     """
 
     async def _body() -> None:
@@ -86,7 +86,6 @@ def test_friend_assist_auto_accept_bench_validate_spend(tmp_path: Path) -> None:
                 borrower_user = await _register(session, "assist_borrow@example.com", "助乙")
 
                 await _huashen_with_avatar(session, owner_user)
-                # 借用人也到化神，便于同场编成（非必须，但便于断言）
                 await GmService(session).gm_set_character(
                     borrower_user,
                     major_realm="huashen",
@@ -103,7 +102,6 @@ def test_friend_assist_auto_accept_bench_validate_spend(tmp_path: Path) -> None:
                 )
                 assert owner_ch is not None and borrower_ch is not None
 
-                # 结为道友
                 friends = FriendService(session)
                 applied = await friends.apply(
                     borrower_user,
@@ -115,12 +113,20 @@ def test_friend_assist_auto_accept_bench_validate_spend(tmp_path: Path) -> None:
                 await session.commit()
 
                 assist = AvatarAssistService(session)
-                # 主人开开关
+
+                # 未开开关 → 闭关
+                with pytest.raises(AppError) as closed_exc:
+                    await assist.invite(
+                        borrower_user,
+                        target_character_id=owner_ch.id,
+                        target_name=None,
+                    )
+                assert "闭关" in closed_exc.value.message
+
                 settings_res = await assist.set_assist_settings(owner_user, enabled=True)
                 await session.commit()
                 assert settings_res["assist_friends_enabled"] is True
 
-                # 离线自动 accept（assist_dev_assume_online=false + 无 WS）
                 invited = await assist.invite(
                     borrower_user,
                     target_character_id=owner_ch.id,
@@ -138,7 +144,6 @@ def test_friend_assist_auto_accept_bench_validate_spend(tmp_path: Path) -> None:
                 expected_uid = guest_unit_uid(owner_ch.id, avatar_row.id)
                 assert sess["guest_unit_uid"] == expected_uid
 
-                # bench 含客串化身
                 form = FormationService(session)
                 bench = await form.bench_units(borrower_ch)
                 guests = [
@@ -148,9 +153,7 @@ def test_friend_assist_auto_accept_bench_validate_spend(tmp_path: Path) -> None:
                 assert len(guests) == 1
                 assert guests[0]["unit_uid"] == expected_uid
                 assert guests[0]["enabled"] is True
-                assert "助甲" in guests[0]["name"]
 
-                # 校验可放入进攻编成（含本体 + 客串）
                 units = [
                     {"unit_uid": "main", "unit_kind": "main", "x": 0, "y": 3},
                     {
@@ -164,30 +167,46 @@ def test_friend_assist_auto_accept_bench_validate_spend(tmp_path: Path) -> None:
                 ]
                 await form.validate_units(borrower_ch, units, "none")
 
-                # PVE spend 路径：扣主人化身 assist_battle
-                av_svc = AvatarService(session)
-                av_svc.refresh_stamina_state(avatar_row, owner_ch, persist=True)
+                # 助战体力独立：探索 stamina 不变
+                assist.refresh_assist_stamina(avatar_row, owner_ch, persist=True)
                 await session.flush()
-                before = int(avatar_row.stamina)
-                av_svc.spend_avatar_action(
-                    avatar_row,
-                    owner_ch,
-                    action_key="assist_battle",
-                )
+                before_assist = int(avatar_row.assist_stamina)
+                before_explore = int(avatar_row.stamina)
+                before_daily = int(avatar_row.daily_actions_used)
+                assist.spend_assist_battle(avatar_row, owner_ch)
                 await session.commit()
-                assert int(avatar_row.stamina) < before
-                assert int(avatar_row.daily_actions_used) >= 1
+                assert int(avatar_row.assist_stamina) < before_assist
+                assert int(avatar_row.stamina) == before_explore
+                assert int(avatar_row.daily_actions_used) == before_daily
 
                 # 忙碌中不可再邀请
-                with pytest.raises(AppError) as exc:
+                with pytest.raises(AppError) as busy_exc:
                     await assist.invite(
                         borrower_user,
                         target_character_id=owner_ch.id,
                         target_name=None,
                     )
-                assert "助战" in exc.value.message
+                assert "助战中" in busy_exc.value.message
 
-                # PVP 拒客串
+                # PVE 战后离队
+                ended = await assist.end_active_for_borrower(
+                    borrower_ch.id,
+                    reason="pve_battle_end",
+                )
+                await session.commit()
+                assert ended == 1
+                bench_after = await form.bench_units(borrower_ch)
+                assert not any(b.get("is_guest") for b in bench_after)
+
+                # 离队后可再邀
+                again = await assist.invite(
+                    borrower_user,
+                    target_character_id=owner_ch.id,
+                    target_name=None,
+                )
+                await session.commit()
+                assert again["session"]["status"] == "active"
+
                 from app.services.autochess_service import AutochessService
 
                 with pytest.raises(AppError) as pvp_exc:
@@ -197,59 +216,30 @@ def test_friend_assist_auto_accept_bench_validate_spend(tmp_path: Path) -> None:
     _run(_body())
 
 
-def test_friend_assist_online_requires_accept(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """主人在线时邀请保持 invited，须手动 accept。"""
+def test_assist_stamina_zero_requires_resume(tmp_path: Path) -> None:
+    """助战体力归零锁定，须恢复到阈值才可再助战。"""
 
     async def _body() -> None:
-        async with open_test_session_factory(tmp_path / "assist_online.db") as factory:
+        async with open_test_session_factory(tmp_path / "assist_lock.db") as factory:
             async with factory() as session:
-                monkeypatch.setattr(
-                    AvatarAssistService,
-                    "_is_owner_online",
-                    lambda self, owner_character_id: True,
-                )
-                owner_user = await _register(session, "assist_on_a@example.com", "在甲")
-                borrower_user = await _register(session, "assist_on_b@example.com", "在乙")
+                owner_user = await _register(session, "lock_a@example.com", "锁甲")
                 await _huashen_with_avatar(session, owner_user)
-
-                friends = FriendService(session)
-                applied = await friends.apply(
-                    borrower_user,
-                    target_character_id=None,
-                    target_name="在甲",
+                owner_ch = await character_service.get_character_by_user_id(
+                    session, owner_user.id,
                 )
-                await session.commit()
-                await friends.accept(owner_user, int(applied["friendship_id"]))
-                await session.commit()
-
+                assert owner_ch is not None
+                avatar_row = (
+                    await session.execute(
+                        select(Avatar).where(Avatar.character_id == owner_ch.id),
+                    )
+                ).scalar_one()
                 assist = AvatarAssistService(session)
-                await assist.set_assist_settings(owner_user, enabled=True)
-                await session.commit()
-
-                invited = await assist.invite(
-                    borrower_user,
-                    target_character_id=None,
-                    target_name="在甲",
-                )
-                await session.commit()
-                assert invited["auto_accepted"] is False
-                assert invited["session"]["status"] == "invited"
-
-                # 借入人 bench 尚无客串
-                borrower_ch = await character_service.get_character_by_user_id(
-                    session, borrower_user.id,
-                )
-                assert borrower_ch is not None
-                bench = await FormationService(session).bench_units(borrower_ch)
-                assert not any(b.get("is_guest") for b in bench)
-
-                accepted = await assist.accept(
-                    owner_user,
-                    int(invited["session"]["id"]),
-                )
-                await session.commit()
-                assert accepted["session"]["status"] == "active"
-                bench2 = await FormationService(session).bench_units(borrower_ch)
-                assert any(b.get("is_guest") for b in bench2)
+                assist.refresh_assist_stamina(avatar_row, owner_ch, persist=True)
+                avatar_row.assist_stamina = 0
+                avatar_row.assist_stamina_locked = 1
+                await session.flush()
+                with pytest.raises(AppError) as exc:
+                    assist.assert_can_lend(avatar_row, owner_ch)
+                assert "恢复" in exc.value.message
 
     _run(_body())

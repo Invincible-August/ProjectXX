@@ -121,6 +121,12 @@ class PresenceService:
         except Exception:  # noqa: BLE001
             logger.exception("presence watchers failed character_id=%s", cid)
             return
+        # 下线时刷新道友资料快照，供离线查阅
+        if not online:
+            try:
+                await self._persist_friend_profile_snapshot(cid)
+            except Exception:  # noqa: BLE001
+                logger.exception("friend profile snapshot failed character_id=%s", cid)
         hub = get_ws_hub()
         for wid in watchers:
             if int(wid) == cid:
@@ -132,6 +138,18 @@ class PresenceService:
             online,
             len(watchers),
         )
+
+    async def _persist_friend_profile_snapshot(self, character_id: int) -> None:
+        """Persist friend-visible profile snapshot when going offline."""
+        from app.db.models import Character
+        from app.services.friend_service import FriendService
+
+        async with AsyncSessionLocal() as session:
+            ch = await session.get(Character, int(character_id))
+            if ch is None:
+                return
+            await FriendService(session).refresh_profile_snapshot(ch)
+            await session.commit()
 
     async def _watcher_character_ids(self, character_id: int) -> set[int]:
         """Friends (active) + open party mates."""

@@ -38,7 +38,7 @@ import AccountView from '../views/AccountView.vue'
 import TestPage from '../test/apps.vue'
 import { useAuthStore } from '../stores/auth'
 import { useCharacterStore } from '../stores/character'
-import { resolveSafeRedirect } from '../utils/safeRedirect'
+import { clearLastPlayPath } from '../utils/safeRedirect'
 
 /** 路由 meta：公开页 / 需登录 / 根路径分流 / 世界顶栏 */
 declare module 'vue-router' {
@@ -278,11 +278,12 @@ async function homePathAfterAuthResolved(
 router.beforeEach(async (to: RouteLocationNormalized) => {
   const authStore = useAuthStore()
 
-  // 根路径：有会话 → 大厅/创角/状态分流；无会话 → 登录
+  // 根路径：有会话 → 大厅/创角/状态分流；无会话 → 登录（不回跳上次玩法页）
   if (to.meta.isRoot) {
     if (authStore.hasStoredTokens()) {
       const ok = await authStore.ensureSession()
       if (ok) {
+        clearLastPlayPath()
         const path = await homePathAfterAuthResolved(authStore)
         return { path, replace: true }
       }
@@ -293,17 +294,17 @@ router.beforeEach(async (to: RouteLocationNormalized) => {
   // 需登录的页面
   if (to.meta.requiresAuth) {
     if (!authStore.hasStoredTokens()) {
+      clearLastPlayPath()
       return {
         name: 'login',
-        query: { redirect: to.fullPath },
         replace: true,
       }
     }
     const ok = await authStore.ensureSession()
     if (!ok) {
+      clearLastPlayPath()
       return {
         name: 'login',
-        query: { redirect: to.fullPath },
         replace: true,
       }
     }
@@ -344,13 +345,12 @@ router.beforeEach(async (to: RouteLocationNormalized) => {
     return true
   }
 
-  // 已登录访问登录/注册 → 直接进游戏入口，避免重复登录
+  // 已登录访问登录/注册 → 大厅/状态分流（不回跳上次页、不跟 redirect）
   if (to.name === 'login' || to.name === 'register') {
     if (authStore.hasStoredTokens()) {
       const sessionOk = await authStore.ensureSession()
       if (sessionOk) {
-        const redirect = resolveSafeRedirect(to.query.redirect)
-        if (redirect) return { path: redirect, replace: true }
+        clearLastPlayPath()
         const path = await homePathAfterAuthResolved(authStore)
         return { path, replace: true }
       }

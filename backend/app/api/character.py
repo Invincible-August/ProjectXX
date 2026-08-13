@@ -73,3 +73,17 @@ async def get_my_combat_attrs(
         raise AppError(code=40005, message="尚未创建角色", http_status=404)
     packed = await characters.build_combat_attrs(character)
     return success({"combat": packed["combat"], "life": packed["life"]})
+
+
+@router.post("/me/event-logs/ack", response_model=None)
+async def ack_pending_event_logs(
+    characters: CharacterService = Depends(get_character_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """
+    确认待领取事件日志已展示（无离线 pending 时清空缓冲）。
+
+    Returns:
+        dict: ``cleared`` / ``skipped`` / ``character``。
+    """
+    return success(await characters.ack_pending_event_logs(current_user))

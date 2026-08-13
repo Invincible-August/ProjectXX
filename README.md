@@ -8,7 +8,7 @@
 | --- | --- |
 | [project修仙.md](./project修仙.md) | 游戏设计文档（GDD）**v4.1**（§3.3 雷劫仅跨境；§11 灵宠指针 → 灵宠系统设计） |
 | [后台管理系统开发计划.md](./后台管理系统开发计划.md) | **后台细则**（**v1.3.3** 双写表格+JSON · 字段中文 · `/management`）；与主计划 **§0.0.1** 同步 |
-| [开发计划.md](./开发计划.md) | 分里程碑开发计划（**v3.1**：§1.2 延后项计划队列 · 下一主线 **M8** · §0.6.2 属性 · M0～M13 · ADM） |
+| [开发计划.md](./开发计划.md) | 分里程碑开发计划（**v3.2**：§1.2 延后项计划队列 · 下一主线 **M8** · §0.6.2 属性 · M0～M13 · ADM） |
 | [后续待完成.md](./后续待完成.md) | **开新设计前必读**：延后项登记册（钩子/笔记）；阶段归属见开发计划 **§1.2** |
 | [四象禁制与环境天气载荷设计.md](./四象禁制与环境天气载荷设计.md) | **M3-D07**：禁制子类 / 环境·天气战斗载荷 / 战报中文；**v1.1.1 已落地**（载荷与 LOS 已解耦） |
 | [异步真读条突破设计.md](./异步真读条突破设计.md) | **M5-D05 / M1-D20**：可选闭关读条；**v1.2 默认关闭**——点击同步出结果（2026-08-10） |
@@ -35,18 +35,20 @@
 | [M6前端目录与路由设计.md](./M6前端目录与路由设计.md) | **M6** `/dao` `/dao-lord` + `src/ws`；赛会 mode 预告；**v1.1**（2026-08-10） |
 | [M7宗门社交与经济设计.md](./M7宗门社交与经济设计.md) | **M7** 宗门/交易/邮件/多频道聊天/传承/师徒/双修/商业化壳；竖切 **L1～L8**；**v1.0**（2026-08-11） |
 | [M7前端目录与路由设计.md](./M7前端目录与路由设计.md) | **M7** `/sect` `/market` `/social` `/friends` `/party` `/dual-cultivation` `/shop` + ChatDock；**v1.0**（2026-08-11） |
-| [ATTR战斗属性占位设计.md](./ATTR战斗属性占位设计.md) | **ATTR-D01 已落地**：统一战斗+生活属性 schema、实体适用面、叠层与面板拆解；**M13=填数不改键**；**v1.2**（2026-08-12） |
+| [ATTR战斗属性占位设计.md](./ATTR战斗属性占位设计.md) | **ATTR-D01 已落地**：统一战斗+生活属性 schema、实体适用面、叠层与面板拆解；**M13=填数不改键**；**v1.3**（2026-08-13） |
 | [玩家在线状态设计.md](./玩家在线状态设计.md) | **Presence**：WS 鉴权在线 / grace / 组队·面交·助战门闸；**v1.0**（2026-08-12） |
 | [核验与超级密码设计](./docs/superpowers/specs/2026-07-28-verification-super-password-design.md) | 注册核验 / verification API / 超级密码（**已实现**，2026-07-28） |
 | [核验与超级密码实现计划](./docs/superpowers/plans/2026-07-28-verification-super-password.md) | 分任务实现清单 |
+| [测试更新指令.md](./测试更新指令.md) | **测试服更新/重启**：conda + screen + Nginx（8080/8100）；完整更新与按改动范围精简步骤 |
 | [CHANGELOG.md](./CHANGELOG.md) | 变更记录 |
 
 ## 当前进度
 
 - **前端生产构建**：`cd frontend && npm ci && npm run build`（`vue-tsc -b && vite build`）在 2026-08-12 已通过类型检查修复后可完整产出 `dist/`
-- **ATTR-D01 已落地（2026-08-12 · v1.2）**：[`ATTR战斗属性占位设计.md`](./ATTR战斗属性占位设计.md)——`combat_attrs.yaml` / `build_combat_attrs` / 大厅分栏；装备喂入 → ATTR-D02（M8）；满曲线 → M13
+- **ATTR-D01 已落地（2026-08-13 · v1.3）**：[`ATTR战斗属性占位设计.md`](./ATTR战斗属性占位设计.md)——`combat_attrs.yaml` / `build_combat_attrs` / `AdditiveSource` 叠层封装 / 大厅分栏；道友卡键统一 `magic_atk`；装备喂入 → ATTR-D02（M8）；满曲线 → M13
 - **玩家在线状态 Presence 已落地（2026-08-12）**：[`玩家在线状态设计.md`](./玩家在线状态设计.md) **v1.0**——`PresenceService` + Hub 索引/grace；组队/面交/助战/道友/赛会共用；`presence.changed` 推送；多 worker → **PRESENCE-R01**
-- **M7 L1～L8 已落地（2026-08-11）**：宗门 + 道友/交易 + 邮件/赠送 + 五频道聊天/ChatDock + **机缘**（原聊天红包）+ 师徒/真引渡 + 双修/四榜 + 会员/天道商店沙盒；`scripts/smoke_m7.py`；设计见 [`M7宗门社交与经济设计.md`](./M7宗门社交与经济设计.md)；延后见 [`后续待完成.md`](./后续待完成.md) **CHAT-D03** / **M7-D***
+- **M7 已收口（2026-08-13）**：L1～L8 + V+ + 打磨包（真正坊市、大厅导航、社交交易/双修/师徒等）；`scripts/smoke_m7.py`；设计见 [`M7宗门社交与经济设计.md`](./M7宗门社交与经济设计.md)；延后见 [`后续待完成.md`](./后续待完成.md) **CHAT-D03** / **M7-D***
+- **M7 L1～L8 已落地（2026-08-11）**：宗门 + 道友/交易 + 邮件（附物发信，原赠送并入）+ 五频道聊天/ChatDock + **机缘**（原聊天红包）+ 师徒/真引渡 + 双修/四榜 + 会员/天道商店沙盒
 - **M7-V+ 宗门深化（2026-08-12）**：九档宗门等级 + 十二档职位/任命 + 十设施可玩骨架；建宗须专精；战入口占位 → M11；矿脉被动入库+采矿挂机；灵药园兑换/托管；大阵兑换上缴与加点
 - **M7 前端**：`/sect` `/market` `/friends` `/party` `/social` `/dual-cultivation` `/shop`；创角必选性别；ChatDock（世界等）+ **DmDialog 私聊弹窗**；组队在队伍页；`HallSocialGate`
 - **M6 大道 / 道主 / WS + 打磨包已收口（2026-08-11）**：W1～W6 + **M6-D06** + 收尾包；延后见 **M6-D01～D05、D07**
@@ -62,8 +64,8 @@
 - **阵法部署 M3-D08 Phase A 落地（2026-08-10）**：[`阵法部署与自研设计.md`](./阵法部署与自研设计.md) **v1.1**——`deploy` 四模式 / `force_shifts` / presets `effective_deploy_cells` / 前端换阵高亮；样本 wide_front·cloud_drift·left_wing_mask·shift_gust
 - **嘲讽光环 M3-D06 Phase A 落地（2026-08-10）**：[`嘲讽光环设计.md`](./嘲讽光环设计.md) **v1.1**——静态 `taunt_auras` / 进入触发 / 决策短路 / 死亡解除 / 样本 `taunt_guardian` / ADM 域
 - **延后/并行项**：总表见 [`开发计划.md`](./开发计划.md) **§1.2**；细则钩子见 [`后续待完成.md`](./后续待完成.md)（M3 §1.5 · M4 §1.6 · M5 §1.7 · M6 §1.11 · M7 §1.12 · ATTR/CHAT/IDLE/DICE）
-- **扩展层已排期（开发计划 v3.1）**：~~M6~~ / ~~M7 主路径~~ → **下一主线 M8**（自研 + ATTR-D02）→ M9～M13；新功能须遵循 **§0.7 显性设计**、**§0.0 后台适配**、**§0.0.2 中文信条** 与 **§0.6.2 属性路线**
-- **M7 L1～L8 已落地**（含 V+）；后端测试含 M0～M7 + ADM；冒烟 `smoke_m3` / `smoke_m4` / `smoke_m5` / `smoke_m6` / `smoke_m7` / `smoke_adm`
+- **扩展层已排期（开发计划 v3.2）**：~~M6~~ / ~~M7~~ → **下一主线 M8**（自研 + ATTR-D02）→ M9～M13；新功能须遵循 **§0.7 显性设计**、**§0.0 后台适配**、**§0.0.2 中文信条** 与 **§0.6.2 属性路线**
+- **M7 L1～L8 已收口**（含 V+ 与打磨包）；后端测试含 M0～M7 + ADM；冒烟 `smoke_m3` / `smoke_m4` / `smoke_m5` / `smoke_m6` / `smoke_m7` / `smoke_adm`
 - **后端 OOP 分层**：见下方「后端架构」
 
 ## 后端架构
@@ -190,7 +192,7 @@ npm run build
   成功：`201`，`data` 为完整角色面板（锻体一层、灵石=`INITIAL_SPIRIT_STONES`）；已有角色 `40004`；道号占用 `40003`
 - 我的角色：`GET http://127.0.0.1:8000/api/v1/characters/me`  
   Header：`Authorization: Bearer <access_token>`  
-  无角色：`404` / 业务码 `40005`（前端应跳转创角页）；**先 `ensure_offline_pending`（短缺口 settle / 长缺口写 pending）再返回**，含进度 / `is_stalled` / 修正后 `base_atk`/`base_hp` 等衍生字段
+  无角色：`404` / 业务码 `40005`（前端应跳转创角页）；**先 `ensure_offline_pending`（短缺口 settle / 长缺口且 WS 离线写 pending；WS 仍在线则带帽直接入账不写 pending）再返回**，含进度 / `is_stalled` / 修正后 `base_atk`/`base_hp` 等衍生字段
 - 领取离线：`POST /api/v1/idle/offline/claim`；无 pending → `40031`；灵石不足以支付 pending 消耗 → `40038`
 
 ### M1 核心循环 API（需 Bearer）
@@ -249,10 +251,10 @@ M3 GM 扩展（`POST /gm/character/set` 新增可选字段）：`set_stamina` / 
 | GET | `/api/v1/avatar/sense` | 神识读数（capacity/load/soft/hard/zone/overload_mult/backlash） |
 | GET | `/api/v1/avatar/explore/status` | 探索代理桩（化神+） |
 | POST | `/api/v1/avatar/quests/accept` | Body `{"quest_kind":"npc"\|"sect"}`；未解锁 `40090`；解锁后桩 `50110` |
-| POST | `/api/v1/avatar/assist/settings` | Body `{"enabled":bool}`；主人开关道友助战（化神 `friend_assist`） |
-| POST | `/api/v1/avatar/assist/invite` | Body `target_character_id` 或 `target_name`；道友借入；离线自动 accept |
-| POST | `/api/v1/avatar/assist/{id}/accept\|reject\|end` | 接受 / 拒绝 / 结束助战会话 |
-| GET | `/api/v1/avatar/assist/me` | 助战会话列表（主人侧 / 借入侧）+ 本开关 |
+| POST | `/api/v1/avatar/assist/settings` | Body `{"enabled":bool}`；**化身页**开关「化身助战」（关=闭关）；化神 `friend_assist` |
+| POST | `/api/v1/avatar/assist/invite` | Body `target_character_id` 或 `target_name`；**邀请化身**：开则立即入队；关→「闭关中」；忙→「助战中」 |
+| POST | `/api/v1/avatar/assist/{id}/accept\|reject\|end` | 兼容旧 invited / 手动结束；PVE 战后自动离队 |
+| GET | `/api/v1/avatar/assist/me` | 助战会话 + 开关 + **助战专用体力**（独立槽，仅随境界变容） |
 | GET | `/api/v1/craft/recipes` | 配方列表（五分支） |
 | GET | `/api/v1/craft/jobs` | 工坊队列 |
 | POST | `/api/v1/craft/start` | Body `{"recipe_id":"...","actor":"main"\|"avatar"}` |
@@ -339,22 +341,31 @@ M6 冒烟：`python scripts/smoke_m6.py`（backend 目录、已激活 venv）。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET/POST | `/friends` · `…/{id}/accept` · `…/reject` · `DELETE …/{id}` | 道友列表（修为/在线/助战）/ 申请 / 确认 / 拒绝 / 解除 |
+| GET/POST | `/friends` · `…/{id}/accept` · `…/reject` · `DELETE …/{id}` | 道友列表（修为/真实在线/可邀化身）/ 申请 / 确认 / 拒绝 / 解除；WS `friend.request`（拜帖）· `friend.update`（同意/拒绝） |
+| GET/PUT | `/friends/privacy` | 本人是否允许道友查看资料 |
+| GET | `/friends/profile/{character_id}` | 查看道友资料（在线实时 / 离线快照；遮掩 `40130`） |
 | GET | `/trade/bazaar` | **真正坊市**：NPC 固定货架 + 可回收摘要 |
 | POST | `/trade/bazaar/buy` · `/trade/bazaar/sell` | 灵石购买 / 按收购价出售（仅普通袋；绑定物拒绝） |
 | GET/POST | `/trade/listings` · `…/{id}/buy` · `…/cancel` | 拍卖行·一口价 |
 | GET/POST | `/trade/auctions` · `…/{id}/bid` | 拍卖行·竞拍 |
-| POST/GET | `/trade/face` · `…/{id}` · `…/accept` · `…/reject` · `…/offer` · `…/lock` · `…/confirm` · `…/cancel` | 面交（邀约→接受→草稿→锁定→确认） |
+| POST/GET | `/trade/face` · `GET …/pending` · `GET …/invite-options` · `…/{id}` · `…/accept` · `…/reject` · `…/offer` · `…/lock` · `…/confirm` · `…/cancel` | 社交交易（邀约提交后推送；页内待接受列表即时出现→锁定→确认；点通知先拉会话再进页手动接受）；道具格同邮件 72px；报价自动同步；改草稿不拆对方锁定；WS `session` 为接收方视角；`vessel_offer.hours`；单侧最多 16 种；WS `face.invite`/`face.update` |
 
-前端：大厅顶栏 **社交**（`/social`：道友/队伍/双修/邮件/赠送/师徒/引渡）· **道友**（`/social?mode=friends`）· **商店**（`/shop`：`mode=bazaar|auction|tiandao`）；另有 **化身**（`/avatar`，挂机含采矿）· **账号**（`/account`：资料/改密/退出）；修炼区标题行「资源分配/进阶」弹窗；`/market` 仍为拍卖行独立入口（`mode=listings|auction|face`）；`/friends` `/party` `/dual-cultivation` 深链保留。
+前端：大厅顶栏 **社交**（`/social`：道友关系/队伍/双修/**交易**/邮件/师徒/引渡）· **商店**（`/shop`：`mode=bazaar|auction|tiandao`）；另有 **化身**（`/avatar`，挂机含采矿）· **账号**（`/account`：资料/改密/退出）；修炼区标题行「资源分配/进阶」入口弹窗；`/market` 为拍卖行独立入口（`mode=listings|auction`，旧 `face` 深链重定向社交交易）；`/friends` `/party` `/dual-cultivation` 深链保留。道友页为单页分区：我的道友/道侣/炉鼎；若自身为他人炉鼎则显示「我的主人」（含到期时间）。交易可要约「愿为对方炉鼎」并设现实小时；双方至多一侧；**互为道侣不可互为炉鼎**（道侣仍可为他人炉鼎）；主人可随时解除，到期自动解除。大厅日志下方有**邀请列表**；社交页操作日志同步进大厅事件日志；右上角 WS 邀请提示可点击跳转对应社交子页（交易/组队/双修/道友/道侣）。
 
-### M7 L3 邮件与赠送 API（需 Bearer）
+### M7 L3 邮件 API（需 Bearer；原赠送已并入发信）
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET/POST | `/mail` | 收件箱 / 发无附件玩家信 |
-| POST | `/mail/{id}/read` · `/mail/{id}/claim` | 已读 / 领取附件（幂等 40120） |
-| POST | `/gifts` | 赠送道友（附件入对方邮箱） |
+| GET | `/mail` | 收件箱（含 `limits`：附件种类上限等） |
+| GET | `/mail/compose-options` | 道友/同门/弟子快捷名单与群发权限 |
+| POST | `/mail` | 发信；可附灵石/道具；`broadcast=sect\|disciples` 群发 |
+| POST | `/mail/read-all` · `/mail/claim-all` · `/mail/delete-all` | 一键已读 / 领取（后标已读）/ 删除（须已读且附件已领） |
+| POST | `/mail/{id}/read` · `/claim` · `/delete` | 单封已读 / 领取 / 删除 |
+| POST | `/gifts` | **已弃用**，兼容转发到附物发信 |
+
+配置（`mail.yaml` / ADM 域 `mail`）：`max_attachment_lines`（默认 **6**）、`sect_broadcast_min_rank_order`（掌门=9）、`broadcast_max_recipients`；单种道具数量不得超过最大堆叠。附物单发默认须道友；宗门群发仅掌门及以上；弟子群发仅师傅。
+
+前端写信台：右侧 **道友/宗门/弟子** 弹窗选人、**背包** 点选入固定附件栏；可堆叠物品弹出数量窗（魔兽发信交互）。
 
 环境变量：`SECT_SYSTEM_ENABLED` / `FRIENDS_SYSTEM_ENABLED` / `TRADE_SYSTEM_ENABLED` / `MAIL_SYSTEM_ENABLED`（后端；默认开）。
 
@@ -367,11 +378,11 @@ M6 冒烟：`python scripts/smoke_m6.py`（backend 目录、已激活 venv）。
 | POST | `/chat/send` | 发送（鉴权/限速/敏感词；私聊发送后裁剪最旧） |
 | POST | `/chat/read` | 清零频道未读 |
 | POST | `/chat/dm/clear` | 清空某私聊会话全部历史（双方） |
-| GET/POST | `/party/me` · `/party` | 当前队伍（成员公开摘要 + `pending_invites`） / create·invite·accept·reject·leave·kick（邀请/踢人仅队长） |
+| GET/POST | `/party/me` · `/party/invite-options` · `/party` | 当前队伍/团队（`kind`·人数上限·`pending_invites`·`outgoing_invites`）/ 快捷邀请名单 / create·invite·accept·reject·leave·kick·**convert_to_team**·**convert_to_party**（邀请 60s 超时；队伍≤5，团队≤40；≤5 人可转回队伍） |
 
 WS：订阅 `chat:{channel_ref}`，推送 `chat.message` / `chat.unread` / `chat.dm.cleared`；组队另推 `party.invite` / `party.update`。关 `CHAT_WS_PUSH_ENABLED` 时前端轮询 history。
 
-前端：玩法壳横切 `ChatDock`（世界/宗门/师承/队伍；组队管理在 `/party`）；**私聊独立 `DmDialog`**（道友入口 / 坞未读角标）；私聊服务端持久最近 N 条；非私聊仍会话级缓存；世界/宗门可发机缘；大厅提示道友/组队/面交规则。
+前端：玩法壳横切 `ChatDock`（世界/宗门/师承/队伍；组队管理在 `/party`）；**私聊独立 `DmDialog`**（道友入口 / 坞未读角标）；私聊服务端持久最近 N 条；非私聊仍会话级缓存；世界/宗门可发机缘；大厅提示道友/组队/面交规则。玩法壳内 WS 为长连接（切页保活，登出/离开玩法壳才断）；大厅「正在连接仙界…」仅本会话首进一次。
 
 `chat.yaml`：`dm_history_limit` / `session_ephemeral` / `party_require_friend` / `party_invite_expire_sec` / `party_dev_assume_online`（仅 development）。
 
@@ -393,32 +404,51 @@ WS：`heritage.created` / `heritage.claimed` / `heritage.expired`（随聊天房
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/mentor/me` | 当前师徒键 / 任务 / 师承频 |
-| POST | `/mentor/apply` | 拜师或收徒申请 |
+| GET | `/mentor/me` | 师徒键 / 任务 / 日课与传授状态 / 可授选项 / 师承频 |
+| POST | `/mentor/apply` | 拜师或收徒（师傅须至少高徒 1 个大境界） |
 | POST | `/mentor/{id}/accept` · `/reject` | 确认 / 拒绝 |
 | POST | `/mentor/quests/{quest_id}/progress` | 推进师徒任务 |
-| POST | `/mentor/pass` · `/graduate` · `/dissolve` | 传功 / 出师 / 解除 |
-| POST | `/ferry/rescue` | 道友/同门引渡（救援者支付；`mode=friend\|sect`） |
+| POST | `/mentor/lesson` | 日课三选一：传道 `dao` / 授业 `craft` / 解惑 `technique`（每日一次） |
+| POST | `/mentor/teach` | 传授功法或配方图纸（每日一次，按阶梯累计多日） |
+| POST | `/mentor/study` | 徒弟请学师傅功法（每日一次；可叠加未学完的同种传授进度） |
+| POST | `/mentor/direct` | 师傅设置亲传弟子（最多 3 人；可含已出师） |
+| POST | `/mentor/pass` | 兼容旧传功（等价传道·修为） |
+| POST | `/mentor/graduate` · `/dissolve` | 出师 / 解除（弟子追上师傅大境界会自动出师） |
+| POST | `/ferry/rescue` | 普渡/同门/亲友引渡（救援者支付；`mode=friend\|sect\|kin`） |
+| GET | `/ferry/rescue-targets` | 救援名单（`category=universal\|sect\|kin`：普渡众生道友 / 同门 / 亲友） |
+
+日课数值：`min(弟子当前档突破需求×100%, 师傅对应资源池×10%)`。传授天数见 `mentor.yaml` `teach.sessions_by_tier`（低阶约 1 日，高阶 7～10 日）。徒弟请学见 `mentor.yaml` `study`（默认每日 1 次、进度 +1）。亲传见 `direct_disciple`：授业/解惑日课 +1，传授不变；指定后隔日可解除、解除当日不可再指定；出师自动解除亲传。`GET /mentor/me` 含 `lineage` 师承单（大/二/三弟子，已出师标注）。师傅传授时徒弟在线收 WS `game.log`，离线写入 `pending_event_logs`，领取离线收益时可见；无离线 pending 时用 `POST /characters/me/event-logs/ack` 确认清空。
 
 `GET /ferry/me` 含 `social_rescue` 成本对照（非待引渡也可读）。同图判定默认 `SAME_REGION_STUB=true`（真地图 → M9）。
 
-前端：`/social?mode=mentor|ferry`；待引渡页「去求援」跳转社交引渡；ChatDock 师承解锁。
+前端：`/social?mode=mentor|ferry`（师徒面板含师承单/亲传/日课/传授/徒弟请学；引渡页三类：普渡众生 / 同门引渡 / 亲友引渡）；社交操作日志同步写入大厅事件日志；待引渡页「去求援」跳转社交引渡；ChatDock 师承解锁。
 
 环境变量：`MENTOR_SYSTEM_ENABLED`；`SAME_REGION_STUB`。
 
-### M7 L7 双修与四榜 API（需 Bearer）
+### M7 L7 双修与时长榜 API（需 Bearer）
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/dual/me` | 会话 / 功法目录 / 性别状态 |
+| GET | `/dual/me` | 会话 / 功法 / 性别 / 道侣·炉鼎选人列表 |
 | POST | `/dual/set-gender` | 存量一次性补选 `male\|female` |
-| POST | `/dual/invite` | 邀约（`technique_id` + 道号） |
-| POST | `/dual/{id}/confirm` · `/roll` · `/settle` · `/cancel` | 确认 / 掷骰 / 结算 / 取消 |
-| GET | `/dual/ranks` | 四榜（`board` 可选） |
+| POST | `/dual/invite` | 邀约（`technique_id` + `target_character_id` + `bond_kind`；禁止手填道号；WS `dual.invite`） |
+| POST | `/dual/{id}/confirm` | 接受邀约 → `accepted`（启动宽衣 60s；道侣可拒，炉鼎不可拒） |
+| POST | `/dual/{id}/undress` | 受邀方「宽衣解带」→ `undressed` |
+| POST | `/dual/{id}/start` | 邀请方「开始」：扣双方战斗体力 → 高潮循环结算 → `settled` |
+| POST | `/dual/{id}/cancel` | 取消（终态）；炉鼎邀约态受邀方不可取消 |
+| GET | `/dual/ranks` | 时长榜（默认前 100；主榜 `duration_total`） |
+| GET | `/bonds` | 道侣 / 炉鼎列表 |
+| POST | `/bonds/companions` | 申请道侣 |
+| POST | `/bonds/vessels` | 炉鼎直邀口子（拒绝；请走面交要约） |
+| POST | `/bonds/{id}/accept` · `/reject` · DELETE | 道侣确认/拒绝；解除（炉鼎仅主人可解） |
 
-掷骰：`DiceService` · `purpose=dual_cultivation` → YAML `dice_tiers` 效果档/时长。功法：`mutual_gain` / `transfer`（`dual_cultivation.yaml`）。
+流程：`inviting` → `accepted` → `undressed` → `start` 自动结算。道侣邀约/宽衣 60s 超时取消；炉鼎邀约 60s 自动接受、宽衣 60s 自动宽衣。
+功法模式：`mutual_gain` 双增 · `transfer` 传功 · `extract` 索取（蛇蝎：被索取过低初始转化率 0，索取方过低初始为负）。
+体力：`stamina_costs`（双增双方相同；传功传方>受方；索取索取方>被索取）；管理后台域 `dual_cultivation` 可改初始设定。
+高潮循环由 `climax` 驱动（每轮≈1s±20%）。WS：`dual.invite` / `dual.update`（弹窗点进 `/social?mode=dual`）。
+角色摘要/角色页展示战斗体力（`battle_stamina.left/cap`）。
 
-前端：创角必选性别；`/dual-cultivation?mode=session|ranks`。
+前端：社交双修台「双修台 / 时长榜」；右侧道侣·炉鼎选人；接受 / 宽衣解带 / 开始。
 
 环境变量：`DUAL_CULTIVATION_ENABLED`。
 
@@ -655,7 +685,7 @@ npm run dev
 | --- | --- |
 | 勾选「记住登录」→ 登录 → 关浏览器再开 `/` 或 `/login` | 自动进 `/create-character` 或 `/hall`（localStorage + 长效 refresh） |
 | 不勾选 → 登录 → 关闭标签再开 | 回到登录页（sessionStorage，会话结束即失效） |
-| 未登录访问 `/hall` | 跳转 `/login?redirect=/hall`；登录成功后回到 `/hall` |
+| 未登录访问受保护页 | 跳转 `/login`；登录成功后进大厅（创角/引渡/渡劫除外），不回跳上次玩法页 |
 | 清除站点数据或 refresh 过期后再访受保护页 | 被赶到登录页 |
 | access 过期、refresh 仍有效 | 业务请求遇 401 后自动换票重试，用户无感 |
 
@@ -708,7 +738,7 @@ npm run dev
 | `GM_ENABLED` | `true` | development 下 GM；`false` 则 `40310` |
 | `BREAKTHROUGH_RNG_SEED` | 空 | 仅单测注入，生产勿设 |
 | `OFFLINE_CAP_HOURS_FREE` | `12` | 免费离线有效小时 |
-| `OFFLINE_PREVIEW_THRESHOLD_SECONDS` | `300` | 缺口 ≥ 此值进入离线 pending |
+| `OFFLINE_PREVIEW_THRESHOLD_SECONDS` | `300` | 缺口 ≥ 此值：WS 离线 → pending；WS 在线 → 带帽直接入账 |
 | `ALLOCATE_MIN_UNIT` | `1` | 单次分配最小单位 |
 | `GRADE_RNG_SEED` | 空 | 品阶掷骰测试种子 |
 
@@ -740,6 +770,6 @@ cd backend
 | M4-D03 | 神识阶梯衰减与反噬表 | **完成**（2026-08-07） |
 | M5 | 环境与轮回外环（六时/天气/渡劫/引渡） | **完成**（2026-08-06） |
 | M6～M7 | 大道道主 / 宗门·聊天邮件赠送师徒**双修**·交易 | **M6 完成（2026-08-10）**；**M7 L1～L8 已接（2026-08-11）** |
-| M8～M13 | 自研 / 世界空间 / 叙事 / 世界事件 / AI / 内容数值 | **已排入** [`开发计划.md`](./开发计划.md) **v3.1**（§1.2 延后队列 · 下一主线 M8） |
+| M8～M13 | 自研 / 世界空间 / 叙事 / 世界事件 / AI / 内容数值 | **已排入** [`开发计划.md`](./开发计划.md) **v3.2**（§1.2 延后队列 · 下一主线 M8） |
 
 进度细节见 [M5前端目录与路由设计.md](./M5前端目录与路由设计.md) §9、[M4前端目录与路由设计.md](./M4前端目录与路由设计.md) §9、[M3前端目录与路由设计.md](./M3前端目录与路由设计.md) §9。

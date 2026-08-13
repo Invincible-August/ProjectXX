@@ -13,6 +13,7 @@ membership_caps:
   tier2: 24
 
 # 离线时长达到该秒数才出现「可领取 pending」预览门槛
+# （WS Presence 仍在线时：达到门槛则带帽直接入账，不写 pending）
 preview_threshold_seconds: 300
 
 # 领取后是否把「帽外墙钟」直接丢弃（推进锚点到 now）

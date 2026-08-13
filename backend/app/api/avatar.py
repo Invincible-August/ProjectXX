@@ -150,7 +150,7 @@ async def assist_settings(
     service: AvatarAssistService = Depends(get_avatar_assist_service),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """主人开关道友助战（须解锁 friend_assist）。"""
+    """化身页开关：开启/关闭化身助战（关=闭关）。"""
     data = await service.set_assist_settings(current_user, enabled=payload.enabled)
     return success(data)
 
@@ -161,7 +161,7 @@ async def assist_invite(
     service: AvatarAssistService = Depends(get_avatar_assist_service),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """道友邀请借入对方化身；主人离线且开关开则自动 accept。"""
+    """邀请化身：开关开则立即入队；关→闭关中；忙→助战中。"""
     data = await service.invite(
         current_user,
         target_character_id=payload.target_character_id,

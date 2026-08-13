@@ -2,21 +2,22 @@
 /**
  * 独立队伍页（/party）：建队、邀请、踢人、队友情报。
  */
-import { onMounted, ref } from 'vue'
+import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AuthSessionBar from '../components/AuthSessionBar.vue'
 import PartyPanel from '../components/party/PartyPanel.vue'
 import { useCharacterStore } from '../stores/character'
 import { useChatStore } from '../stores/chat'
-import { createLogEntry, type GameLogEntry } from '../types/gameLog'
+import { useGameLogStore } from '../stores/gameLog'
+import { type GameLogEntry } from '../types/gameLog'
 
 const router = useRouter()
 const characterStore = useCharacterStore()
 const chatStore = useChatStore()
-const logEntries = ref<GameLogEntry[]>([])
+const gameLogStore = useGameLogStore()
 
 function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
-  logEntries.value = [...logEntries.value.slice(-49), createLogEntry(message, level)]
+  gameLogStore.push(message, level)
 }
 
 onMounted(async () => {
@@ -54,18 +55,19 @@ onMounted(async () => {
             <el-text tag="b" size="small">规则</el-text>
           </template>
           <ul class="rules">
-            <li>同一角色同时只能加入一支队伍。</li>
-            <li>仅队长可邀请队友、踢出队员。</li>
-            <li>邀请须双方在线且已结道友；对方需在本页接受。</li>
-            <li>点击成员可查看境界、状态、攻防、功法与体质装备摘要。</li>
+            <li>同一角色同时只能加入一支队伍或团队。</li>
+            <li>队伍最多 5 人；超过请队长「转换为团队」（最多 40 人）；人数≤5 时可「转回队伍」。</li>
+            <li>仅队长/团长可邀请与踢人；邀请须双方在线且为道友/同门/师徒。</li>
+            <li>邀请 1 分钟内未接受视为拒绝；列表显示倒计时与绿接受 / 红拒绝。</li>
+            <li>团队仅可挑战团队秘境、团队/野外 Boss、势力争夺；不可进普通秘境；非团队 Boss 无掉落与修为。</li>
             <li>队伍聊天请在聊天坞「队伍」页签发言（不可发机缘）。</li>
           </ul>
         </el-card>
-        <el-card v-if="logEntries.length" shadow="never">
+        <el-card v-if="gameLogStore.entries.length" shadow="never">
           <template #header>
-            <el-text tag="b" size="small">本页日志</el-text>
+            <el-text tag="b" size="small">事件日志（同步大厅）</el-text>
           </template>
-          <div v-for="e in logEntries.slice(-8)" :key="e.id" class="log-line">
+          <div v-for="e in gameLogStore.entries.slice(-8)" :key="e.id" class="log-line">
             <el-text size="small">{{ e.message }}</el-text>
           </div>
         </el-card>

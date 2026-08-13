@@ -1,34 +1,36 @@
 /**
- * M7 L2 道友 Pinia store：列表 / 申请 / 确认 / 拒绝。
+ * M7 L2 道友 Pinia store：列表 / 申请 / 隐私 / 资料 / WS 拜帖提示。
  */
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import {
   acceptFriend,
   applyFriend,
+  fetchFriendPrivacy,
+  fetchFriendProfile,
   listFriends,
   rejectFriend,
   removeFriend,
+  updateFriendPrivacy,
 } from '../api/friends'
-import type { FriendItem } from '../types/friends'
+import type { FriendItem, FriendProfileCard } from '../types/friends'
+import type { WsEnvelope } from '../types/ws'
+import { notifyInviteJump } from '../utils/inviteNotify'
+import { WsType } from '../ws/protocol'
 import { useCharacterStore } from './character'
 
 export const useFriendsStore = defineStore('friends', () => {
-  /** 已结交道友 */
   const friends = ref<FriendItem[]>([])
-  /** 待我确认 */
   const incoming = ref<FriendItem[]>([])
-  /** 我发出的待确认 */
   const outgoing = ref<FriendItem[]>([])
   const friendCount = ref(0)
   const maxFriends = ref(0)
   const loading = ref(false)
   const lastMessage = ref('')
   const lastError = ref('')
+  /** 本人是否允许道友查看资料 */
+  const profileVisible = ref(true)
 
-  /**
-   * 刷新道友列表；成功返回 null，失败返回中文错误。
-   */
   async function refresh(): Promise<string | null> {
     loading.value = true
     lastError.value = ''
@@ -47,7 +49,6 @@ export const useFriendsStore = defineStore('friends', () => {
       outgoing.value = envelope.data.outgoing ?? []
       friendCount.value = Number(envelope.data.friend_count ?? 0)
       maxFriends.value = Number(envelope.data.max_friends ?? 0)
-      // 同步角色面板角标字段（若已有 character）
       const ch = useCharacterStore().character
       if (ch) {
         useCharacterStore().applyCharacter({
@@ -62,10 +63,81 @@ export const useFriendsStore = defineStore('friends', () => {
   }
 
   /**
-   * 按道号申请道友。
-   *
-   * @param targetName - 对方道号
+   * Handle friend.request / friend.update WS pushes.
    */
+  function applyPush(envelope: WsEnvelope): void {
+    if (
+      envelope.type !== WsType.FRIEND_REQUEST &&
+      envelope.type !== WsType.FRIEND_UPDATE
+    ) {
+      return
+    }
+    const p = (envelope.payload || {}) as {
+      event?: string
+      message?: string
+      from_name?: string
+    }
+    const msg =
+      String(p.message || '').trim() ||
+      (envelope.type === WsType.FRIEND_REQUEST
+        ? '你有新的道友拜帖'
+        : '道友申请状态已更新')
+    const event = String(p.event || '')
+    const title =
+      event === 'accepted'
+        ? '道友同意'
+        : event === 'rejected'
+          ? '道友拒绝'
+          : '道友拜帖'
+    const type =
+      event === 'accepted' ? 'success' : event === 'rejected' ? 'warning' : 'info'
+    notifyInviteJump({
+      title,
+      message: msg,
+      type,
+      dedupeKey: `friend:${event || envelope.type}:${String(p.from_name || msg).slice(0, 32)}`,
+      to: { path: '/social', query: { mode: 'friends' } },
+      afterNavigate: () => refresh(),
+    })
+    void refresh()
+  }
+
+  async function loadPrivacy(): Promise<string | null> {
+    const envelope = await fetchFriendPrivacy()
+    if (envelope.code !== 0 || !envelope.data) {
+      return envelope.message || `加载隐私设置失败（code=${envelope.code}）`
+    }
+    profileVisible.value = Boolean(envelope.data.friend_profile_visible)
+    return null
+  }
+
+  async function setPrivacy(visible: boolean): Promise<string | null> {
+    const envelope = await updateFriendPrivacy(visible)
+    if (envelope.code !== 0 || !envelope.data) {
+      const msg = envelope.message || `更新隐私失败（code=${envelope.code}）`
+      lastError.value = msg
+      return msg
+    }
+    profileVisible.value = Boolean(
+      envelope.data.friend_profile_visible ?? visible,
+    )
+    lastMessage.value = envelope.data.message || '隐私已更新'
+    return null
+  }
+
+  async function loadProfile(
+    characterId: number,
+  ): Promise<{ err: string | null; profile: FriendProfileCard | null }> {
+    const envelope = await fetchFriendProfile(characterId)
+    if (envelope.code !== 0 || !envelope.data) {
+      return {
+        err: envelope.message || `查看失败（code=${envelope.code}）`,
+        profile: null,
+      }
+    }
+    return { err: null, profile: envelope.data }
+  }
+
   async function applyByName(targetName: string): Promise<string | null> {
     const name = targetName.trim()
     if (!name) {
@@ -89,11 +161,23 @@ export const useFriendsStore = defineStore('friends', () => {
     }
   }
 
-  /**
-   * 确认来自对方的申请。
-   *
-   * @param friendshipId - 友谊行 id
-   */
+  async function applyByCharacterId(characterId: number): Promise<string | null> {
+    loading.value = true
+    try {
+      const envelope = await applyFriend({ target_character_id: characterId })
+      if (envelope.code !== 0 || !envelope.data) {
+        const msg = envelope.message || `申请失败（code=${envelope.code}）`
+        lastError.value = msg
+        return msg
+      }
+      lastMessage.value = envelope.data.message || '已发送道友申请'
+      await refresh()
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function accept(friendshipId: number): Promise<string | null> {
     loading.value = true
     try {
@@ -114,11 +198,6 @@ export const useFriendsStore = defineStore('friends', () => {
     }
   }
 
-  /**
-   * 拒绝来自对方的申请。
-   *
-   * @param friendshipId - 友谊行 id
-   */
   async function reject(friendshipId: number): Promise<string | null> {
     loading.value = true
     try {
@@ -136,11 +215,6 @@ export const useFriendsStore = defineStore('friends', () => {
     }
   }
 
-  /**
-   * 解除已结交道友。
-   *
-   * @param friendshipId - 友谊行 id
-   */
   async function remove(friendshipId: number): Promise<string | null> {
     loading.value = true
     try {
@@ -161,12 +235,6 @@ export const useFriendsStore = defineStore('friends', () => {
     }
   }
 
-  /**
-   * Apply WS ``presence.changed`` to friend list dots.
-   *
-   * @param characterId - Peer character id
-   * @param online - New online flag
-   */
   function applyPresence(characterId: number, online: boolean): void {
     const cid = Number(characterId)
     friends.value = friends.value.map((f) =>
@@ -183,11 +251,17 @@ export const useFriendsStore = defineStore('friends', () => {
     loading,
     lastMessage,
     lastError,
+    profileVisible,
     refresh,
+    loadPrivacy,
+    setPrivacy,
+    loadProfile,
     applyByName,
+    applyByCharacterId,
     accept,
     reject,
     remove,
     applyPresence,
+    applyPush,
   }
 })

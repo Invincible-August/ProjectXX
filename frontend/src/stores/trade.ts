@@ -15,6 +15,8 @@ import {
   faceConfirm,
   faceGet,
   faceInvite,
+  faceInviteOptions,
+  faceListPending,
   faceLock,
   faceOffer,
   faceReject,
@@ -26,10 +28,15 @@ import {
 import type {
   AuctionLot,
   BazaarCatalogPayload,
+  FaceInviteOptions,
+  FacePendingInvite,
   FaceSession,
   Listing,
   TradeItemLine,
 } from '../types/trade'
+import type { WsEnvelope } from '../types/ws'
+import { notifyInviteJump } from '../utils/inviteNotify'
+import { WsType } from '../ws/protocol'
 import { useCharacterStore } from './character'
 
 export const useTradeStore = defineStore('trade', () => {
@@ -37,8 +44,12 @@ export const useTradeStore = defineStore('trade', () => {
   const listings = ref<Listing[]>([])
   /** 开放拍品 */
   const auctions = ref<AuctionLot[]>([])
-  /** 当前面交会话（单会话工作台） */
+  /** 当前交易会话（单会话工作台） */
   const faceSession = ref<FaceSession | null>(null)
+  /** 快捷选人选项 */
+  const inviteOptions = ref<FaceInviteOptions | null>(null)
+  /** 收到的待接受交易邀请 */
+  const pendingInvites = ref<FacePendingInvite[]>([])
   /** NPC 坊市货架 */
   const bazaar = ref<BazaarCatalogPayload | null>(null)
   const loading = ref(false)
@@ -322,6 +333,7 @@ export const useTradeStore = defineStore('trade', () => {
   async function setFaceOffer(
     items: TradeItemLine[],
     spiritStones: number,
+    vesselOffer?: { hours: number } | null,
   ): Promise<string | null> {
     const session = faceSession.value
     if (!session) {
@@ -334,6 +346,7 @@ export const useTradeStore = defineStore('trade', () => {
       const envelope = await faceOffer(session.id, {
         items,
         spirit_stones: spiritStones,
+        vessel_offer: vesselOffer ?? null,
         version: session.version,
       })
       if (envelope.code !== 0 || !envelope.data) {
@@ -491,8 +504,205 @@ export const useTradeStore = defineStore('trade', () => {
   function applyPresence(characterId: number, online: boolean): void {
     const s = faceSession.value
     if (!s) return
-    if (Number(s.peer_id) !== Number(characterId)) return
+    const counterparty =
+      s.you_are === 'initiator' ? Number(s.peer_id) : Number(s.initiator_id)
+    if (counterparty !== Number(characterId)) return
     faceSession.value = { ...s, peer_online: online }
+  }
+
+  /**
+   * 带短重试刷新待接受列表（应对提交与推送的微小时差）。
+   *
+   * @param expectSessionId - 期望出现的会话 id；有则未出现时重试
+   */
+  async function refreshPendingWithRetry(
+    expectSessionId?: number | null,
+  ): Promise<string | null> {
+    const expect = Number(expectSessionId || 0)
+    let lastErr: string | null = null
+    for (let i = 0; i < 4; i += 1) {
+      lastErr = await refreshPending()
+      if (expect <= 0) return lastErr
+      if (pendingInvites.value.some((x) => Number(x.session_id) === expect)) {
+        return lastErr
+      }
+      await new Promise((r) => setTimeout(r, 120 * (i + 1)))
+    }
+    return lastErr
+  }
+
+  /**
+   * 邀请推送乐观写入待接受列表，避免等接口才出按钮。
+   */
+  function upsertPendingFromInvite(p: {
+    session_id?: number
+    from_character_id?: number
+    from_name?: string
+    expires_at?: string | null
+    status?: string
+    invite_kind?: string
+    invite_kind_label_zh?: string
+  }): void {
+    const sid = Number(p.session_id || 0)
+    if (sid <= 0) return
+    const rest = pendingInvites.value.filter((x) => Number(x.session_id) !== sid)
+    pendingInvites.value = [
+      {
+        session_id: sid,
+        from_character_id: Number(p.from_character_id || 0),
+        from_name: String(p.from_name || '对方'),
+        status: String(p.status || 'pending_invite'),
+        expires_at: p.expires_at ?? null,
+        invite_kind: p.invite_kind,
+        invite_kind_label_zh: p.invite_kind_label_zh || '交易',
+      },
+      ...rest,
+    ]
+  }
+
+  /**
+   * Handle face.invite / face.update WS pushes (notify + refresh pending).
+   *
+   * @param envelope - WS envelope
+   */
+  function applyPush(envelope: WsEnvelope): void {
+    if (
+      envelope.type !== WsType.FACE_INVITE &&
+      envelope.type !== WsType.FACE_UPDATE
+    ) {
+      return
+    }
+    const p = (envelope.payload || {}) as {
+      event?: string
+      message?: string
+      session_id?: number
+      from_character_id?: number
+      from_name?: string
+      expires_at?: string | null
+      status?: string
+      invite_kind?: string
+      invite_kind_label_zh?: string
+      session?: FaceSession
+    }
+    const msg = String(p.message || '').trim()
+    if (msg) {
+      lastMessage.value = msg
+    }
+    const event = String(p.event || '')
+    const isInvitePush =
+      envelope.type === WsType.FACE_INVITE || event === 'invite'
+    const sid = Number(p.session_id || p.session?.id || 0)
+
+    if (isInvitePush) {
+      upsertPendingFromInvite(p)
+    }
+
+    // 邀请不自动打开会话；点通知进交易页后手动接受
+    if (p.session && typeof p.session === 'object' && !isInvitePush) {
+      const cur = faceSession.value
+      if (!cur || Number(cur.id) === Number(p.session.id)) {
+        faceSession.value = p.session
+      }
+    }
+
+    // 终态时从待接受列表移除
+    if (
+      sid > 0 &&
+      (event === 'accepted' ||
+        event === 'rejected' ||
+        event === 'cancelled' ||
+        event === 'committed')
+    ) {
+      pendingInvites.value = pendingInvites.value.filter(
+        (x) => Number(x.session_id) !== sid,
+      )
+    }
+
+    const title =
+      envelope.type === WsType.FACE_INVITE
+        ? '交易邀请'
+        : event === 'accepted'
+          ? '交易已接受'
+          : event === 'rejected' || event === 'cancelled'
+            ? '交易已结束'
+            : event === 'committed'
+              ? '交易成交'
+              : event === 'locked'
+                ? '对方已锁定'
+                : ''
+    const type =
+      event === 'committed' || event === 'accepted'
+        ? 'success'
+        : event === 'rejected' || event === 'cancelled'
+          ? 'warning'
+          : 'info'
+    // 仅邀请与关键终态/锁定弹窗；草稿更新等不刷屏
+    const shouldNotify =
+      Boolean(msg) &&
+      (envelope.type === WsType.FACE_INVITE ||
+        event === 'accepted' ||
+        event === 'rejected' ||
+        event === 'cancelled' ||
+        event === 'committed' ||
+        event === 'locked')
+    if (shouldNotify && title) {
+      notifyInviteJump({
+        title,
+        message: msg,
+        type,
+        dedupeKey:
+          sid > 0
+            ? `face:${envelope.type === WsType.FACE_INVITE ? 'invite' : event}:${sid}`
+            : undefined,
+        to: {
+          path: '/social',
+          query: {
+            mode: 'trade',
+            ...(sid > 0 ? { session: String(sid) } : {}),
+          },
+        },
+        afterNavigate: async () => {
+          if (sid > 0) {
+            await refreshPendingWithRetry(sid)
+            await loadFace(sid)
+          } else {
+            await refreshPending()
+          }
+        },
+      })
+    }
+    void refreshPendingWithRetry(isInvitePush ? sid : null)
+  }
+
+  /** 加载快捷选人 */
+  async function loadInviteOptions(): Promise<string | null> {
+    try {
+      const envelope = await faceInviteOptions()
+      if (envelope.code !== 0 || !envelope.data) {
+        inviteOptions.value = null
+        return envelope.message || '加载交易选人失败'
+      }
+      inviteOptions.value = envelope.data
+      return null
+    } catch (e: unknown) {
+      return e instanceof Error ? e.message : '加载交易选人失败'
+    }
+  }
+
+  /** 刷新收到的交易邀请 */
+  async function refreshPending(): Promise<string | null> {
+    try {
+      const envelope = await faceListPending()
+      if (envelope.code !== 0 || !envelope.data) {
+        pendingInvites.value = []
+        return envelope.message || '加载交易邀请失败'
+      }
+      pendingInvites.value = envelope.data.items ?? []
+      return null
+    } catch (e: unknown) {
+      pendingInvites.value = []
+      return e instanceof Error ? e.message : '加载交易邀请失败'
+    }
   }
 
   /** 刷新 NPC 坊市货架 */
@@ -599,6 +809,8 @@ export const useTradeStore = defineStore('trade', () => {
     listings,
     auctions,
     faceSession,
+    inviteOptions,
+    pendingInvites,
     bazaar,
     loading,
     lastMessage,
@@ -620,6 +832,10 @@ export const useTradeStore = defineStore('trade', () => {
     cancelFace,
     clearFaceSession,
     applyPresence,
+    applyPush,
+    loadInviteOptions,
+    refreshPending,
+    refreshPendingWithRetry,
     refreshBazaar,
     bazaarBuy,
     bazaarSell,

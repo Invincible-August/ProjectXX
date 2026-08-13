@@ -1,11 +1,12 @@
 <script setup lang="ts">
 /**
- * 离线收益预览与一键领取（M2）。
+ * 离线收益预览与一键领取（M2）；附带离线期间事件日志（如师傅传授）。
  */
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { previewOfflineApi } from '../api/idle'
 import { useCharacterStore } from '../stores/character'
+import { useGameLogStore } from '../stores/gameLog'
 import type { OfflinePending } from '../types/character'
 import { idleDirectionLabel } from '../utils/idleLabels'
 
@@ -19,9 +20,14 @@ const emit = defineEmits<{
 }>()
 
 const characterStore = useCharacterStore()
+const gameLogStore = useGameLogStore()
 const busy = ref(false)
 const loadingPreview = ref(false)
 const pending = ref<OfflinePending | null>(null)
+/** 预览时一并展示的待领取事件日志（领取后写入大厅） */
+const pendingEventLogs = ref<
+  Array<{ message: string; level?: string; source?: string; at?: string }>
+>([])
 
 const visible = computed({
   get: () => props.modelValue,
@@ -41,6 +47,11 @@ async function refreshPreview(): Promise<void> {
     pending.value = envelope.data.pending
     if (envelope.data.character) {
       characterStore.applyCharacter(envelope.data.character)
+      pendingEventLogs.value = Array.isArray(
+        envelope.data.character.pending_event_logs,
+      )
+        ? [...envelope.data.character.pending_event_logs]
+        : []
     }
     if (!envelope.data.has_pending) {
       pending.value = characterStore.character?.offline_pending ?? null
@@ -59,6 +70,11 @@ watch(
   (open) => {
     if (open) {
       pending.value = characterStore.character?.offline_pending ?? null
+      pendingEventLogs.value = Array.isArray(
+        characterStore.character?.pending_event_logs,
+      )
+        ? [...(characterStore.character?.pending_event_logs || [])]
+        : []
       void refreshPreview()
     }
   },
@@ -75,6 +91,21 @@ async function onClaim(): Promise<void> {
       `离线领取 ${data.settled_ticks} 周天：修为 +${data.gained_cultivation}，炼体 +${data.gained_body ?? 0}，制造业 +${data.gained_crafting ?? 0}，灵石 -${data.spent_spirit_stones}`,
       'success',
     )
+    const eventLogs = Array.isArray(data.event_logs) ? data.event_logs : []
+    for (const row of eventLogs) {
+      const msg = String(row?.message || '').trim()
+      if (!msg) continue
+      const levelRaw = String(row?.level || 'info')
+      const level =
+        levelRaw === 'success' ||
+        levelRaw === 'warning' ||
+        levelRaw === 'system'
+          ? levelRaw
+          : 'info'
+      gameLogStore.push(msg, level)
+      emit('log', msg, level)
+    }
+    pendingEventLogs.value = []
     visible.value = false
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : '领取失败'
@@ -129,6 +160,14 @@ async function onClaim(): Promise<void> {
         :closable="false"
         show-icon
       />
+      <div v-if="pendingEventLogs.length" class="event-logs mt">
+        <div class="event-logs-title">离线期间事件</div>
+        <ul class="event-logs-list">
+          <li v-for="(row, idx) in pendingEventLogs" :key="idx">
+            {{ row.message }}
+          </li>
+        </ul>
+      </div>
     </template>
     <el-empty v-else description="暂无待领取离线收益" :image-size="64" />
 
@@ -152,5 +191,16 @@ async function onClaim(): Promise<void> {
 }
 .mt {
   margin-top: 0.75rem;
+}
+.event-logs-title {
+  font-size: 0.85rem;
+  margin-bottom: 0.35rem;
+  opacity: 0.85;
+}
+.event-logs-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
 }
 </style>

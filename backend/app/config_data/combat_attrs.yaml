@@ -201,8 +201,8 @@ attrs:
     category: primary
     default: 0
   stamina:
-    label_zh: 体力
-    help_zh: 行动次数相关资源，非棋盘生命
+    label_zh: 战斗体力
+    help_zh: 开战/双修等行动消耗的体力（惰性恢复），非棋盘生命
     engine: false
     panel: true
     category: life

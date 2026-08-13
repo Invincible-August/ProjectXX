@@ -131,7 +131,11 @@ class CharacterPublic(BaseModel):
     )
     life: dict | None = Field(
         default=None,
-        description="ATTR LifeAttrBlock：体力/悟性/吐纳/工坊向等",
+        description="ATTR LifeAttrBlock：战斗体力/悟性/吐纳/工坊向等",
+    )
+    battle_stamina: dict | None = Field(
+        default=None,
+        description="战斗体力读数：left/cap/regen_per_minute/next_point_in_seconds",
     )
     # --- M2 ---
     realm_progress: int = Field(default=0, description="已投入当前档的境界进度（突破门槛）")
@@ -150,6 +154,10 @@ class CharacterPublic(BaseModel):
         description="会员摘要：tier/label/expires/idle_cap_hours",
     )
     offline_pending: dict | None = Field(default=None, description="待领取离线明细；无则 null")
+    pending_event_logs: list[dict] = Field(
+        default_factory=list,
+        description="待领取事件日志（如师傅传授）；领取离线收益或 ack 后清空",
+    )
     technique_summary: list[dict] = Field(default_factory=list, description="功法摘要列表")
     constitution_summary: dict = Field(
         default_factory=lambda: {"equipped": []},

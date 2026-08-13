@@ -34,8 +34,10 @@ export async function setDualGender(
 
 export async function inviteDual(body: {
   technique_id: string
+  target_character_id: number
+  bond_kind: string
+  inviter_role?: string
   target_name?: string
-  target_character_id?: number
 }): Promise<ApiResponse<{ session?: unknown; message?: string }>> {
   try {
     const response = await http.post('/dual/invite', body)
@@ -74,6 +76,30 @@ export async function settleDual(
 > {
   try {
     const response = await http.post(`/dual/${sessionId}/settle`)
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+export async function undressDual(
+  sessionId: number,
+): Promise<ApiResponse<{ session?: unknown; message?: string }>> {
+  try {
+    const response = await http.post(`/dual/${sessionId}/undress`)
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+export async function startDual(
+  sessionId: number,
+): Promise<
+  ApiResponse<{ session?: unknown; summary?: unknown; message?: string; character?: unknown }>
+> {
+  try {
+    const response = await http.post(`/dual/${sessionId}/start`)
     return response.data
   } catch (error: unknown) {
     return envelopeFromAxiosError(error)

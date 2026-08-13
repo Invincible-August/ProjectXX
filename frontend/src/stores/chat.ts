@@ -24,8 +24,12 @@ import type { WsEnvelope } from '../types/ws'
 import { isChannelJoinNotice } from '../utils/chatRealmNameColor'
 import { subscribeChannel, unsubscribeChannel } from '../ws/channels'
 import { WsType } from '../ws/protocol'
+import { notifyInviteJump } from '../utils/inviteNotify'
 import { useCharacterStore } from './character'
+import { useBondsStore } from './bonds'
+import { useDualCultivationStore } from './dualCultivation'
 import { useFriendsStore } from './friends'
+import { useGameLogStore } from './gameLog'
 import { useHeritageStore } from './heritage'
 import { useTradeStore } from './trade'
 import { useWsStore } from './ws'
@@ -68,8 +72,15 @@ export const useChatStore = defineStore('chat', () => {
   const party = ref<PartyPayload | null>(null)
   /** Incoming party invites for current character */
   const pendingInvites = ref<PartyInviteItem[]>([])
+  /** Outgoing pending invites sent by current character */
+  const outgoingInvites = ref<PartyInviteItem[]>([])
   /** Local waiting hint after sending an invite */
   const waitingInvite = ref<PartyInviteItem | null>(null)
+  const partyLimits = ref<{
+    party_max_members?: number
+    team_max_members?: number
+    invite_expire_sec?: number
+  } | null>(null)
   const loading = ref(false)
   const lastError = ref('')
   const dockOpen = ref(false)
@@ -167,7 +178,9 @@ export const useChatStore = defineStore('chat', () => {
     dmDraft.value = ''
     party.value = null
     pendingInvites.value = []
+    outgoingInvites.value = []
     waitingInvite.value = null
+    partyLimits.value = null
     unreadTotal.value = 0
     dmUnreadPeers.value = 0
     sessionListening.value = false
@@ -364,7 +377,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /**
-   * Refresh party + pending invites from GET /party/me.
+   * Refresh party + pending/outgoing invites from GET /party/me.
    */
   async function refreshPartyMe(): Promise<string | null> {
     const envelope = await fetchPartyMe()
@@ -373,19 +386,20 @@ export const useChatStore = defineStore('chat', () => {
     }
     party.value = envelope.data.party ?? null
     pendingInvites.value = envelope.data.pending_invites ?? []
-    // Clear local waiting if invite resolved / accepted into party
+    outgoingInvites.value = envelope.data.outgoing_invites ?? []
+    if (envelope.data.limits) {
+      partyLimits.value = envelope.data.limits
+    }
     if (waitingInvite.value) {
-      const stillPending = pendingInvites.value.some(
+      const stillOut = outgoingInvites.value.some(
         (i) => i.id === waitingInvite.value?.id,
       )
       const members = party.value?.members ?? []
       const peerJoined = members.some(
         (m) => m.character_id === waitingInvite.value?.invitee_id,
       )
-      if (peerJoined || (!stillPending && party.value)) {
-        // Keep waiting until peer joins or invite leaves pending on invitee side;
-        // inviter does not see own invite in pending_invites — clear when peer in party
-        if (peerJoined) waitingInvite.value = null
+      if (peerJoined || !stillOut) {
+        waitingInvite.value = null
       }
     }
     return null
@@ -400,15 +414,14 @@ export const useChatStore = defineStore('chat', () => {
       return envelope.message || `创建队伍失败（code=${envelope.code}）`
     }
     party.value = envelope.data?.party ?? null
-    if (envelope.data?.pending_invites) {
-      pendingInvites.value = envelope.data.pending_invites
-    }
+    pendingInvites.value = envelope.data?.pending_invites ?? pendingInvites.value
+    outgoingInvites.value = envelope.data?.outgoing_invites ?? outgoingInvites.value
     await refreshChannels()
     return null
   }
 
   /**
-   * Invite a peer by dao name (requires friends + online gate server-side).
+   * Invite a peer by dao name (requires relation + online gate server-side).
    *
    * @param peerName - Invitee dao name
    */
@@ -426,10 +439,37 @@ export const useChatStore = defineStore('chat', () => {
     if (envelope.data?.invite) {
       waitingInvite.value = envelope.data.invite
     }
-    if (envelope.data?.pending_invites) {
-      pendingInvites.value = envelope.data.pending_invites
-    }
+    pendingInvites.value = envelope.data?.pending_invites ?? pendingInvites.value
+    outgoingInvites.value = envelope.data?.outgoing_invites ?? outgoingInvites.value
     await refreshChannels()
+    return null
+  }
+
+  /**
+   * Leader converts party → team (max 40).
+   */
+  async function convertToTeam(): Promise<string | null> {
+    const envelope = await partyAction({ action: 'convert_to_team' })
+    if (envelope.code !== 0) {
+      return envelope.message || `转换团队失败（code=${envelope.code}）`
+    }
+    party.value = envelope.data?.party ?? null
+    pendingInvites.value = envelope.data?.pending_invites ?? pendingInvites.value
+    outgoingInvites.value = envelope.data?.outgoing_invites ?? outgoingInvites.value
+    return null
+  }
+
+  /**
+   * Leader converts team → party when members ≤ 5.
+   */
+  async function convertToParty(): Promise<string | null> {
+    const envelope = await partyAction({ action: 'convert_to_party' })
+    if (envelope.code !== 0) {
+      return envelope.message || `转回队伍失败（code=${envelope.code}）`
+    }
+    party.value = envelope.data?.party ?? null
+    pendingInvites.value = envelope.data?.pending_invites ?? pendingInvites.value
+    outgoingInvites.value = envelope.data?.outgoing_invites ?? outgoingInvites.value
     return null
   }
 
@@ -448,6 +488,7 @@ export const useChatStore = defineStore('chat', () => {
     }
     party.value = envelope.data?.party ?? null
     pendingInvites.value = envelope.data?.pending_invites ?? []
+    outgoingInvites.value = envelope.data?.outgoing_invites ?? []
     waitingInvite.value = null
     await refreshChannels()
     return null
@@ -467,6 +508,7 @@ export const useChatStore = defineStore('chat', () => {
       return envelope.message || `拒绝邀请失败（code=${envelope.code}）`
     }
     pendingInvites.value = envelope.data?.pending_invites ?? []
+    outgoingInvites.value = envelope.data?.outgoing_invites ?? outgoingInvites.value
     return null
   }
 
@@ -478,6 +520,7 @@ export const useChatStore = defineStore('chat', () => {
     party.value = null
     waitingInvite.value = null
     pendingInvites.value = envelope.data?.pending_invites ?? []
+    outgoingInvites.value = envelope.data?.outgoing_invites ?? []
     if (activeChannel.value?.channel_type === 'party') {
       await selectChannel(null)
       if (dockOpen.value) {
@@ -508,12 +551,30 @@ export const useChatStore = defineStore('chat', () => {
       return envelope.message || `踢出失败（code=${envelope.code}）`
     }
     party.value = envelope.data?.party ?? null
-    pendingInvites.value = envelope.data?.pending_invites ?? []
+    pendingInvites.value = envelope.data?.pending_invites ?? pendingInvites.value
+    outgoingInvites.value = envelope.data?.outgoing_invites ?? outgoingInvites.value
     await refreshChannels()
     return null
   }
 
   function applyPush(envelope: WsEnvelope): void {
+    if (envelope.type === WsType.GAME_LOG) {
+      const p = (envelope.payload || {}) as {
+        message?: string
+        level?: string
+      }
+      const msg = String(p.message || '').trim()
+      if (!msg) return
+      const levelRaw = String(p.level || 'info')
+      const level =
+        levelRaw === 'success' ||
+        levelRaw === 'warning' ||
+        levelRaw === 'system'
+          ? levelRaw
+          : 'info'
+      useGameLogStore().push(msg, level)
+      return
+    }
     if (
       envelope.type === WsType.HERITAGE_CREATED ||
       envelope.type === WsType.HERITAGE_CLAIMED ||
@@ -532,13 +593,108 @@ export const useChatStore = defineStore('chat', () => {
       const online = Boolean(p.online)
       applyPartyPresence(cid, online)
       useFriendsStore().applyPresence(cid, online)
+      useBondsStore().applyPresence(cid, online)
       useTradeStore().applyPresence(cid, online)
+      return
+    }
+    if (
+      envelope.type === WsType.FRIEND_REQUEST ||
+      envelope.type === WsType.FRIEND_UPDATE
+    ) {
+      useFriendsStore().applyPush(envelope)
+      return
+    }
+    if (
+      envelope.type === WsType.BOND_REQUEST ||
+      envelope.type === WsType.BOND_UPDATE
+    ) {
+      useBondsStore().applyPush(envelope)
+      return
+    }
+    if (
+      envelope.type === WsType.DUAL_INVITE ||
+      envelope.type === WsType.DUAL_UPDATE
+    ) {
+      useDualCultivationStore().applyPush(envelope)
+      return
+    }
+    if (
+      envelope.type === WsType.FACE_INVITE ||
+      envelope.type === WsType.FACE_UPDATE
+    ) {
+      useTradeStore().applyPush(envelope)
       return
     }
     if (
       envelope.type === WsType.PARTY_INVITE ||
       envelope.type === WsType.PARTY_UPDATE
     ) {
+      const p = (envelope.payload || {}) as {
+        event?: string
+        message?: string
+        id?: number
+        inviter_name?: string
+        invite?: { id?: number; inviter_name?: string }
+      }
+      const event = String(p.event || '')
+      // party.invite 已弹过；party.update event=invite 是同一次邀请的重复推送，不再弹
+      const isInviteType = envelope.type === WsType.PARTY_INVITE
+      const inviteId = Number(p.id || p.invite?.id || 0)
+      const inviterName =
+        String(p.inviter_name || p.invite?.inviter_name || '').trim() || '道友'
+
+      if (isInviteType) {
+        notifyInviteJump({
+          title: '组队邀请',
+          message:
+            String(p.message || '').trim() ||
+            `「${inviterName}」邀请你加入队伍`,
+          type: 'info',
+          dedupeKey: inviteId > 0 ? `party:invite:${inviteId}` : undefined,
+          to: { path: '/social', query: { mode: 'party' } },
+          afterNavigate: () => {
+            void refreshPartyMe()
+            void refreshChannels()
+          },
+        })
+      } else if (
+        event === 'accepted' ||
+        event === 'rejected' ||
+        event === 'kicked' ||
+        event === 'left' ||
+        event === 'disbanded'
+      ) {
+        const title =
+          event === 'accepted'
+            ? '入队成功'
+            : event === 'rejected'
+              ? '入队拒绝'
+              : '队伍通知'
+        const msg =
+          String(p.message || '').trim() ||
+          (event === 'accepted'
+            ? '组队邀请已接受'
+            : event === 'rejected'
+              ? '组队邀请已拒绝'
+              : '队伍成员变动')
+        const nType =
+          event === 'accepted'
+            ? 'success'
+            : event === 'rejected' || event === 'kicked'
+              ? 'warning'
+              : 'info'
+        notifyInviteJump({
+          title,
+          message: msg,
+          type: nType,
+          dedupeKey: inviteId > 0 ? `party:${event}:${inviteId}` : `party:${event}`,
+          to: { path: '/social', query: { mode: 'party' } },
+          afterNavigate: () => {
+            void refreshPartyMe()
+            void refreshChannels()
+          },
+        })
+      }
       void refreshPartyMe()
       void refreshChannels()
       return
@@ -642,11 +798,15 @@ export const useChatStore = defineStore('chat', () => {
 
   /**
    * 玩法壳在线即开始收信：挂 WS 处理 + 拉频道 + 订齐所有可进房。
-   * 不依赖聊天坞是否打开、当前是否在某一页签。
+   * 已在听时仅确保订阅，不重复全量刷新（壳内切页可重复调用）。
    */
   async function startSessionListening(): Promise<void> {
     bindPageHideClear()
     ensureWsHandler()
+    if (sessionListening.value) {
+      _syncAllChannelSubscriptions()
+      return
+    }
     sessionListening.value = true
     const err = await refreshChannels()
     if (err) {
@@ -858,7 +1018,11 @@ export const useChatStore = defineStore('chat', () => {
   watch(
     () => useWsStore().status,
     (st) => {
-      if (st !== 'open') return
+      // 套接字失效后本地 joined 作废，必须在重连 open 后重新 room.join
+      if (st !== 'open') {
+        joinedRoomIds.clear()
+        return
+      }
       if (!sessionListening.value && !dockOpen.value) return
       _syncAllChannelSubscriptions()
     },
@@ -880,7 +1044,9 @@ export const useChatStore = defineStore('chat', () => {
     dmHistoryLimit,
     party,
     pendingInvites,
+    outgoingInvites,
     waitingInvite,
+    partyLimits,
     loading,
     lastError,
     dockOpen,
@@ -898,6 +1064,8 @@ export const useChatStore = defineStore('chat', () => {
     clearDm,
     createParty,
     inviteToParty,
+    convertToTeam,
+    convertToParty,
     acceptPartyInvite,
     rejectPartyInvite,
     leaveParty,

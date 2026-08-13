@@ -821,6 +821,11 @@ class AvatarFriendAssistConfig:
 
     invite_expire_sec: int
     assist_dev_assume_online: bool
+    stamina_base_cap: int
+    stamina_cap_by_major: dict[str, int]
+    stamina_recovery_per_hour: float
+    battle_cost: int
+    resume_ratio: float
 
 
 @dataclass(frozen=True)
@@ -1386,6 +1391,10 @@ class FriendsConfig:
     """道友配置（friends.yaml · M7 L2）。"""
 
     max_friends: int
+    max_companions: int
+    max_vessels: int
+    vessel_min_hours: int
+    vessel_max_hours: int
     request_expire_sec: int
     keep_on_reincarnation: bool
     include_online_stub: bool
@@ -1418,7 +1427,7 @@ class TradeConfig:
 
 @dataclass(frozen=True)
 class MailConfig:
-    """邮件与赠送（mail.yaml · M7 L3）。"""
+    """邮件（mail.yaml · M7 L3 · 附物发信并入）。"""
 
     retain_days: int
     expire_unclaimed: str
@@ -1426,6 +1435,9 @@ class MailConfig:
     max_attachment_spirit_stones: int
     max_body_len: int
     list_limit: int
+    # 掌门及以上 order（默认 9）
+    sect_broadcast_min_rank_order: int
+    broadcast_max_recipients: int
     gift: dict[str, Any]
 
 
@@ -1445,10 +1457,14 @@ class ChatConfig:
     sensitive_filter_enabled: bool
     world_line_id: str
     dm_require_friend: bool
-    # 组队邀请须道友
+    # 组队邀请须道友/同门/师徒（true 时校验社交关系）
     party_require_friend: bool
     # 组队邀请过期秒数（0=不过期）
     party_invite_expire_sec: int
+    # 普通队伍人数上限
+    party_max_members: int
+    # 团队人数上限
+    team_max_members: int
     # 仅 development：假定在线以便无 WS 时测邀请门闸
     party_dev_assume_online: bool
     labels_zh: dict[str, str]
@@ -1484,11 +1500,16 @@ class MentorConfig:
     max_apprentices: int
     max_masters_per_apprentice: int
     min_realm_gap: int
+    auto_graduate_max_gap: int
     request_expire_sec: int
     dissolve_cooldown_sec: int
     keep_on_reincarnation: bool
     history_after_dissolve: str
     pass_cultivation: dict[str, Any]
+    daily_lesson: dict[str, Any]
+    teach: dict[str, Any]
+    study: dict[str, Any]
+    direct_disciple: dict[str, Any]
     quests: dict[str, Any]
     graduate: dict[str, Any]
 
@@ -1498,8 +1519,12 @@ class DualCultivationConfig:
     """双修（dual_cultivation.yaml · M7 L7）。"""
 
     invite_expire_sec: int
+    undress_expire_sec: int
     max_rerolls: int
     spirit_stone_cost: int
+    cultivation_gap_scale: int
+    climax: dict[str, Any]
+    stamina_costs: dict[str, Any]
     rank_min_scores: dict[str, Any]
     rank_labels: dict[str, str]
     dice_tiers: tuple[dict[str, Any], ...]
@@ -2723,6 +2748,16 @@ def _parse_avatar(raw: dict[str, Any]) -> AvatarConfig:
     friend_assist_cfg = AvatarFriendAssistConfig(
         invite_expire_sec=max(0, int(assist_raw.get("invite_expire_sec", 86400))),
         assist_dev_assume_online=bool(assist_raw.get("assist_dev_assume_online", False)),
+        stamina_base_cap=max(1, int(assist_raw.get("stamina_base_cap", 50))),
+        stamina_cap_by_major={
+            str(k): int(v)
+            for k, v in (assist_raw.get("stamina_cap_by_major") or {}).items()
+        },
+        stamina_recovery_per_hour=float(
+            assist_raw.get("stamina_recovery_per_hour", 3) or 3,
+        ),
+        battle_cost=max(1, int(assist_raw.get("battle_cost", 10))),
+        resume_ratio=float(assist_raw.get("resume_ratio", 0.2) or 0.2),
     )
 
     return AvatarConfig(
@@ -3773,6 +3808,10 @@ def _parse_friends(raw: dict[str, Any]) -> FriendsConfig:
         assist_dev = bool(raw.get("assist_dev_assume_online"))
     return FriendsConfig(
         max_friends=int(raw.get("max_friends") or 50),
+        max_companions=int(raw.get("max_companions") or 20),
+        max_vessels=int(raw.get("max_vessels") or 10),
+        vessel_min_hours=max(1, int(raw.get("vessel_min_hours") or 1)),
+        vessel_max_hours=max(1, int(raw.get("vessel_max_hours") or 720)),
         request_expire_sec=int(raw.get("request_expire_sec") or 0),
         keep_on_reincarnation=bool(raw.get("keep_on_reincarnation", True)),
         include_online_stub=stub,
@@ -3824,10 +3863,12 @@ def _parse_mail(raw: dict[str, Any]) -> MailConfig:
     return MailConfig(
         retain_days=int(raw.get("retain_days") or 30),
         expire_unclaimed=expire,
-        max_attachment_lines=int(raw.get("max_attachment_lines") or 8),
+        max_attachment_lines=int(raw.get("max_attachment_lines") or 6),
         max_attachment_spirit_stones=int(raw.get("max_attachment_spirit_stones") or 0),
         max_body_len=int(raw.get("max_body_len") or 500),
         list_limit=int(raw.get("list_limit") or 50),
+        sect_broadcast_min_rank_order=int(raw.get("sect_broadcast_min_rank_order") or 9),
+        broadcast_max_recipients=int(raw.get("broadcast_max_recipients") or 100),
         gift=dict(gift_raw),
     )
 
@@ -3852,7 +3893,9 @@ def _parse_chat(raw: dict[str, Any]) -> ChatConfig:
         world_line_id=str(raw.get("world_line_id") or "default"),
         dm_require_friend=bool(raw.get("dm_require_friend", False)),
         party_require_friend=bool(raw.get("party_require_friend", True)),
-        party_invite_expire_sec=int(raw.get("party_invite_expire_sec") or 120),
+        party_invite_expire_sec=int(raw.get("party_invite_expire_sec") or 60),
+        party_max_members=int(raw.get("party_max_members") or 5),
+        team_max_members=int(raw.get("team_max_members") or 40),
         party_dev_assume_online=bool(raw.get("party_dev_assume_online", False)),
         labels_zh={str(k): str(v) for k, v in labels_raw.items()},
     )
@@ -3897,11 +3940,16 @@ def _parse_mentor(raw: dict[str, Any]) -> MentorConfig:
         max_apprentices=int(raw.get("max_apprentices") or 3),
         max_masters_per_apprentice=int(raw.get("max_masters_per_apprentice") or 1),
         min_realm_gap=int(raw.get("min_realm_gap") or 0),
+        auto_graduate_max_gap=int(raw.get("auto_graduate_max_gap") or 0),
         request_expire_sec=int(raw.get("request_expire_sec") or 0),
         dissolve_cooldown_sec=int(raw.get("dissolve_cooldown_sec") or 0),
         keep_on_reincarnation=bool(raw.get("keep_on_reincarnation", True)),
         history_after_dissolve=str(raw.get("history_after_dissolve") or "readonly"),
         pass_cultivation=dict(raw.get("pass_cultivation") or {}),
+        daily_lesson=dict(raw.get("daily_lesson") or {}),
+        teach=dict(raw.get("teach") or {}),
+        study=dict(raw.get("study") or {}),
+        direct_disciple=dict(raw.get("direct_disciple") or {}),
         quests=dict(quests),
         graduate=dict(raw.get("graduate") or {}),
     )
@@ -3917,7 +3965,7 @@ def _parse_dual_cultivation(raw: dict[str, Any]) -> DualCultivationConfig:
         if not isinstance(body, dict):
             raise ValueError(f"technique {tid} 须为 mapping")
         mode = str(body.get("mode") or "")
-        if mode not in ("mutual_gain", "transfer"):
+        if mode not in ("mutual_gain", "transfer", "extract"):
             raise ValueError(f"technique {tid} mode 非法: {mode}")
         techniques[str(tid)] = dict(body)
     tiers_raw = raw.get("dice_tiers") or []
@@ -3926,10 +3974,17 @@ def _parse_dual_cultivation(raw: dict[str, Any]) -> DualCultivationConfig:
     tiers = [dict(t) for t in tiers_raw if isinstance(t, dict)]
     labels_raw = raw.get("rank_labels") or {}
     labels = {str(k): str(v) for k, v in dict(labels_raw).items()}
+    stamina_costs_raw = raw.get("stamina_costs") or {}
+    if not isinstance(stamina_costs_raw, dict):
+        raise ValueError("dual_cultivation.stamina_costs 须为 mapping")
     return DualCultivationConfig(
-        invite_expire_sec=int(raw.get("invite_expire_sec") or 300),
+        invite_expire_sec=int(raw.get("invite_expire_sec") or 60),
+        undress_expire_sec=int(raw.get("undress_expire_sec") or 60),
         max_rerolls=int(raw.get("max_rerolls") or 0),
         spirit_stone_cost=int(raw.get("spirit_stone_cost") or 0),
+        cultivation_gap_scale=int(raw.get("cultivation_gap_scale") or 500),
+        climax=dict(raw.get("climax") or {}),
+        stamina_costs=dict(stamina_costs_raw),
         rank_min_scores=dict(raw.get("rank_min_scores") or {}),
         rank_labels=labels,
         dice_tiers=tuple(tiers),

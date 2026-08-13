@@ -109,9 +109,21 @@ export async function fetchPartyMe(): Promise<ApiResponse<PartyMePayload>> {
   }
 }
 
+/** GET /party/invite-options */
+export async function fetchPartyInviteOptions(): Promise<
+  ApiResponse<import('../types/chat').PartyInviteOptionsPayload>
+> {
+  try {
+    const response = await http.get('/party/invite-options')
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
 /** POST /party */
 export async function partyAction(body: {
-  action: 'create' | 'invite' | 'accept' | 'reject' | 'leave' | 'kick'
+  action: 'create' | 'invite' | 'accept' | 'reject' | 'leave' | 'kick' | 'convert_to_team' | 'convert_to_party'
   peer_name?: string | null
   peer_character_id?: number | null
   invite_id?: number | null
@@ -121,6 +133,7 @@ export async function partyAction(body: {
     party?: PartyPayload | null
     invite?: PartyInviteItem | null
     pending_invites?: PartyInviteItem[]
+    outgoing_invites?: PartyInviteItem[]
   }>
 > {
   try {
@@ -130,6 +143,7 @@ export async function partyAction(body: {
         party?: PartyPayload | null
         invite?: PartyInviteItem | null
         pending_invites?: PartyInviteItem[]
+        outgoing_invites?: PartyInviteItem[]
       }>
     >('/party', body)
     return response.data

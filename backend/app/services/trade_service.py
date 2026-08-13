@@ -9,18 +9,21 @@ import logging
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.time_utils import ensure_aware_utc, now_utc
+from app.core.time_utils import ensure_aware_utc, now_utc, to_utc_iso
 from app.db.models import Character, User
+from app.db.models.mentor import MentorBond
+from app.db.models.sect import SectMember
 from app.db.models.social_trade import (
     AuctionBid,
     AuctionLot,
     FaceTradeSession,
     TradeListing,
 )
+from app.domain.int_money import coerce_non_negative_int_or_app_error
 from app.domain.trade_rules import (
     auction_min_next_bid,
     barter_fee_for_realm,
@@ -28,12 +31,15 @@ from app.domain.trade_rules import (
     listing_fee_amount,
     parse_item_lines,
 )
+from app.domain.ws_protocol import TYPE_FACE_INVITE, TYPE_FACE_UPDATE
 from app.schemas.common import AppError
+from app.services.bond_service import BondService
 from app.services.currency_ledger_service import CurrencyLedgerService
 from app.services.friend_service import FriendService
 from app.services.inventory_service import InventoryService
 from app.services.play_gate import PlayGate
 from app.services.realm_config import get_game_config
+from app.services.ws_hub_service import get_ws_hub
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +59,7 @@ class TradeService:
         self._gate = PlayGate(session)
         self._inv = InventoryService(session)
         self._ledger = CurrencyLedgerService(session)
+        self._bonds = BondService(session)
 
     def _cfg(self):
         return get_game_config().trade
@@ -94,8 +101,12 @@ class TradeService:
         if not offer:
             raise AppError(code=40000, message="上架物品不可为空", http_status=400)
         await self._assert_items_tradable(offer)
+        price_spirit_stones = coerce_non_negative_int_or_app_error(
+            price_spirit_stones,
+            field_zh="灵石标价",
+        )
         if mode_n == "fixed_price":
-            if int(price_spirit_stones) <= 0:
+            if price_spirit_stones <= 0:
                 raise AppError(code=40000, message="一口价须大于 0 灵石", http_status=400)
             ask = []
             fee = 0
@@ -271,6 +282,12 @@ class TradeService:
         if not offer:
             raise AppError(code=40000, message="拍品不可为空", http_status=400)
         await self._assert_items_tradable(offer)
+        start_price = coerce_non_negative_int_or_app_error(
+            start_price,
+            field_zh="起拍灵石",
+        )
+        if start_price < 1:
+            raise AppError(code=40000, message="起拍灵石须 ≥ 1", http_status=400)
         dur = int(duration_sec or self._cfg().auction_duration_sec)
         dur = max(60, dur)
         await self._escrow_take(character, offer)
@@ -278,8 +295,8 @@ class TradeService:
         row = AuctionLot(
             seller_character_id=character.id,
             offer_json=json.dumps(offer, ensure_ascii=False),
-            start_price=int(start_price),
-            current_price=int(start_price),
+            start_price=start_price,
+            current_price=start_price,
             status="open",
             ends_at=now + timedelta(seconds=dur),
         )
@@ -302,6 +319,9 @@ class TradeService:
         require_trade_enabled()
         character, _ = await self._gate.prepare_for_play(user, settle=True)
         self._reject_if_ferry_or_tribulation(character)
+        amount = coerce_non_negative_int_or_app_error(amount, field_zh="出价灵石")
+        if amount < 1:
+            raise AppError(code=40000, message="出价灵石须 ≥ 1", http_status=400)
         row = await self._session.get(AuctionLot, lot_id)
         if row is None:
             raise AppError(code=40000, message="拍品不存在", http_status=404)
@@ -453,26 +473,20 @@ class TradeService:
         self._reject_if_ferry_or_tribulation(character)
         peer = await self._resolve_peer(peer_character_id, peer_name)
         if peer.id == character.id:
-            raise AppError(code=40000, message="不可与自己面交", http_status=400)
+            raise AppError(code=40000, message="不可与自己交易", http_status=400)
         cfg = self._cfg()
         if bool(cfg.face_require_friend):
-            friends = await FriendService(self._session).are_friends(character.id, peer.id)
-            if not friends:
-                raise AppError(
-                    code=40000,
-                    message="仅可与道友发起当面交易",
-                    http_status=400,
-                )
+            await self._assert_face_social_link(character.id, peer.id)
         if bool(cfg.face_require_online):
             if not self._face_is_online(character.id):
-                raise AppError(code=40000, message="你当前不在线，无法发起面交", http_status=400)
+                raise AppError(code=40000, message="你当前不在线，无法发起交易", http_status=400)
             if not self._face_is_online(peer.id):
                 raise AppError(
                     code=40000,
-                    message=f"「{peer.name}」不在线，无法发起面交",
+                    message=f"「{peer.name}」不在线，无法发起交易",
                     http_status=400,
                 )
-        # 互斥：任一方已有进行中面交
+        # 互斥：任一方已有进行中交易
         await self._ensure_no_active_face(character.id)
         await self._ensure_no_active_face(peer.id)
         timeout = int(
@@ -494,8 +508,27 @@ class TradeService:
         )
         self._session.add(row)
         await self._session.flush()
+        # 先提交再推 WS，避免对端立刻拉 pending 读到未提交空列表
+        await self._session.commit()
+        await self._push_face(
+            int(peer.id),
+            TYPE_FACE_INVITE,
+            {
+                "session_id": row.id,
+                "event": "invite",
+                "from_character_id": character.id,
+                "from_name": character.name,
+                "expires_at": (
+                    to_utc_iso(row.expires_at) if row.expires_at else None
+                ),
+                "message": f"「{character.name}」向你发起交易邀请",
+                "status": "pending_invite",
+                "invite_kind": "face",
+                "invite_kind_label_zh": "交易",
+            },
+        )
         return {
-            "message": f"已向「{peer.name}」发起面交",
+            "message": f"已向「{peer.name}」发起交易",
             "session": await self._face_public(row, character.id),
         }
 
@@ -518,14 +551,27 @@ class TradeService:
         row = await self._require_face_participant(character, session_id)
         await self._lazy_expire_face(row)
         if row.status != "pending_invite":
-            raise AppError(code=40112, message="面交不在待接受状态", http_status=400)
+            raise AppError(code=40112, message="交易不在待接受状态", http_status=400)
         if character.id != row.peer_id:
-            raise AppError(code=40000, message="仅受邀方可接受面交", http_status=403)
+            raise AppError(code=40000, message="仅受邀方可接受交易", http_status=403)
         row.status = "browsing"
         await self._session.flush()
+        public = await self._face_public(row, character.id)
+        await self._push_face(
+            int(row.initiator_id),
+            TYPE_FACE_UPDATE,
+            {
+                "session_id": row.id,
+                "event": "accepted",
+                "from_character_id": character.id,
+                "from_name": character.name,
+                "message": f"「{character.name}」已接受交易",
+                "session": await self._face_public(row, int(row.initiator_id)),
+            },
+        )
         return {
-            "message": "已接受面交，可开始挑选报价",
-            "session": await self._face_public(row, character.id),
+            "message": "已接受交易，可开始挑选报价",
+            "session": public,
         }
 
     async def face_reject(self, user: User, session_id: int) -> dict[str, Any]:
@@ -549,15 +595,178 @@ class TradeService:
         row = await self._require_face_participant(character, session_id)
         await self._lazy_expire_face(row)
         if row.status != "pending_invite":
-            raise AppError(code=40112, message="面交不在待接受状态", http_status=400)
+            raise AppError(code=40112, message="交易不在待接受状态", http_status=400)
         if character.id != row.peer_id:
-            raise AppError(code=40000, message="仅受邀方可拒绝面交", http_status=403)
+            raise AppError(code=40000, message="仅受邀方可拒绝交易", http_status=403)
         row.status = "cancelled"
         row.closed_at = now_utc()
         await self._session.flush()
+        public = await self._face_public(row, character.id)
+        await self._push_face(
+            int(row.initiator_id),
+            TYPE_FACE_UPDATE,
+            {
+                "session_id": row.id,
+                "event": "rejected",
+                "from_character_id": character.id,
+                "from_name": character.name,
+                "message": f"「{character.name}」已拒绝交易",
+                "session": await self._face_public(row, int(row.initiator_id)),
+            },
+        )
         return {
-            "message": "已拒绝面交",
-            "session": await self._face_public(row, character.id),
+            "message": "已拒绝交易",
+            "session": public,
+        }
+
+    async def face_list_pending(self, user: User) -> dict[str, Any]:
+        """
+        List incoming trade invites awaiting accept/reject.
+
+        Args:
+            user: Authenticated user (invitee).
+
+        Returns:
+            ``items``: pending invite summaries for the hall invite list.
+        """
+        require_trade_enabled()
+        character = await self._gate.require_character(user)
+        rows = (
+            await self._session.execute(
+                select(FaceTradeSession)
+                .where(
+                    FaceTradeSession.peer_id == character.id,
+                    FaceTradeSession.status == "pending_invite",
+                )
+                .order_by(FaceTradeSession.id.desc()),
+            )
+        ).scalars().all()
+        items: list[dict[str, Any]] = []
+        for row in rows:
+            await self._lazy_expire_face(row)
+            if row.status != "pending_invite":
+                continue
+            init = await self._session.get(Character, row.initiator_id)
+            items.append(
+                {
+                    "session_id": row.id,
+                    "from_character_id": row.initiator_id,
+                    "from_name": init.name if init else str(row.initiator_id),
+                    "status": row.status,
+                    "expires_at": (
+                        to_utc_iso(row.expires_at) if row.expires_at else None
+                    ),
+                    "invite_kind": "trade",
+                    "invite_kind_label_zh": "交易",
+                },
+            )
+        return {"items": items}
+
+    async def face_invite_options(self, user: User) -> dict[str, Any]:
+        """
+        Quick-pick targets for the trade compose UI.
+
+        Returns friends / companions / sect members / mentor peers plus line limits.
+
+        Args:
+            user: Authenticated user.
+
+        Returns:
+            Target lists and ``face_max_item_lines``.
+        """
+        require_trade_enabled()
+        character = await self._gate.require_character(user)
+        friends_payload = await FriendService(self._session).list_friends(user)
+        friends = [
+            {
+                "character_id": int(f["peer_character_id"]),
+                "name": str(f["peer_name"]),
+                "online": bool(f.get("online")),
+            }
+            for f in (friends_payload.get("friends") or [])
+        ]
+
+        bonds = await self._bonds.list_bonds(user)
+        companions = [
+            {
+                "character_id": int(c["peer_character_id"]),
+                "name": str(c["peer_name"]),
+                "online": bool(c.get("online")),
+            }
+            for c in (bonds.get("companions") or [])
+        ]
+
+        sect_members: list[dict[str, Any]] = []
+        member_row = (
+            await self._session.execute(
+                select(SectMember).where(SectMember.character_id == character.id),
+            )
+        ).scalar_one_or_none()
+        if member_row is not None:
+            rows = (
+                await self._session.execute(
+                    select(SectMember, Character)
+                    .join(Character, Character.id == SectMember.character_id)
+                    .where(
+                        SectMember.sect_id == member_row.sect_id,
+                        SectMember.character_id != character.id,
+                    )
+                    .order_by(SectMember.id.asc()),
+                )
+            ).all()
+            for _m, ch in rows:
+                sect_members.append(
+                    {
+                        "character_id": ch.id,
+                        "name": ch.name,
+                        "online": self._face_is_online(ch.id),
+                    },
+                )
+
+        mentors: list[dict[str, Any]] = []
+        mentor_rows = (
+            await self._session.execute(
+                select(MentorBond).where(
+                    MentorBond.status == "active",
+                    or_(
+                        MentorBond.master_character_id == character.id,
+                        MentorBond.apprentice_character_id == character.id,
+                    ),
+                ),
+            )
+        ).scalars().all()
+        for bond in mentor_rows:
+            peer_id = (
+                bond.apprentice_character_id
+                if int(bond.master_character_id) == int(character.id)
+                else bond.master_character_id
+            )
+            peer = await self._session.get(Character, peer_id)
+            if peer is None:
+                continue
+            role = (
+                "disciple"
+                if int(bond.master_character_id) == int(character.id)
+                else "master"
+            )
+            mentors.append(
+                {
+                    "character_id": peer.id,
+                    "name": peer.name,
+                    "role": role,
+                    "role_label_zh": "弟子" if role == "disciple" else "师父",
+                    "online": self._face_is_online(peer.id),
+                    "bond_id": bond.id,
+                },
+            )
+
+        return {
+            "friends": friends,
+            "companions": companions,
+            "sect_members": sect_members,
+            "mentors": mentors,
+            "face_max_item_lines": int(self._cfg().face_max_item_lines),
+            "face_timeout_sec": int(self._cfg().face_timeout_sec),
         }
 
     async def face_get(self, user: User, session_id: int) -> dict[str, Any]:
@@ -589,26 +798,16 @@ class TradeService:
         items: list[dict[str, Any]],
         spirit_stones: int,
         version: int,
+        vessel_offer: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
         Write draft offer JSON only (no escrow).
 
         Allowed in ``browsing``, or ``locking`` while the caller's side is not
-        yet locked. Clears both lock flags (refunding any already-escrowed
-        side), both confirms, bumps version, and returns to ``browsing``.
+        yet locked. Does **not** clear the peer's lock/escrow. Resets both
+        confirm flags, bumps version, and keeps status consistent with locks.
 
-        Args:
-            user: Authenticated participant.
-            session_id: Session id.
-            items: Draft item lines.
-            spirit_stones: Draft spirit stones (not deducted yet).
-            version: Client-held optimistic version.
-
-        Returns:
-            Updated session (and character snapshot unchanged for stones/items).
-
-        Raises:
-            AppError: Wrong status, already locked on own side, or version mismatch.
+        ``vessel_offer``：``{hours}`` 愿为对方炉鼎或延长；双方至多一侧可设。
         """
         require_trade_enabled()
         character, _ = await self._gate.prepare_for_play(user, settle=True)
@@ -619,7 +818,6 @@ class TradeService:
         if row.status == "browsing":
             pass
         elif row.status == "locking" and my_locked == 0:
-            # 对方已锁、我方未锁：改草稿会清空双方锁定并退还对方托管
             pass
         else:
             raise AppError(code=40112, message="面交状态不可改报价", http_status=400)
@@ -635,24 +833,66 @@ class TradeService:
         if len(lines) > int(self._cfg().face_max_item_lines):
             raise AppError(code=40000, message="物品行数超限", http_status=400)
         await self._assert_items_tradable(lines)
-        # 若任一侧已托管（锁定），改草稿前先退还托管并清除锁定标志
-        await self._face_refund_locked_sides(row)
-        row.initiator_locked = 0
-        row.peer_locked = 0
-        payload = {"items": lines, "spirit_stones": int(spirit_stones)}
+
+        spirit_stones = coerce_non_negative_int_or_app_error(
+            spirit_stones,
+            field_zh="灵石",
+        )
+        peer_id = int(row.peer_id if is_initiator else row.initiator_id)
+        vessel_payload = self._normalize_vessel_offer(vessel_offer)
+        if vessel_payload is not None:
+            other_raw = json.loads(
+                (row.peer_offer_json if is_initiator else row.initiator_offer_json) or "{}",
+            )
+            if self._normalize_vessel_offer(other_raw.get("vessel_offer")) is not None:
+                raise AppError(
+                    code=40000,
+                    message="本次交易仅一方可要约成为炉鼎",
+                    http_status=400,
+                )
+            await self._bonds.validate_face_vessel_offer(
+                offerer_id=int(character.id),
+                peer_id=peer_id,
+                hours=int(vessel_payload["hours"]),
+            )
+
+        payload: dict[str, Any] = {
+            "items": lines,
+            "spirit_stones": spirit_stones,
+        }
+        if vessel_payload is not None:
+            payload["vessel_offer"] = vessel_payload
         if is_initiator:
             row.initiator_offer_json = json.dumps(payload, ensure_ascii=False)
         else:
             row.peer_offer_json = json.dumps(payload, ensure_ascii=False)
+        # 改草稿只清确认；已锁定的对方托管不得被拆掉
         row.initiator_confirmed = 0
         row.peer_confirmed = 0
-        row.status = "browsing"
+        if int(row.initiator_locked) == 1 and int(row.peer_locked) == 1:
+            row.status = "locking"
+        else:
+            row.status = "browsing"
         row.version = int(row.version) + 1
         await self._session.flush()
         await self._session.refresh(character)
+        public = await self._face_public(row, character.id)
+        other_id = int(row.peer_id if is_initiator else row.initiator_id)
+        await self._push_face(
+            other_id,
+            TYPE_FACE_UPDATE,
+            {
+                "session_id": row.id,
+                "event": "offer",
+                "from_character_id": character.id,
+                "from_name": character.name,
+                "message": f"「{character.name}」更新了交易报价",
+                "session": await self._face_public(row, other_id),
+            },
+        )
         return {
             "message": "草稿报价已更新（尚未托管）",
-            "session": await self._face_public(row, character.id),
+            "session": public,
             "character": await self._character_public(character),
         }
 
@@ -719,9 +959,26 @@ class TradeService:
         await self._session.flush()
         await self._session.refresh(character)
         both = int(row.initiator_locked) == 1 and int(row.peer_locked) == 1
+        public = await self._face_public(row, character.id)
+        other_id = int(row.peer_id if is_initiator else row.initiator_id)
+        await self._push_face(
+            other_id,
+            TYPE_FACE_UPDATE,
+            {
+                "session_id": row.id,
+                "event": "locked",
+                "from_character_id": character.id,
+                "from_name": character.name,
+                "message": (
+                    f"「{character.name}」已锁定报价"
+                    + ("；双方均已锁定" if both else "")
+                ),
+                "session": await self._face_public(row, other_id),
+            },
+        )
         return {
             "message": "双方已锁定，可确认成交" if both else "已锁定本侧报价（已托管）",
-            "session": await self._face_public(row, character.id),
+            "session": public,
             "character": await self._character_public(character),
         }
 
@@ -765,16 +1022,59 @@ class TradeService:
         row.status = "confirming"
         await self._session.flush()
         if int(row.initiator_confirmed) == 1 and int(row.peer_confirmed) == 1:
-            await self._face_commit(row)
+            vessel_meta = await self._face_commit(row)
             await self._session.refresh(character)
+            msg = "交易成交"
+            if vessel_meta:
+                if vessel_meta.get("extended"):
+                    msg = f"交易成交；炉鼎时限已延长 {vessel_meta.get('hours')} 小时"
+                else:
+                    msg = f"交易成交；已结为炉鼎 {vessel_meta.get('hours')} 小时"
+            public = await self._face_public(row, character.id)
+            other_id = (
+                int(row.peer_id)
+                if int(character.id) == int(row.initiator_id)
+                else int(row.initiator_id)
+            )
+            await self._push_face(
+                other_id,
+                TYPE_FACE_UPDATE,
+                {
+                    "session_id": row.id,
+                    "event": "committed",
+                    "from_character_id": character.id,
+                    "from_name": character.name,
+                    "message": msg,
+                    "session": await self._face_public(row, other_id),
+                },
+            )
             return {
-                "message": "面交成交",
-                "session": await self._face_public(row, character.id),
+                "message": msg,
+                "session": public,
                 "character": await self._character_public(character),
+                "vessel": vessel_meta,
             }
+        public = await self._face_public(row, character.id)
+        other_id = (
+            int(row.peer_id)
+            if int(character.id) == int(row.initiator_id)
+            else int(row.initiator_id)
+        )
+        await self._push_face(
+            other_id,
+            TYPE_FACE_UPDATE,
+            {
+                "session_id": row.id,
+                "event": "confirmed",
+                "from_character_id": character.id,
+                "from_name": character.name,
+                "message": f"「{character.name}」已确认交易，等待你确认",
+                "session": await self._face_public(row, other_id),
+            },
+        )
         return {
             "message": "已确认，等待对方",
-            "session": await self._face_public(row, character.id),
+            "session": public,
         }
 
     async def face_cancel(self, user: User, session_id: int) -> dict[str, Any]:
@@ -793,19 +1093,121 @@ class TradeService:
         row = await self._require_face_participant(character, session_id)
         await self._lazy_expire_face(row)
         if row.status in ("committed", "cancelled", "expired"):
-            raise AppError(code=40112, message="面交已结束", http_status=400)
+            raise AppError(code=40112, message="交易已结束", http_status=400)
         await self._face_unlock_both(row)
         row.status = "cancelled"
         row.closed_at = now_utc()
         await self._session.flush()
         await self._session.refresh(character)
+        public = await self._face_public(row, character.id)
+        other_id = (
+            int(row.peer_id)
+            if int(character.id) == int(row.initiator_id)
+            else int(row.initiator_id)
+        )
+        await self._push_face(
+            other_id,
+            TYPE_FACE_UPDATE,
+            {
+                "session_id": row.id,
+                "event": "cancelled",
+                "from_character_id": character.id,
+                "from_name": character.name,
+                "message": f"「{character.name}」取消了交易",
+                "session": await self._face_public(row, other_id),
+            },
+        )
         return {
-            "message": "面交已取消",
-            "session": await self._face_public(row, character.id),
+            "message": "交易已取消",
+            "session": public,
             "character": await self._character_public(character),
         }
 
     # ----- helpers -----
+
+    async def _push_face(
+        self,
+        character_id: int,
+        msg_type: str,
+        payload: dict[str, Any],
+    ) -> None:
+        """
+        Push a face-trade WS envelope to a character.
+
+        Args:
+            character_id: Target character primary key.
+            msg_type: ``face.invite`` or ``face.update``.
+            payload: Envelope payload dict.
+        """
+        settings = get_settings()
+        if not bool(getattr(settings, "ws_enabled", True)):
+            return
+        try:
+            await get_ws_hub().send_to_character(int(character_id), msg_type, payload)
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "face ws push skipped character_id=%s type=%s",
+                character_id,
+                msg_type,
+            )
+
+    async def _assert_face_social_link(self, a_id: int, b_id: int) -> None:
+        """
+        Require a social link for trade: friend / companion / vessel / sect / mentor.
+
+        Args:
+            a_id: Initiator character id.
+            b_id: Peer character id.
+
+        Raises:
+            AppError: No eligible social relation.
+        """
+        if await FriendService(self._session).are_friends(a_id, b_id):
+            return
+        if await self._bonds.get_active_companion_between(a_id, b_id) is not None:
+            return
+        if await self._bonds.get_active_vessel_between(a_id, b_id) is not None:
+            return
+        ma = (
+            await self._session.execute(
+                select(SectMember).where(SectMember.character_id == int(a_id)),
+            )
+        ).scalar_one_or_none()
+        mb = (
+            await self._session.execute(
+                select(SectMember).where(SectMember.character_id == int(b_id)),
+            )
+        ).scalar_one_or_none()
+        if (
+            ma is not None
+            and mb is not None
+            and int(ma.sect_id) == int(mb.sect_id)
+        ):
+            return
+        mentor = (
+            await self._session.execute(
+                select(MentorBond).where(
+                    MentorBond.status == "active",
+                    or_(
+                        and_(
+                            MentorBond.master_character_id == int(a_id),
+                            MentorBond.apprentice_character_id == int(b_id),
+                        ),
+                        and_(
+                            MentorBond.master_character_id == int(b_id),
+                            MentorBond.apprentice_character_id == int(a_id),
+                        ),
+                    ),
+                ),
+            )
+        ).scalar_one_or_none()
+        if mentor is not None:
+            return
+        raise AppError(
+            code=40000,
+            message="仅可与道友、道侣、炉鼎、同门或师徒发起交易",
+            http_status=400,
+        )
 
     def _reject_if_ferry_or_tribulation(self, character: Character) -> None:
         if character.status in ("awaiting_ferry", "tribulation", "reincarnating"):
@@ -914,6 +1316,10 @@ class TradeService:
         peer_character_id = (
             row.peer_id if viewer_id == row.initiator_id else row.initiator_id
         )
+        vessel_ctx = await self._bonds.face_vessel_context(
+            int(viewer_id),
+            int(peer_character_id),
+        )
         return {
             "id": row.id,
             "status": row.status,
@@ -923,16 +1329,32 @@ class TradeService:
             "initiator_name": init.name if init else str(row.initiator_id),
             "peer_id": row.peer_id,
             "peer_name": peer.name if peer else str(row.peer_id),
-            "initiator_offer": json.loads(row.initiator_offer_json or "{}"),
-            "peer_offer": json.loads(row.peer_offer_json or "{}"),
+            "initiator_offer": self._face_offer_dict(row, row.initiator_id),
+            "peer_offer": self._face_offer_dict(row, row.peer_id),
             "initiator_locked": bool(int(getattr(row, "initiator_locked", 0) or 0)),
             "peer_locked": bool(int(getattr(row, "peer_locked", 0) or 0)),
             "initiator_confirmed": bool(row.initiator_confirmed),
             "peer_confirmed": bool(row.peer_confirmed),
             "you_are": "initiator" if viewer_id == row.initiator_id else "peer",
             "peer_online": self._face_is_online(peer_character_id),
-            "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+            "expires_at": to_utc_iso(row.expires_at) if row.expires_at else None,
+            "vessel_context": vessel_ctx,
         }
+
+    @staticmethod
+    def _normalize_vessel_offer(raw: Any) -> dict[str, int] | None:
+        """Normalize vessel_offer payload to ``{hours}``（非负整数）或 None。"""
+        if raw is None:
+            return None
+        if isinstance(raw, dict):
+            hours = raw.get("hours")
+            if hours is None:
+                return None
+            hours_i = coerce_non_negative_int_or_app_error(hours, field_zh="炉鼎时限")
+            if hours_i <= 0:
+                return None
+            return {"hours": hours_i}
+        return None
 
     def _face_offer_dict(self, row: FaceTradeSession, character_id: int) -> dict[str, Any]:
         raw = (
@@ -941,10 +1363,18 @@ class TradeService:
             else row.peer_offer_json
         )
         data = json.loads(raw or "{}")
-        return {
+        stones = coerce_non_negative_int_or_app_error(
+            data.get("spirit_stones") or 0,
+            field_zh="灵石",
+        )
+        out: dict[str, Any] = {
             "items": parse_item_lines(data.get("items") or []),
-            "spirit_stones": int(data.get("spirit_stones") or 0),
+            "spirit_stones": stones,
         }
+        vessel = self._normalize_vessel_offer(data.get("vessel_offer"))
+        if vessel is not None:
+            out["vessel_offer"] = vessel
+        return out
 
     async def _face_refund_offer(
         self,
@@ -1066,6 +1496,24 @@ class TradeService:
                 ref_type="face",
                 ref_id=str(row.id),
             )
+        # 炉鼎要约：至多一侧；要约方成为对方炉鼎（或延长）
+        vessel_meta = None
+        a_vessel = self._normalize_vessel_offer(a.get("vessel_offer"))
+        b_vessel = self._normalize_vessel_offer(b.get("vessel_offer"))
+        if a_vessel and b_vessel:
+            raise AppError(code=40000, message="面交炉鼎要约冲突", http_status=400)
+        if a_vessel is not None:
+            vessel_meta = await self._bonds.create_or_extend_vessel_from_face(
+                vessel_character_id=int(init.id),
+                owner_character_id=int(peer.id),
+                hours=int(a_vessel["hours"]),
+            )
+        elif b_vessel is not None:
+            vessel_meta = await self._bonds.create_or_extend_vessel_from_face(
+                vessel_character_id=int(peer.id),
+                owner_character_id=int(init.id),
+                hours=int(b_vessel["hours"]),
+            )
         empty = json.dumps({"items": [], "spirit_stones": 0}, ensure_ascii=False)
         row.initiator_offer_json = empty
         row.peer_offer_json = empty
@@ -1074,7 +1522,8 @@ class TradeService:
         row.status = "committed"
         row.closed_at = now_utc()
         await self._session.flush()
-        logger.info("face commit session=%s", row.id)
+        logger.info("face commit session=%s vessel=%s", row.id, vessel_meta)
+        return vessel_meta
 
     async def _require_face_participant(
         self,

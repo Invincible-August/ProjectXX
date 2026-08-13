@@ -7,6 +7,7 @@ import { ElMessage } from 'element-plus'
 import { useCharacterStore } from '../../stores/character'
 import { useTradeStore } from '../../stores/trade'
 import type { Listing } from '../../types/trade'
+import { parseNonNegInt } from '../../utils/intMoney'
 
 const emit = defineEmits<{
   log: [message: string, level?: 'info' | 'success' | 'warning' | 'system']
@@ -42,12 +43,17 @@ function offerSummary(listing: Listing): string {
 
 async function onCreate(): Promise<void> {
   if (busy.value) return
+  const price = parseNonNegInt(formPrice.value)
+  if (price === null || price < 1) {
+    ElMessage.warning('灵石标价须为 ≥ 1 的整数')
+    return
+  }
   busy.value = true
   try {
     const err = await tradeStore.createFixedPriceListing(
       formItemId.value,
       Number(formQty.value),
-      Number(formPrice.value),
+      price,
     )
     if (err) {
       ElMessage.error(err)
@@ -123,7 +129,9 @@ async function onCancel(listing: Listing): Promise<void> {
       <el-input-number v-model="formQty" :min="1" size="small" />
       <el-input-number
         v-model="formPrice"
-        :min="1"
+        :min="0"
+        :step="1"
+        :precision="0"
         size="small"
         :controls="false"
         placeholder="灵石"

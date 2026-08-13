@@ -7,9 +7,16 @@ import { useRouter } from 'vue-router'
 import AuthSessionBar from '../components/AuthSessionBar.vue'
 import DualCultivationPanel from '../components/dual/DualCultivationPanel.vue'
 import { useCharacterStore } from '../stores/character'
+import { useGameLogStore } from '../stores/gameLog'
+import { type GameLogEntry } from '../types/gameLog'
 
 const router = useRouter()
 const characterStore = useCharacterStore()
+const gameLogStore = useGameLogStore()
+
+function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
+  gameLogStore.push(message, level)
+}
 
 onMounted(async () => {
   if (!characterStore.character) {
@@ -32,7 +39,7 @@ onMounted(async () => {
       <el-text type="info" size="small">M7 L7 · 会话 / 四榜</el-text>
     </div>
 
-    <DualCultivationPanel />
+    <DualCultivationPanel @log="pushLog" />
   </div>
 </template>
 

@@ -6,36 +6,35 @@ import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import CharacterPanel from '../components/CharacterPanel.vue'
 import GameLogPanel from '../components/GameLogPanel.vue'
+import HallInviteList from '../components/hall/HallInviteList.vue'
 import IdlePanel from '../components/IdlePanel.vue'
 import OfflineClaimDialog from '../components/OfflineClaimDialog.vue'
 import { useAuthStore } from '../stores/auth'
 import { useCharacterStore } from '../stores/character'
-import { createLogEntry, type GameLogEntry } from '../types/gameLog'
+import { useGameLogStore } from '../stores/gameLog'
+import { useWsStore } from '../stores/ws'
+import { type GameLogEntry } from '../types/gameLog'
 import type { IdleSyncData } from '../types/idle'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const characterStore = useCharacterStore()
+const gameLogStore = useGameLogStore()
+const wsStore = useWsStore()
 
 const loadError = ref('')
-/** 事件日志环形缓冲上限，防止战斗刷屏撑爆 DOM */
-const MAX_LOG_ENTRIES = 200
-const logEntries = ref<GameLogEntry[]>([])
 const offlineDialogOpen = ref(false)
 
 function pushLog(
   message: string,
   level: GameLogEntry['level'] = 'info',
 ): void {
-  const next = [...logEntries.value, createLogEntry(message, level)]
-  logEntries.value =
-    next.length > MAX_LOG_ENTRIES ? next.slice(-MAX_LOG_ENTRIES) : next
+  gameLogStore.push(message, level)
 }
 
 function onPollSettled(data: IdleSyncData): void {
   // pending 期间不应入账；双保险避免竞态回调写日志
   if (characterStore.hasOfflinePending || data.character.offline_pending) {
-    characterStore.stopIdleRealtime()
     return
   }
   const miningStones = Number(data.gained_mining_stones || 0)
@@ -77,38 +76,36 @@ function autoOpenOfflineEnabled(): boolean {
   return String(raw).toLowerCase() !== 'false'
 }
 
-/**
- * 无 pending 时确保实时调度已启动（领取后 / 无离线进厅）。
- */
-function ensureRealtime(): void {
-  if (!characterStore.character?.offline_pending) {
-    characterStore.startIdleRealtime(onPollSettled)
-  } else {
-    characterStore.stopIdleRealtime()
-  }
-}
-
 watch(offlineDialogOpen, (open, wasOpen) => {
-  if (wasOpen && !open) {
-    ensureRealtime()
+  if (wasOpen && !open && !characterStore.hasOfflinePending) {
+    // 领取关闭后由 playShell 级 realtime 自行恢复；此处仅确保回调仍在
+    characterStore.setIdleSettledCallback(onPollSettled)
   }
 })
 
-// pending 出现时立即停表；领取清空后恢复
+// pending 出现时停大厅日志回调侧不额外 stop 全局 sync（store 已处理）
 watch(
   () => characterStore.hasOfflinePending,
   (pending) => {
-    if (pending) {
-      characterStore.stopIdleRealtime()
-    } else if (characterStore.character) {
-      ensureRealtime()
+    if (!pending && characterStore.character) {
+      characterStore.setIdleSettledCallback(onPollSettled)
     }
   },
 )
 
 onMounted(async () => {
   loadError.value = ''
-  pushLog('正在连接仙界…', 'system')
+  characterStore.setIdleSettledCallback(onPollSettled)
+
+  // 玩法壳内 WS 已由 App 长连接保活；大厅首屏只欢迎一次，避免切页刷「正在连接仙界…」
+  const firstVisit = !gameLogStore.hallBootstrapped
+  if (firstVisit) {
+    if (wsStore.status !== 'open') {
+      pushLog('正在连接仙界…', 'system')
+    }
+    gameLogStore.markHallBootstrapped()
+  }
+
   try {
     const ok = await characterStore.fetchMe()
     if (!ok) {
@@ -117,7 +114,9 @@ onMounted(async () => {
       return
     }
     const ch = characterStore.character
-    if (ch) {
+    if (!ch) return
+
+    if (firstVisit) {
       pushLog(`欢迎回来，${ch.name}。`, 'success')
       pushLog(
         `当前境界：${ch.realm_display} · 品阶 ${ch.breakthrough_grade_name} · 灵石 ${ch.spirit_stones}`,
@@ -136,9 +135,10 @@ onMounted(async () => {
           offlineDialogOpen.value = true
         }
       } else {
-        pushLog('大厅已就绪：角色 · 修炼 · 宗门 · 社交 · 商店。', 'info')
-        ensureRealtime()
+        pushLog('大厅已就绪：角色 · 修炼 · 宗门 · 社交 · 商店；右侧有邀请列表。', 'info')
       }
+    } else if (ch.offline_pending && autoOpenOfflineEnabled()) {
+      offlineDialogOpen.value = true
     }
   } catch (e: unknown) {
     loadError.value = e instanceof Error ? e.message : '加载角色失败'
@@ -147,7 +147,8 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  characterStore.stopIdleRealtime()
+  // 离开大厅不停挂机 sync（由玩法壳管生命周期）；仅解绑日志回调
+  characterStore.setIdleSettledCallback(null)
 })
 </script>
 
@@ -165,7 +166,6 @@ onUnmounted(() => {
         <el-button size="small" type="warning" @click="router.push('/avatar')">化身</el-button>
         <el-button size="small" type="success" plain @click="router.push('/sect')">宗门</el-button>
         <el-button size="small" type="primary" @click="router.push('/social')">社交</el-button>
-        <el-button size="small" @click="router.push('/social?mode=friends')">道友</el-button>
         <el-button size="small" type="warning" plain @click="router.push('/shop')">商店</el-button>
         <el-button size="small" @click="router.push('/account')">账号</el-button>
       </div>
@@ -197,7 +197,8 @@ onUnmounted(() => {
         <IdlePanel @log="pushLog" @need-claim-offline="openOfflineDialog" />
       </aside>
       <main class="hall-main">
-        <GameLogPanel :entries="logEntries" />
+        <GameLogPanel :entries="gameLogStore.entries" />
+        <HallInviteList />
       </main>
     </div>
 
@@ -261,13 +262,19 @@ onUnmounted(() => {
 
 .hall-main {
   min-width: 0;
-  /* 仅事件日志：半个视口高，滚动时贴顶，溢出在窗内滚 */
   position: sticky;
   top: 0.75rem;
-  height: 50vh;
-  min-height: 280px;
   display: flex;
   flex-direction: column;
+  gap: 0.5rem;
+  /* 日志半窗 + 邀请列表 */
+  max-height: calc(50vh + 280px);
+}
+
+.hall-main :deep(.game-log-panel),
+.hall-main :deep(.log-panel) {
+  height: 50vh;
+  min-height: 280px;
 }
 
 @media (max-width: 800px) {
@@ -278,8 +285,12 @@ onUnmounted(() => {
   .hall-main {
     position: relative;
     top: auto;
-    height: 50vh;
-    min-height: 240px;
+    max-height: none;
+  }
+
+  .hall-main :deep(.log-panel) {
+    height: 40vh;
+    min-height: 220px;
   }
 }
 </style>

@@ -46,7 +46,14 @@ from app.db.models.sect import (
     SectWorkshopBlueprint,
 )
 from app.db.models.mail import GiftDailyCounter, MailMessage
-from app.db.models.mentor import MentorBond, MentorPassDaily, MentorQuestProgress
+from app.db.models.mentor import (
+    CharacterCraftKnowledge,
+    MentorBond,
+    MentorPassDaily,
+    MentorQuestProgress,
+    MentorTransmission,
+)
+from app.db.models.bond import CharacterBond
 from app.db.models.dual_cultivation import DualCultivationSession, DualRankScore
 from app.db.models.heritage import HeritageClaim, HeritageDailyCounter, HeritagePacket
 from app.db.models.chat import (
@@ -137,6 +144,9 @@ __all__ = [
     "MentorBond",
     "MentorQuestProgress",
     "MentorPassDaily",
+    "MentorTransmission",
+    "CharacterCraftKnowledge",
+    "CharacterBond",
     "DualCultivationSession",
     "DualRankScore",
     "TribulationSession",

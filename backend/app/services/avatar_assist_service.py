@@ -1,10 +1,8 @@
 """
-道友化身助战用例：开关 / 邀请 / 接受·拒绝·结束 / 列表。
+道友化身助战用例：开关 / 邀请化身 / 结束 / 独立助战体力。
 
-产品规则摘要：
-- 主人开 ``assist_friends_enabled`` 后，好友可邀请借入化身；
-- 主人在线须手动 accept；离线且开关开 → 自动 active；
-- 每化身同时最多一条 active；奖励归借用人；体力扣主人化身。
+规则：开关开则邀请立即入队；关→闭关；忙→助战中；助战体力独立；
+PVE 战后自动离队；秘境整场结束离队。
 """
 
 from __future__ import annotations
@@ -21,6 +19,11 @@ from app.core.time_utils import now_utc, to_utc_iso
 from app.db.models import Character, User
 from app.db.models.avatar import Avatar
 from app.db.models.avatar_assist import AvatarAssistSession
+from app.domain.avatar_assist_stamina import (
+    assist_resume_threshold,
+    assist_stamina_cap,
+    tick_assist_stamina,
+)
 from app.domain.m4_constants import AvatarFeature
 from app.schemas.common import AppError
 from app.services.avatar_service import AvatarService
@@ -31,43 +34,34 @@ from app.services.ws_hub_service import get_ws_hub
 
 logger = logging.getLogger(__name__)
 
-# 会话状态常量（与 ORM status 对齐）
 STATUS_INVITED = "invited"
 STATUS_ACTIVE = "active"
 STATUS_ENDED = "ended"
 STATUS_REJECTED = "rejected"
 STATUS_EXPIRED = "expired"
 
-# 占用中的状态：不可再开新助战
 BUSY_STATUSES = frozenset({STATUS_INVITED, STATUS_ACTIVE})
 
 
 def guest_unit_uid(owner_character_id: int, avatar_id: int) -> str:
-    """Build guest bench unit_uid: ``avatar_guest_{ownerId}_{avatarId}``."""
+    """Build guest bench unit_uid."""
     return f"avatar_guest_{int(owner_character_id)}_{int(avatar_id)}"
 
 
 def parse_guest_unit_uid(unit_uid: str) -> tuple[int, int] | None:
-    """
-    Parse guest unit_uid into (owner_character_id, avatar_id).
-
-    Returns:
-        Tuple or None if not a guest uid.
-    """
+    """Parse guest unit_uid into (owner_character_id, avatar_id)."""
     prefix = "avatar_guest_"
     if not unit_uid.startswith(prefix):
         return None
     rest = unit_uid[len(prefix) :]
     parts = rest.split("_", 1)
-    if len(parts) != 2:
-        return None
-    if not parts[0].isdigit() or not parts[1].isdigit():
+    if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
         return None
     return int(parts[0]), int(parts[1])
 
 
 def is_guest_avatar_unit(unit: dict[str, Any]) -> bool:
-    """True when unit_kind=avatar and unit_uid is a guest assist uid."""
+    """True when unit is guest avatar assist."""
     if str(unit.get("unit_kind", "")) != "avatar":
         return False
     return parse_guest_unit_uid(str(unit.get("unit_uid", ""))) is not None
@@ -85,21 +79,86 @@ class AvatarAssistService:
     def _assist_cfg(self):
         return get_game_config().avatar.friend_assist
 
-    def _is_owner_online(self, owner_character_id: int) -> bool:
-        """
-        Owner online gate for assist invites (Presence ``assist`` purpose).
-
-        Offline → auto-accept borrow; online → pending invite.
-        """
-        from app.services.presence_service import PresencePurpose, get_presence
-
-        return get_presence().is_online_for(
-            PresencePurpose.ASSIST,
-            int(owner_character_id),
+    def refresh_assist_stamina(
+        self,
+        avatar: Avatar,
+        owner: Character,
+        *,
+        persist: bool = True,
+    ) -> dict[str, Any]:
+        """Tick 助战体力并返回面板。"""
+        cfg = self._assist_cfg()
+        cap = assist_stamina_cap(
+            character_major=str(owner.major_realm),
+            assist_cfg=cfg,
         )
+        cur = int(getattr(avatar, "assist_stamina", 0) or 0)
+        if getattr(avatar, "assist_stamina_recovered_at", None) is None and cur <= 0:
+            cur = cap
+        new_val, new_anchor = tick_assist_stamina(
+            current=cur,
+            cap=cap,
+            recovered_at=getattr(avatar, "assist_stamina_recovered_at", None),
+            recovery_per_hour=float(cfg.stamina_recovery_per_hour),
+        )
+        thr = assist_resume_threshold(cap, resume_ratio=float(cfg.resume_ratio))
+        locked = bool(getattr(avatar, "assist_stamina_locked", 0))
+        if locked and new_val >= thr:
+            locked = False
+        if persist:
+            avatar.assist_stamina = new_val
+            avatar.assist_stamina_recovered_at = new_anchor
+            avatar.assist_stamina_locked = 1 if locked else 0
+        return {
+            "assist_stamina": new_val,
+            "assist_stamina_cap": cap,
+            "assist_stamina_locked": locked,
+            "resume_threshold": thr,
+            "battle_cost": int(cfg.battle_cost),
+            "recovery_per_hour": float(cfg.stamina_recovery_per_hour),
+            "can_assist": (not locked) and new_val >= int(cfg.battle_cost),
+        }
+
+    def assert_can_lend(self, avatar: Avatar, owner: Character) -> dict[str, Any]:
+        """校验可出借。"""
+        panel = self.refresh_assist_stamina(avatar, owner, persist=True)
+        if panel["assist_stamina_locked"]:
+            raise AppError(
+                code=40000,
+                message=(
+                    f"化身助战体力已耗尽，须恢复至 "
+                    f"{panel['resume_threshold']} 点后方可再助战"
+                ),
+                http_status=400,
+            )
+        if int(panel["assist_stamina"]) < int(panel["battle_cost"]):
+            raise AppError(
+                code=40000,
+                message=(
+                    f"化身助战体力不足（需 {panel['battle_cost']}，"
+                    f"当前 {panel['assist_stamina']}）"
+                ),
+                http_status=400,
+            )
+        return panel
+
+    def spend_assist_battle(self, avatar: Avatar, owner: Character) -> dict[str, Any]:
+        """PVE 开战扣助战体力。"""
+        panel = self.refresh_assist_stamina(avatar, owner, persist=True)
+        cost = int(panel["battle_cost"])
+        if panel["assist_stamina_locked"] or int(panel["assist_stamina"]) < cost:
+            raise AppError(
+                code=40000,
+                message="化身助战体力不足，无法继续助战",
+                http_status=400,
+            )
+        avatar.assist_stamina = max(0, int(panel["assist_stamina"]) - cost)
+        if avatar.assist_stamina <= 0:
+            avatar.assist_stamina = 0
+            avatar.assist_stamina_locked = 1
+        return self.refresh_assist_stamina(avatar, owner, persist=True)
 
     async def _expire_stale_invites(self) -> None:
-        """Lazily mark overdue invited rows as expired."""
         expire_sec = int(self._assist_cfg().invite_expire_sec or 0)
         if expire_sec <= 0:
             return
@@ -113,7 +172,6 @@ class AvatarAssistService:
                 ),
             )
         ).scalars().all()
-        # Also catch rows whose expires_at drifted past cutoff via created_at
         if not rows:
             rows = (
                 await self._session.execute(
@@ -131,7 +189,6 @@ class AvatarAssistService:
             await self._session.flush()
 
     async def _avatar_busy(self, avatar_id: int) -> bool:
-        """True if avatar already has invited/active assist session."""
         row = (
             await self._session.execute(
                 select(AvatarAssistSession.id).where(
@@ -150,7 +207,6 @@ class AvatarAssistService:
         borrower_name: str | None = None,
         avatar_name: str | None = None,
     ) -> dict[str, Any]:
-        """Serialize session for API."""
         return {
             "id": row.id,
             "owner_character_id": row.owner_character_id,
@@ -178,29 +234,8 @@ class AvatarAssistService:
             avatar_name=avatar.name if avatar else None,
         )
 
-    async def _push_invite(self, owner_character_id: int, payload: dict[str, Any]) -> None:
-        """Optional WS push ``avatar.assist.invite`` to owner connections."""
-        settings = get_settings()
-        if not bool(getattr(settings, "ws_enabled", True)):
-            return
-        from app.domain.ws_protocol import TYPE_AVATAR_ASSIST_INVITE
-
-        hub = get_ws_hub()
-        for conn in list(hub._connections.values()):
-            if conn.authenticated and conn.character_id == int(owner_character_id):
-                await hub.send(conn.conn_id, TYPE_AVATAR_ASSIST_INVITE, payload)
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     async def set_assist_settings(self, user: User, *, enabled: bool) -> dict[str, Any]:
-        """
-        Owner toggles ``assist_friends_enabled`` on their avatar.
-
-        Raises:
-            AppError: no avatar / feature locked.
-        """
+        """化身页：开启/关闭化身助战。"""
         require_friends_enabled()
         character, _ = await self._gate.prepare_for_play(user, settle=True)
         self._avatars._require_feature(character, AvatarFeature.FRIEND_ASSIST)
@@ -212,15 +247,15 @@ class AvatarAssistService:
         if avatar is None:
             raise AppError(code=40051, message="尚未凝练化身", http_status=400)
         avatar.assist_friends_enabled = 1 if enabled else 0
+        stamina = self.refresh_assist_stamina(avatar, character, persist=True)
         await self._session.flush()
-        logger.info(
-            "avatar assist settings character_id=%s enabled=%s",
-            character.id,
-            enabled,
-        )
+        enabled_flag = bool(avatar.assist_friends_enabled)
         return {
-            "assist_friends_enabled": bool(avatar.assist_friends_enabled),
+            "enabled": enabled_flag,
+            "assist_friends_enabled": enabled_flag,
             "avatar_id": avatar.id,
+            "assist_stamina": stamina,
+            "message": "已开启化身助战" if enabled else "已关闭化身助战（闭关）",
         }
 
     async def invite(
@@ -230,27 +265,22 @@ class AvatarAssistService:
         target_character_id: int | None,
         target_name: str | None,
     ) -> dict[str, Any]:
-        """
-        Borrower invites owner's avatar to assist.
-
-        Auto-accepts to ``active`` when owner is offline and switch is on.
-        """
+        """邀请化身：开则立即入队；关→闭关；忙→助战中。"""
         require_friends_enabled()
         character, _ = await self._gate.prepare_for_play(user, settle=True)
         await self._expire_stale_invites()
 
         owner = await self._friends._resolve_target(target_character_id, target_name)
         if owner.id == character.id:
-            raise AppError(code=40000, message="不可邀请自己的化身助战", http_status=400)
+            raise AppError(code=40000, message="不可邀请自己的化身", http_status=400)
         if not await self._friends.are_friends(character.id, owner.id):
-            raise AppError(code=40000, message="仅道友可邀请化身助战", http_status=400)
+            raise AppError(code=40000, message="仅道友可邀请化身", http_status=400)
 
-        # 主人须已解锁功能 + 凝练化身 + 开关开
         if not self._avatars.capability().is_unlocked(
             owner.major_realm,
             AvatarFeature.FRIEND_ASSIST,
         ):
-            raise AppError(code=40093, message="对方尚未解锁道友助战", http_status=400)
+            raise AppError(code=40093, message="对方尚未解锁化身助战", http_status=400)
         avatar = (
             await self._session.execute(
                 select(Avatar).where(Avatar.character_id == owner.id).limit(1),
@@ -261,11 +291,12 @@ class AvatarAssistService:
         if str(avatar.status) == "disabled":
             raise AppError(code=40051, message="对方化身不可用", http_status=400)
         if not bool(avatar.assist_friends_enabled):
-            raise AppError(code=40000, message="对方未开启道友助战", http_status=400)
+            raise AppError(code=40000, message="化身正在闭关中", http_status=400)
         if await self._avatar_busy(avatar.id):
-            raise AppError(code=40000, message="对方化身正在助战中", http_status=400)
+            raise AppError(code=40000, message="化身正在助战中", http_status=400)
 
-        # 借用人侧：同时只允许一条 invited/active（避免多客串）
+        self.assert_can_lend(avatar, owner)
+
         my_busy = (
             await self._session.execute(
                 select(AvatarAssistSession.id).where(
@@ -275,7 +306,7 @@ class AvatarAssistService:
             )
         ).scalar_one_or_none()
         if my_busy is not None:
-            raise AppError(code=40000, message="已有进行中的助战会话", http_status=400)
+            raise AppError(code=40000, message="你已有进行中的化身助战", http_status=400)
 
         expire_sec = int(self._assist_cfg().invite_expire_sec or 0)
         expires_at = (
@@ -285,47 +316,26 @@ class AvatarAssistService:
             owner_character_id=owner.id,
             borrower_character_id=character.id,
             avatar_id=avatar.id,
-            status=STATUS_INVITED,
+            status=STATUS_ACTIVE,
             expires_at=expires_at,
+            accepted_at=now_utc(),
         )
         self._session.add(row)
         await self._session.flush()
-
-        # 离线 → 自动接受；在线 → 等主人确认
-        auto_accepted = False
-        if not self._is_owner_online(owner.id):
-            row.status = STATUS_ACTIVE
-            row.accepted_at = now_utc()
-            auto_accepted = True
-            await self._session.flush()
-            logger.info(
-                "avatar assist auto-accept session=%s owner=%s borrower=%s",
-                row.id,
-                owner.id,
-                character.id,
-            )
-        else:
-            public = await self._enrich(row)
-            await self._push_invite(owner.id, public)
-            logger.info(
-                "avatar assist invite session=%s owner=%s borrower=%s",
-                row.id,
-                owner.id,
-                character.id,
-            )
-
+        logger.info(
+            "avatar assist joined session=%s owner=%s borrower=%s",
+            row.id,
+            owner.id,
+            character.id,
+        )
         return {
             "session": await self._enrich(row),
-            "auto_accepted": auto_accepted,
-            "message": (
-                "对方离线，已自动借入化身助战"
-                if auto_accepted
-                else f"已邀请「{owner.name}」化身助战，等待对方确认"
-            ),
+            "auto_accepted": True,
+            "message": f"已邀请「{owner.name}」化身加入助战",
         }
 
     async def accept(self, user: User, session_id: int) -> dict[str, Any]:
-        """Owner accepts an invited assist session."""
+        """兼容旧 invited 态。"""
         require_friends_enabled()
         character, _ = await self._gate.prepare_for_play(user, settle=True)
         await self._expire_stale_invites()
@@ -336,7 +346,10 @@ class AvatarAssistService:
             raise AppError(code=40000, message="仅化身主人可接受助战", http_status=403)
         if row.status != STATUS_INVITED:
             raise AppError(code=40000, message=f"会话状态不可接受：{row.status}", http_status=400)
-        # 再次确认化身未被其它会话占用（防竞态）
+        avatar = await self._session.get(Avatar, row.avatar_id)
+        if avatar is None:
+            raise AppError(code=40051, message="化身不存在", http_status=400)
+        self.assert_can_lend(avatar, character)
         other = (
             await self._session.execute(
                 select(AvatarAssistSession.id).where(
@@ -350,15 +363,13 @@ class AvatarAssistService:
             row.status = STATUS_REJECTED
             row.ended_at = now_utc()
             await self._session.flush()
-            raise AppError(code=40000, message="化身已在其它助战中", http_status=400)
+            raise AppError(code=40000, message="化身正在助战中", http_status=400)
         row.status = STATUS_ACTIVE
         row.accepted_at = now_utc()
         await self._session.flush()
-        logger.info("avatar assist accept session=%s owner=%s", row.id, character.id)
-        return {"session": await self._enrich(row), "message": "已接受道友助战邀请"}
+        return {"session": await self._enrich(row), "message": "已接受化身助战邀请"}
 
     async def reject(self, user: User, session_id: int) -> dict[str, Any]:
-        """Owner rejects an invited assist session."""
         require_friends_enabled()
         character, _ = await self._gate.prepare_for_play(user, settle=True)
         await self._expire_stale_invites()
@@ -372,11 +383,9 @@ class AvatarAssistService:
         row.status = STATUS_REJECTED
         row.ended_at = now_utc()
         await self._session.flush()
-        logger.info("avatar assist reject session=%s owner=%s", row.id, character.id)
-        return {"session": await self._enrich(row), "message": "已拒绝道友助战邀请"}
+        return {"session": await self._enrich(row), "message": "已拒绝化身助战邀请"}
 
     async def end(self, user: User, session_id: int) -> dict[str, Any]:
-        """Owner or borrower ends an active (or invited) assist session."""
         require_friends_enabled()
         character, _ = await self._gate.prepare_for_play(user, settle=True)
         row = await self._session.get(AvatarAssistSession, int(session_id))
@@ -389,15 +398,47 @@ class AvatarAssistService:
         row.status = STATUS_ENDED
         row.ended_at = now_utc()
         await self._session.flush()
-        logger.info(
-            "avatar assist end session=%s by=%s",
-            row.id,
-            character.id,
+        return {"session": await self._enrich(row), "message": "化身已离队"}
+
+    async def end_active_for_borrower(
+        self,
+        borrower_character_id: int,
+        *,
+        reason: str = "battle_end",
+    ) -> int:
+        """借入方战斗结束：客串化身自动离队。"""
+        rows = (
+            await self._session.execute(
+                select(AvatarAssistSession).where(
+                    AvatarAssistSession.borrower_character_id == int(borrower_character_id),
+                    AvatarAssistSession.status == STATUS_ACTIVE,
+                ),
+            )
+        ).scalars().all()
+        now = now_utc()
+        n = 0
+        for row in rows:
+            row.status = STATUS_ENDED
+            row.ended_at = now
+            n += 1
+        if n:
+            await self._session.flush()
+            logger.info(
+                "avatar assist auto-end borrower=%s count=%s reason=%s",
+                borrower_character_id,
+                n,
+                reason,
+            )
+        return n
+
+    async def end_for_secret_realm(self, borrower_character_id: int) -> int:
+        """秘境整场结束后离队。"""
+        return await self.end_active_for_borrower(
+            borrower_character_id,
+            reason="secret_realm_end",
         )
-        return {"session": await self._enrich(row), "message": "助战已结束"}
 
     async def list_me(self, user: User) -> dict[str, Any]:
-        """List assist sessions involving the current character."""
         require_friends_enabled()
         character = await self._gate.require_character(user)
         await self._expire_stale_invites()
@@ -426,10 +467,15 @@ class AvatarAssistService:
                 select(Avatar).where(Avatar.character_id == character.id).limit(1),
             )
         ).scalar_one_or_none()
+        assist_stamina = None
+        if avatar is not None:
+            assist_stamina = self.refresh_assist_stamina(avatar, character, persist=True)
+            await self._session.flush()
         return {
             "assist_friends_enabled": bool(
                 avatar.assist_friends_enabled if avatar is not None else 0,
             ),
+            "assist_stamina": assist_stamina,
             "as_owner": as_owner,
             "as_borrower": as_borrower,
         }
@@ -438,7 +484,6 @@ class AvatarAssistService:
         self,
         borrower_character_id: int,
     ) -> list[AvatarAssistSession]:
-        """Active assist sessions where character is the borrower (for bench)."""
         await self._expire_stale_invites()
         rows = (
             await self._session.execute(
@@ -457,7 +502,6 @@ class AvatarAssistService:
         owner_character_id: int,
         avatar_id: int,
     ) -> AvatarAssistSession | None:
-        """Lookup active guest session matching owner+avatar for borrower."""
         await self._expire_stale_invites()
         return (
             await self._session.execute(

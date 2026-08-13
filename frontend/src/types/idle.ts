@@ -33,6 +33,13 @@ export interface OfflinePreviewData {
 /** POST /idle/offline/claim */
 export interface OfflineClaimData {
   applied: OfflinePending
+  /** 离线期间缓冲的事件日志（如师傅传授） */
+  event_logs?: Array<{
+    message: string
+    level?: string
+    source?: string
+    at?: string
+  }>
   character: CharacterPublic
   next_tick_at?: string | null
 }

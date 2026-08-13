@@ -60,3 +60,27 @@ export async function fetchMyCombatAttrsApi(): Promise<
     return envelopeFromAxiosError(error)
   }
 }
+
+/**
+ * 确认待领取事件日志已展示（无离线 pending 时服务端清空）。
+ */
+export async function ackPendingEventLogsApi(): Promise<
+  ApiResponse<{
+    cleared: number
+    skipped: boolean
+    character: CharacterPublic
+  }>
+> {
+  try {
+    const response = await http.post<
+      ApiResponse<{
+        cleared: number
+        skipped: boolean
+        character: CharacterPublic
+      }>
+    >('/characters/me/event-logs/ack')
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}

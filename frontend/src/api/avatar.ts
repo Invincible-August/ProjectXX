@@ -185,7 +185,15 @@ export interface AvatarAssistSessionPublic {
 /** POST /avatar/assist/settings */
 export async function setAvatarAssistSettings(
   enabled: boolean,
-): Promise<ApiResponse<{ message?: string; enabled?: boolean; avatar?: AvatarPublic }>> {
+): Promise<
+  ApiResponse<{
+    message?: string
+    enabled?: boolean
+    assist_friends_enabled?: boolean
+    avatar_id?: number
+    assist_stamina?: import('../types/avatar').AvatarAssistStaminaPanel
+  }>
+> {
   try {
     const response = await http.post('/avatar/assist/settings', { enabled })
     return response.data

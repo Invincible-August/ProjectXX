@@ -24,12 +24,17 @@ sensitive_filter_enabled: true
 world_line_id: default
 # 私聊是否要求道友（false=任意双方会话）
 dm_require_friend: false
-# 组队邀请是否要求道友（true=须已是道友）
+# 组队邀请是否要求社交关系（道友 / 同门 / 师徒）
 party_require_friend: true
-# 组队邀请过期秒数（0=不过期；读时惰性过期）
-party_invite_expire_sec: 120
+# 组队邀请过期秒数（0=不过期；读时惰性过期；默认 60=1 分钟）
+party_invite_expire_sec: 60
+# 普通队伍人数上限（超出须转换为团队）
+party_max_members: 5
+# 团队人数上限
+team_max_members: 40
 # 仅 development：无 WS 时假定双方在线（经 PresenceService 读取）
-party_dev_assume_online: true
+# 名单展示一律用真实 Presence，不受本开关影响；本开关仅影响邀请 HTTP 门闸
+party_dev_assume_online: false
 # 频道中文名（玩家可见）
 labels_zh:
   world: 世界
@@ -37,3 +42,4 @@ labels_zh:
   dm: 私聊
   mentor: 师承
   party: 队伍
+  team: 团队

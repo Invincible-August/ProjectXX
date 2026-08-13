@@ -183,3 +183,51 @@ def test_altar_blocked_below_huashen(tmp_path: Path) -> None:
                 assert exc.value.code == 40068
 
     _run(_body())
+
+
+def test_ferry_rescue_targets_universal_and_kin(tmp_path: Path) -> None:
+    """普渡名单仅道友；亲友名单含道友。"""
+    from app.services.friend_service import FriendService
+    from app.services.gm_service import GmService
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "ferry_targets.db") as factory:
+            async with factory() as session:
+                a = await _prepare(session, "rt_a@example.com", "救甲")
+                b = await _prepare(session, "rt_b@example.com", "救乙")
+                await GmService(session).gm_set_character(a, spirit_stones=5000)
+                await session.commit()
+                friends = FriendService(session)
+                applied = await friends.apply(a, target_character_id=None, target_name="救乙")
+                await session.commit()
+                await friends.accept(b, int(applied["friendship_id"]))
+                await session.commit()
+                bch = await character_service.get_character_by_user_id(session, b.id)
+                assert bch is not None
+                ferry = FerryService(session)
+                await ferry.enter_awaiting_ferry(bch)
+                await session.commit()
+
+                universal = await ferry.list_rescue_targets(a, category="universal")
+                assert universal["category"] == "universal"
+                assert len(universal["items"]) == 1
+                assert universal["items"][0]["name"] == "救乙"
+                assert universal["items"][0]["rescue_mode"] == "friend"
+
+                kin = await ferry.list_rescue_targets(a, category="kin")
+                assert kin["category"] == "kin"
+                assert any(x["name"] == "救乙" for x in kin["items"])
+                assert kin["items"][0]["rescue_mode"] == "kin"
+
+                rescued = await ferry.social_rescue(
+                    a,
+                    target_character_id=bch.id,
+                    target_name=None,
+                    mode="kin",
+                )
+                await session.commit()
+                assert rescued["rescued"] is True
+                await session.refresh(bch)
+                assert bch.status == "normal"
+
+    _run(_body())

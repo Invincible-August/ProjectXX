@@ -17,6 +17,7 @@ import {
   setAccessToken,
   setRefreshToken,
 } from '../utils/storage'
+import { clearLastPlayPath } from '../utils/safeRedirect'
 
 export const useAuthStore = defineStore('auth', () => {
   const accessToken = ref<string | null>(null)
@@ -199,6 +200,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   /** 清除内存与 Storage 中的登录态。 */
   function logout(): void {
+    clearLastPlayPath()
     accessToken.value = null
     refreshToken.value = null
     user.value = null
@@ -226,6 +228,12 @@ export const useAuthStore = defineStore('auth', () => {
     // M7：退出登录清空本会话聊天与机缘本地态（未抢完机缘下次进房仍会拉回）
     void import('./chat').then(({ useChatStore }) => {
       useChatStore().clearSession()
+    })
+    void import('./gameLog').then(({ useGameLogStore }) => {
+      useGameLogStore().clear()
+    })
+    void import('./ws').then(({ useWsStore }) => {
+      useWsStore().disconnect()
     })
   }
 

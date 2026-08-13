@@ -4,6 +4,8 @@
 ``IdleService`` 为应用服务入口；模块级函数为兼容包装。
 服务端：按 ``last_settled_at`` 切片写库（无全服定时任务）。
 长离线缺口走 pending/claim；有 pending 时冻结在线累计。
+WS Presence 仍在线时：长缺口按离线帽直接入账，不弹「离线领取」
+（避免切页/切后台停 sync 被误判为离线）。
 """
 
 from __future__ import annotations
@@ -35,6 +37,28 @@ from app.services.realm_config import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _character_ws_online(character_id: int | None) -> bool:
+    """
+    角色是否有存活 WS（含 Presence grace）。
+
+    失败时视为离线，避免 Presence 异常时误吞离线领取弹窗。
+
+    Args:
+        character_id: 角色主键；缺省则 False。
+
+    Returns:
+        True 表示 Hub 认为在线。
+    """
+    if character_id is None:
+        return False
+    try:
+        from app.services.presence_service import get_presence
+
+        return bool(get_presence().is_online(int(character_id)))
+    except Exception:  # noqa: BLE001
+        return False
 
 # 兼容旧测试：导出 SettleResult / PRODUCTIVE 别名
 _PRODUCTIVE_DIRECTIONS = PRODUCTIVE_DIRECTIONS
@@ -1028,6 +1052,37 @@ class IdleService:
             avatar_gains.get("settled_ticks") if avatar_gains else 0,
             capped,
         )
+        # 仍连着玩法壳 WS：长缺口视为「在线漏同步」，带帽直接入账，不卡领取弹窗
+        if _character_ws_online(getattr(character, "id", None)):
+            applied = self.claim_offline_pending(
+                character,
+                now=now_aware,
+                avatar=avatar,
+            )
+            av_ticks = 0
+            if isinstance(avatar_gains, dict):
+                av_ticks = int(avatar_gains.get("settled_ticks") or 0)
+            logger.info(
+                "offline auto-settled while online character_id=%s ticks=%s "
+                "avatar_ticks=%s capped=%s",
+                character.id,
+                applied.get("settled_ticks"),
+                av_ticks,
+                capped,
+            )
+            main = applied.get("main_gains") or applied
+            return SettleResult(
+                stalled=bool(main.get("is_stalled", applied.get("is_stalled"))),
+                ticks=int(main.get("settled_ticks", applied.get("settled_ticks") or 0)),
+                gained_cultivation=int(
+                    main.get("gained_cultivation", applied.get("gained_cultivation") or 0),
+                ),
+                gained_body=int(main.get("gained_body", applied.get("gained_body") or 0)),
+                gained_crafting=int(
+                    main.get("gained_crafting", applied.get("gained_crafting") or 0),
+                ),
+                spent_spirit_stones=int(applied.get("spent_spirit_stones") or 0),
+            )
         return pending
 
     async def prepare_offline_or_settle_async(
@@ -1200,6 +1255,11 @@ class IdleService:
 
         character.pending_offline_json = None
         applied = dict(pending)
+        from app.domain.event_logs import take_pending_event_logs
+
+        event_logs = take_pending_event_logs(character)
+        if event_logs:
+            applied["event_logs"] = event_logs
         logger.info(
             "offline claimed character_id=%s ticks=%s avatar_ticks=%s",
             character.id,
@@ -1468,6 +1528,7 @@ class IdleService:
         public = await characters.enrich_public(character)
         return {
             "applied": applied,
+            "event_logs": list(applied.get("event_logs") or []),
             "character": characters.public_to_dict(public),
             "next_tick_at": self.compute_next_tick_at(character),
         }

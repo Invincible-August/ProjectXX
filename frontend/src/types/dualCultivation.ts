@@ -1,16 +1,30 @@
 /**
- * M7 L7 双修 / 四榜类型。
+ * M7 L7 双修 / 时长榜类型。
  */
 
 export type DualGender = 'male' | 'female'
+export type DualBondKind = 'companion' | 'vessel'
+export type DualRole = 'number_one' | 'zero'
 
 export interface DualTechnique {
   technique_id: string
   label: string
-  mode: 'mutual_gain' | 'transfer'
+  mode: 'mutual_gain' | 'transfer' | 'extract'
+  mode_label_zh?: string
   require_opposite_gender?: boolean
   base_yield?: number
   [key: string]: unknown
+}
+
+export interface DualInviteTarget {
+  bond_id: number
+  bond_kind: DualBondKind | string
+  peer_character_id: number
+  peer_name: string
+  status: string
+  online?: boolean
+  peer_major_realm_name?: string | null
+  peer_cultivation_points?: number
 }
 
 export interface DualSessionParty {
@@ -35,12 +49,20 @@ export interface DualDiceSnapshot {
 export interface DualSession {
   session_id: number
   status: string
+  status_label_zh?: string
   technique_id: string
   technique_label?: string
   mode?: string
+  bond_kind?: DualBondKind | string | null
+  inviter_role?: DualRole | string
+  auto_forced?: boolean
   inviter: DualSessionParty
   invitee: DualSessionParty
   invite_expire_at?: string | null
+  undress_expire_at?: string | null
+  invitee_undressed?: boolean
+  can_undress?: boolean
+  can_start?: boolean
   dice?: DualDiceSnapshot | null
   settle_summary?: Record<string, unknown> | null
 }
@@ -51,10 +73,18 @@ export interface DualMePayload {
   needs_gender: boolean
   session: DualSession | null
   techniques: DualTechnique[]
+  invite_targets?: {
+    companions: DualInviteTarget[]
+    vessels: DualInviteTarget[]
+    vessel_invite_enabled?: boolean
+    hint_zh?: string
+  }
   config?: {
     invite_expire_sec?: number
+    undress_expire_sec?: number
     max_rerolls?: number
     spirit_stone_cost?: number
+    cultivation_gap_scale?: number
   }
 }
 
@@ -64,6 +94,7 @@ export interface DualRankEntry {
   name: string
   score: number
   gender?: string
+  score_unit_zh?: string
 }
 
 export interface DualBoardPayload {
@@ -73,9 +104,11 @@ export interface DualBoardPayload {
   entries: DualRankEntry[]
   my_rank: number | null
   my_score: number
+  score_unit_zh?: string
 }
 
 export interface DualRanksPayload {
   boards: Record<string, DualBoardPayload>
   my_gender?: DualGender | null
+  primary_board?: string
 }

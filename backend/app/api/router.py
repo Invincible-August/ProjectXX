@@ -34,6 +34,7 @@ from app.api import (
     ws,
     sect,
     friends,
+    bonds,
     trade,
     mail,
     chat,
@@ -78,6 +79,7 @@ api_router.include_router(ws.router)
 # M7 宗门 / 道友 / 交易 / 邮件 / 聊天
 api_router.include_router(sect.router)
 api_router.include_router(friends.router)
+api_router.include_router(bonds.router)
 api_router.include_router(trade.router)
 api_router.include_router(mail.router)
 api_router.include_router(chat.router)

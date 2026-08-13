@@ -1,27 +1,28 @@
 <script setup lang="ts">
 /**
- * 社交中心（/social）：道友 / 队伍 / 双修 / 邮件 / 赠送 / 师徒 / 引渡。
+ * 社交中心（/social）：道友 / 队伍 / 双修 / 交易 / 邮件 / 师徒 / 引渡。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AuthSessionBar from '../components/AuthSessionBar.vue'
 import DualCultivationPanel from '../components/dual/DualCultivationPanel.vue'
+import FaceTradePanel from '../components/market/FaceTradePanel.vue'
 import PartyPanel from '../components/party/PartyPanel.vue'
 import FriendListPanel from '../components/social/FriendListPanel.vue'
 import FerryRescuePanel from '../components/social/FerryRescuePanel.vue'
-import GiftPanel from '../components/social/GiftPanel.vue'
 import MailBoxPanel from '../components/social/MailBoxPanel.vue'
 import MentorPanel from '../components/social/MentorPanel.vue'
 import { useCharacterStore } from '../stores/character'
-import { createLogEntry, type GameLogEntry } from '../types/gameLog'
+import { useGameLogStore } from '../stores/gameLog'
+import { type GameLogEntry } from '../types/gameLog'
 
-/** 合法 mode */
+/** 合法 mode（gift 已并入 mail，访问时重定向） */
 type SocialMode =
   | 'friends'
   | 'party'
   | 'dual'
+  | 'trade'
   | 'mail'
-  | 'gift'
   | 'mentor'
   | 'ferry'
 
@@ -29,8 +30,8 @@ const MODE_SET = new Set<string>([
   'friends',
   'party',
   'dual',
+  'trade',
   'mail',
-  'gift',
   'mentor',
   'ferry',
 ])
@@ -38,8 +39,7 @@ const MODE_SET = new Set<string>([
 const route = useRoute()
 const router = useRouter()
 const characterStore = useCharacterStore()
-
-const logEntries = ref<GameLogEntry[]>([])
+const gameLogStore = useGameLogStore()
 
 const mode = computed<SocialMode>(() => {
   const m = route.query.mode
@@ -53,13 +53,57 @@ const mailUnread = computed(
   () => Number(characterStore.character?.social_badges?.mail_unread ?? 0),
 )
 
+const tradePeer = computed(() => {
+  const p = route.query.peer
+  return typeof p === 'string' ? p : null
+})
+
+const tradeSessionId = computed(() => {
+  const s = route.query.session
+  if (typeof s === 'string' && /^\d+$/.test(s)) {
+    return Number(s)
+  }
+  return null
+})
+
 function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
-  logEntries.value = [...logEntries.value.slice(-49), createLogEntry(message, level)]
+  gameLogStore.push(message, level)
 }
 
 function setMode(next: SocialMode): void {
-  void router.replace({ query: { ...route.query, mode: next } })
+  const query: Record<string, string> = {
+    ...(route.query as Record<string, string>),
+    mode: next,
+  }
+  if (next !== 'trade') {
+    delete query.peer
+    delete query.session
+  }
+  void router.replace({ query })
 }
+
+function onTradeSessionChange(sessionId: number | null): void {
+  const query: Record<string, string> = {
+    ...(route.query as Record<string, string>),
+    mode: 'trade',
+  }
+  if (sessionId && sessionId > 0) {
+    query.session = String(sessionId)
+  } else {
+    delete query.session
+  }
+  void router.replace({ query })
+}
+
+watch(
+  () => route.query.mode,
+  (m) => {
+    if (m === 'gift') {
+      void router.replace({ query: { ...route.query, mode: 'mail' } })
+    }
+  },
+  { immediate: true },
+)
 
 onMounted(async () => {
   if (!characterStore.character) {
@@ -69,8 +113,13 @@ onMounted(async () => {
       return
     }
   }
-  pushLog('社交中心已就绪：道友 / 队伍 / 双修 / 邮件。', 'info')
-  if (!MODE_SET.has(String(route.query.mode ?? ''))) {
+  pushLog('社交中心已就绪：道友 / 队伍 / 双修 / 交易 / 邮件。', 'info')
+  const rawMode = String(route.query.mode ?? '')
+  if (rawMode === 'gift') {
+    void router.replace({ query: { ...route.query, mode: 'mail' } })
+    return
+  }
+  if (!MODE_SET.has(rawMode)) {
     void router.replace({ query: { ...route.query, mode: 'friends' } })
   }
 })
@@ -83,7 +132,7 @@ onMounted(async () => {
     <div class="page-title">
       <el-button size="small" @click="router.push('/hall')">← 回大厅</el-button>
       <el-text tag="b" size="large">社交</el-text>
-      <el-text type="info" size="small">道友 · 队伍 · 双修</el-text>
+      <el-text type="info" size="small">道友 · 队伍 · 双修 · 交易 · 邮件</el-text>
       <div class="mode-nav">
         <el-button
           size="small"
@@ -108,18 +157,18 @@ onMounted(async () => {
         </el-button>
         <el-button
           size="small"
+          :type="mode === 'trade' ? 'primary' : 'default'"
+          @click="setMode('trade')"
+        >
+          交易
+        </el-button>
+        <el-button
+          size="small"
           :type="mode === 'mail' ? 'primary' : 'default'"
           @click="setMode('mail')"
         >
           邮件
           <span v-if="mailUnread > 0" class="badge">{{ mailUnread }}</span>
-        </el-button>
-        <el-button
-          size="small"
-          :type="mode === 'gift' ? 'primary' : 'default'"
-          @click="setMode('gift')"
-        >
-          赠送
         </el-button>
         <el-button
           size="small"
@@ -143,8 +192,14 @@ onMounted(async () => {
         <FriendListPanel v-if="mode === 'friends'" @log="pushLog" />
         <PartyPanel v-else-if="mode === 'party'" @log="pushLog" />
         <DualCultivationPanel v-else-if="mode === 'dual'" @log="pushLog" />
+        <FaceTradePanel
+          v-else-if="mode === 'trade'"
+          :peer="tradePeer"
+          :session-id="tradeSessionId"
+          @log="pushLog"
+          @session-change="onTradeSessionChange"
+        />
         <MailBoxPanel v-else-if="mode === 'mail'" @log="pushLog" />
-        <GiftPanel v-else-if="mode === 'gift'" @log="pushLog" />
         <MentorPanel v-else-if="mode === 'mentor'" @log="pushLog" />
         <FerryRescuePanel v-else-if="mode === 'ferry'" @log="pushLog" />
       </div>
@@ -163,11 +218,11 @@ onMounted(async () => {
           </template>
           <el-text>{{ mailUnread }}</el-text>
         </el-card>
-        <el-card v-if="logEntries.length" shadow="never">
+        <el-card v-if="gameLogStore.entries.length" shadow="never">
           <template #header>
-            <el-text tag="b" size="small">本页日志</el-text>
+            <el-text tag="b" size="small">事件日志（同步大厅）</el-text>
           </template>
-          <div v-for="e in logEntries.slice(-8)" :key="e.id" class="log-line">
+          <div v-for="e in gameLogStore.entries.slice(-8)" :key="e.id" class="log-line">
             <el-text size="small">{{ e.message }}</el-text>
           </div>
         </el-card>
@@ -206,8 +261,13 @@ onMounted(async () => {
 
 .main-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 220px;
+  grid-template-columns: minmax(0, 1fr) 200px;
   gap: 1rem;
+  align-items: start;
+}
+
+.main-left {
+  min-width: 0;
 }
 
 .main-side {

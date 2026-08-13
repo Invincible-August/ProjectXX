@@ -36,6 +36,17 @@ export interface AvatarStaminaPanel {
   recovery_per_hour: number
 }
 
+/** 化身助战专用体力（与探索/独战体力隔离） */
+export interface AvatarAssistStaminaPanel {
+  assist_stamina: number
+  assist_stamina_cap: number
+  assist_stamina_locked: boolean
+  resume_threshold: number
+  battle_cost: number
+  recovery_per_hour: number
+  can_assist: boolean
+}
+
 /** 出战模式提示 */
 export interface AvatarBattleModes {
   with_main: boolean
@@ -58,6 +69,8 @@ export interface AvatarPublic {
   features?: AvatarFeatureState[]
   unlock_preview?: AvatarUnlockPreview | null
   stamina?: AvatarStaminaPanel | null
+  /** 助战专用体力（化神 friend_assist 解锁后） */
+  assist_stamina?: AvatarAssistStaminaPanel | null
   battle_modes?: AvatarBattleModes
   transfer_summary?: string
   transfer_retention_ratio?: number

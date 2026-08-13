@@ -16,7 +16,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.time_utils import ensure_aware_utc, now_utc
+from app.core.time_utils import ensure_aware_utc, now_utc, to_utc_iso
 from app.db.models import Character, User
 from app.db.models.chat import (
     ChatMessage,
@@ -37,6 +37,15 @@ from app.domain.channel_membership import (
     build_world_ref,
     parse_channel_ref,
     room_id_for,
+)
+from app.domain.party_rules import (
+    KIND_PARTY,
+    KIND_TEAM,
+    assert_can_add_member,
+    kind_label_zh,
+    leader_label_zh,
+    normalize_party_kind,
+    party_max_for_kind,
 )
 from app.domain.ws_protocol import (
     TYPE_CHAT_DM_CLEARED,
@@ -443,19 +452,138 @@ class ChatService:
 
     async def party_me(self, user: User) -> dict[str, Any]:
         """
-        Current party plus incoming pending invites for this character.
+        Current party plus incoming/outgoing pending invites.
 
         Returns:
-            dict: ``party`` (or null) and ``pending_invites`` list.
+            dict: ``party``, ``pending_invites``, ``outgoing_invites``, limits.
         """
         require_chat_enabled()
         character = await self._gate.require_character(user)
         await self._expire_stale_party_invites()
         party = await self._active_party_for(character.id)
-        pending = await self._pending_invites_for(character.id)
+        cfg = self._cfg()
         return {
             "party": await self._party_public(party) if party is not None else None,
-            "pending_invites": pending,
+            "pending_invites": await self._pending_invites_for(character.id),
+            "outgoing_invites": await self._outgoing_invites_for(character.id),
+            "limits": {
+                "party_max_members": int(getattr(cfg, "party_max_members", 5) or 5),
+                "team_max_members": int(getattr(cfg, "team_max_members", 40) or 40),
+                "invite_expire_sec": int(getattr(cfg, "party_invite_expire_sec", 60) or 60),
+            },
+        }
+
+    async def party_invite_options(self, user: User) -> dict[str, Any]:
+        """
+        Quick invite targets: friends / sect / mentor (masters+disciples).
+
+        Online flags use **real** Presence (``is_online``), never DEV assume,
+        so 道友 / 宗门 / 师徒 lists stay consistent.
+        """
+        require_chat_enabled()
+        character = await self._gate.require_character(user)
+        from app.services.presence_service import get_presence
+
+        presence = get_presence()
+
+        def _online(cid: int) -> bool:
+            return presence.is_online(int(cid))
+
+        friends_payload = await FriendService(self._session).list_friends(user)
+        friends = [
+            {
+                "character_id": int(f["peer_character_id"]),
+                "name": str(f["peer_name"]),
+                # 强制与 Presence 对齐（勿信任列表字段与 DEV 假定混用）
+                "online": _online(int(f["peer_character_id"])),
+            }
+            for f in (friends_payload.get("friends") or [])
+        ]
+
+        from app.db.models.sect import SectMember
+        from app.domain.sect_org_rules import normalize_member_rank, rank_label_zh
+
+        sect_members: list[dict[str, Any]] = []
+        member_row = (
+            await self._session.execute(
+                select(SectMember).where(SectMember.character_id == character.id),
+            )
+        ).scalar_one_or_none()
+        if member_row is not None:
+            sects_cfg = get_game_config().sects
+            rows = (
+                await self._session.execute(
+                    select(SectMember, Character)
+                    .join(Character, Character.id == SectMember.character_id)
+                    .where(
+                        SectMember.sect_id == member_row.sect_id,
+                        SectMember.character_id != character.id,
+                    )
+                    .order_by(SectMember.id.asc()),
+                )
+            ).all()
+            for m, ch in rows:
+                r = normalize_member_rank(m.rank, m.role)
+                sect_members.append(
+                    {
+                        "character_id": ch.id,
+                        "name": ch.name,
+                        "rank": r,
+                        "rank_label_zh": rank_label_zh(r, sects_cfg.disciple_ranks),
+                        "online": _online(int(ch.id)),
+                    },
+                )
+
+        from app.db.models.mentor import MentorBond
+
+        mentor_peers: list[dict[str, Any]] = []
+        as_master = (
+            await self._session.execute(
+                select(MentorBond).where(
+                    MentorBond.master_character_id == character.id,
+                    MentorBond.status == "active",
+                ),
+            )
+        ).scalars().all()
+        for bond in as_master:
+            appr = await self._session.get(Character, bond.apprentice_character_id)
+            if appr is None:
+                continue
+            mentor_peers.append(
+                {
+                    "character_id": appr.id,
+                    "name": appr.name,
+                    "role": "disciple",
+                    "bond_id": bond.id,
+                    "online": _online(int(appr.id)),
+                },
+            )
+        as_appr = (
+            await self._session.execute(
+                select(MentorBond).where(
+                    MentorBond.apprentice_character_id == character.id,
+                    MentorBond.status == "active",
+                ),
+            )
+        ).scalars().all()
+        for bond in as_appr:
+            master = await self._session.get(Character, bond.master_character_id)
+            if master is None:
+                continue
+            mentor_peers.append(
+                {
+                    "character_id": master.id,
+                    "name": master.name,
+                    "role": "master",
+                    "bond_id": bond.id,
+                    "online": _online(int(master.id)),
+                },
+            )
+
+        return {
+            "friends": friends,
+            "sect_members": sect_members,
+            "mentor_peers": mentor_peers,
         }
 
     async def party_action(
@@ -468,20 +596,8 @@ class ChatService:
         invite_id: int | None = None,
     ) -> dict[str, Any]:
         """
-        Party lifecycle: create (empty) / invite / accept / reject / leave / kick.
-
-        Args:
-            user: Current user.
-            action: create | invite | accept | reject | leave | kick.
-            peer_character_id: Target for invite or kick.
-            peer_name: Target dao name for invite or kick.
-            invite_id: Invite row id for accept/reject.
-
-        Returns:
-            dict: Result payload (party / invite / pending_invites).
-
-        Raises:
-            AppError: Validation or gate failures.
+        Party lifecycle: create / invite / accept / reject / leave / kick /
+        convert_to_team / convert_to_party.
         """
         require_chat_enabled()
         character, _ = await self._gate.prepare_for_play(user, settle=True)
@@ -507,6 +623,10 @@ class ChatService:
                 peer_character_id=peer_character_id,
                 peer_name=peer_name,
             )
+        if act in ("convert_to_team", "to_team", "upgrade_team"):
+            return await self._party_convert_to_team(character)
+        if act in ("convert_to_party", "to_party", "downgrade_party"):
+            return await self._party_convert_to_party(character)
         raise AppError(code=40000, message="未知队伍动作", http_status=400)
 
     async def _party_create_empty(self, character: Character) -> dict[str, Any]:
@@ -514,7 +634,11 @@ class ChatService:
         existing = await self._active_party_for(character.id)
         if existing is not None:
             raise AppError(code=40000, message="已在队伍中", http_status=400)
-        party = PartySession(leader_character_id=character.id, status="open")
+        party = PartySession(
+            leader_character_id=character.id,
+            status="open",
+            kind=KIND_PARTY,
+        )
         self._session.add(party)
         await self._session.flush()
         self._session.add(PartyMember(party_id=party.id, character_id=character.id))
@@ -529,7 +653,131 @@ class ChatService:
             "message": "已创建队伍",
             "party": public,
             "pending_invites": await self._pending_invites_for(character.id),
+            "outgoing_invites": await self._outgoing_invites_for(character.id),
         }
+
+    async def _party_convert_to_team(self, character: Character) -> dict[str, Any]:
+        """Leader upgrades party → team (max 40)."""
+        party = await self._active_party_for(character.id)
+        if party is None:
+            raise AppError(code=40000, message="不在队伍中", http_status=400)
+        if int(party.leader_character_id) != int(character.id):
+            raise AppError(code=40000, message="仅队长可将队伍转换为团队", http_status=403)
+        if normalize_party_kind(getattr(party, "kind", None)) == KIND_TEAM:
+            raise AppError(code=40000, message="已是团队", http_status=400)
+        party.kind = KIND_TEAM
+        await self._session.flush()
+        public = await self._party_public(party)
+        member_ids = [m["character_id"] for m in public["members"]]
+        await self._push_party_update_to_characters(
+            member_ids,
+            {"event": "converted_to_team", "party": public},
+        )
+        return {
+            "message": "已转换为团队（最多 40 人；仅可挑战团队秘境/团队Boss/野外Boss/势力争夺）",
+            "party": public,
+            "pending_invites": await self._pending_invites_for(character.id),
+            "outgoing_invites": await self._outgoing_invites_for(character.id),
+        }
+
+    async def _party_convert_to_party(self, character: Character) -> dict[str, Any]:
+        """Leader downgrades team → party when members ≤ party_max."""
+        party = await self._active_party_for(character.id)
+        if party is None:
+            raise AppError(code=40000, message="不在队伍中", http_status=400)
+        if int(party.leader_character_id) != int(character.id):
+            raise AppError(code=40000, message="仅团长可将团队转回队伍", http_status=403)
+        if normalize_party_kind(getattr(party, "kind", None)) != KIND_TEAM:
+            raise AppError(code=40000, message="当前已是队伍", http_status=400)
+        cfg = self._cfg()
+        count = await self._party_member_count(party.id)
+        cap = party_max_for_kind(KIND_PARTY, cfg=cfg)
+        if count > cap:
+            raise AppError(
+                code=40000,
+                message=f"人数超过 {cap} 人，无法转回队伍（请先减员）",
+                http_status=400,
+            )
+        party.kind = KIND_PARTY
+        await self._session.flush()
+        public = await self._party_public(party)
+        member_ids = [m["character_id"] for m in public["members"]]
+        await self._push_party_update_to_characters(
+            member_ids,
+            {"event": "converted_to_party", "party": public},
+        )
+        return {
+            "message": f"已转回队伍（最多 {cap} 人）",
+            "party": public,
+            "pending_invites": await self._pending_invites_for(character.id),
+            "outgoing_invites": await self._outgoing_invites_for(character.id),
+        }
+
+    async def _assert_party_invite_relation(
+        self,
+        character: Character,
+        peer: Character,
+    ) -> None:
+        """Require friend / same sect / mentor bond when party_require_friend is on."""
+        cfg = self._cfg()
+        if not bool(getattr(cfg, "party_require_friend", True)):
+            return
+        friends = FriendService(self._session)
+        if await friends.are_friends(character.id, peer.id):
+            return
+        from app.db.models.sect import SectMember
+
+        my_sect = (
+            await self._session.execute(
+                select(SectMember.sect_id).where(SectMember.character_id == character.id),
+            )
+        ).scalar_one_or_none()
+        if my_sect is not None:
+            peer_sect = (
+                await self._session.execute(
+                    select(SectMember.sect_id).where(SectMember.character_id == peer.id),
+                )
+            ).scalar_one_or_none()
+            if peer_sect is not None and int(peer_sect) == int(my_sect):
+                return
+        from app.db.models.mentor import MentorBond
+        from sqlalchemy import and_, or_
+
+        bond = (
+            await self._session.execute(
+                select(MentorBond.id).where(
+                    MentorBond.status == "active",
+                    or_(
+                        and_(
+                            MentorBond.master_character_id == character.id,
+                            MentorBond.apprentice_character_id == peer.id,
+                        ),
+                        and_(
+                            MentorBond.master_character_id == peer.id,
+                            MentorBond.apprentice_character_id == character.id,
+                        ),
+                    ),
+                ).limit(1),
+            )
+        ).scalar_one_or_none()
+        if bond is not None:
+            return
+        raise AppError(
+            code=40000,
+            message="须先结为道友、同门或师徒才能组队邀请",
+            http_status=400,
+        )
+
+    async def _party_member_count(self, party_id: int) -> int:
+        """Count members in an open party."""
+        n = (
+            await self._session.execute(
+                select(func.count())
+                .select_from(PartyMember)
+                .where(PartyMember.party_id == int(party_id)),
+            )
+        ).scalar_one()
+        return int(n or 0)
 
     async def _party_invite(
         self,
@@ -541,40 +789,49 @@ class ChatService:
         """
         Invite a peer into the inviter's open party (create party if needed).
 
-        Gates: both online (or DEV assume), optionally friends, invitee not in party.
+        Gates: both online, social relation, invitee not in party, capacity.
         """
         peer = await self._resolve_character(peer_character_id, peer_name)
         if peer.id == character.id:
             raise AppError(code=40000, message="不可邀请自己", http_status=400)
 
-        # 双方须在线（开发环境可 party_dev_assume_online）
         if not self.is_character_online_for_party(character.id):
             raise AppError(code=40000, message="你当前不在线，无法发出邀请", http_status=400)
         if not self.is_character_online_for_party(peer.id):
             raise AppError(code=40000, message="对方不在线，无法邀请", http_status=400)
 
-        cfg = self._cfg()
-        if bool(getattr(cfg, "party_require_friend", True)):
-            friends = FriendService(self._session)
-            if not await friends.are_friends(character.id, peer.id):
-                raise AppError(code=40000, message="须先结为道友才能组队邀请", http_status=400)
+        await self._assert_party_invite_relation(character, peer)
 
         peer_party = await self._active_party_for(peer.id)
         if peer_party is not None:
             raise AppError(code=40000, message="对方已在其他队伍", http_status=400)
 
-        # 邀请人须有开放队伍且本人为队长（无队则先建空队，建队者即队长）
+        cfg = self._cfg()
         party = await self._active_party_for(character.id)
         if party is None:
-            party = PartySession(leader_character_id=character.id, status="open")
+            party = PartySession(
+                leader_character_id=character.id,
+                status="open",
+                kind=KIND_PARTY,
+            )
             self._session.add(party)
             await self._session.flush()
             self._session.add(PartyMember(party_id=party.id, character_id=character.id))
             await self._session.flush()
         elif int(party.leader_character_id) != int(character.id):
-            raise AppError(code=40000, message="仅队长可邀请队友", http_status=403)
+            raise AppError(
+                code=40000,
+                message=f"仅{leader_label_zh(getattr(party, 'kind', None))}可邀请队友",
+                http_status=403,
+            )
 
-        # 同人 pending 邀请：刷新过期时间，避免刷屏多条
+        count = await self._party_member_count(party.id)
+        assert_can_add_member(
+            kind=getattr(party, "kind", KIND_PARTY),
+            current_count=count,
+            cfg=cfg,
+        )
+
         existing_invite = (
             await self._session.execute(
                 select(PartyInvite).where(
@@ -584,7 +841,7 @@ class ChatService:
                 ),
             )
         ).scalar_one_or_none()
-        expire_sec = int(getattr(cfg, "party_invite_expire_sec", 120) or 0)
+        expire_sec = int(getattr(cfg, "party_invite_expire_sec", 60) or 0)
         expires_at = (
             now_utc() + timedelta(seconds=expire_sec) if expire_sec > 0 else None
         )
@@ -611,17 +868,17 @@ class ChatService:
             character.id,
             peer.id,
         )
-        # 推给被邀请人
         await self._push_to_character(peer.id, TYPE_PARTY_INVITE, invite_public)
         await self._push_party_update_to_characters(
             [character.id, peer.id],
             {"event": "invite", "invite": invite_public, "party": await self._party_public(party)},
         )
         return {
-            "message": f"已邀请「{peer.name}」入队，等待对方确认",
+            "message": f"已邀请「{peer.name}」入队，等待对方确认（{expire_sec or '∞'} 秒内有效）",
             "party": await self._party_public(party),
             "invite": invite_public,
             "pending_invites": await self._pending_invites_for(character.id),
+            "outgoing_invites": await self._outgoing_invites_for(character.id),
         }
 
     async def _party_accept(
@@ -643,6 +900,14 @@ class ChatService:
             invite.status = "cancelled"
             await self._session.flush()
             raise AppError(code=40000, message="队伍已解散", http_status=400)
+
+        # 人数上限（接受前再校验）
+        count = await self._party_member_count(party.id)
+        assert_can_add_member(
+            kind=getattr(party, "kind", KIND_PARTY),
+            current_count=count,
+            cfg=self._cfg(),
+        )
 
         # 防止重复成员
         existing_member = (
@@ -674,6 +939,7 @@ class ChatService:
             "message": "已加入队伍",
             "party": public,
             "pending_invites": await self._pending_invites_for(character.id),
+            "outgoing_invites": await self._outgoing_invites_for(character.id),
         }
 
     async def _party_reject(
@@ -697,6 +963,7 @@ class ChatService:
             "party": None,
             "invite": invite_public,
             "pending_invites": await self._pending_invites_for(character.id),
+            "outgoing_invites": await self._outgoing_invites_for(character.id),
         }
 
     async def _party_leave(self, character: Character) -> dict[str, Any]:
@@ -748,6 +1015,7 @@ class ChatService:
             "message": "已离队",
             "party": None,
             "pending_invites": await self._pending_invites_for(character.id),
+            "outgoing_invites": await self._outgoing_invites_for(character.id),
         }
 
     async def _party_kick(
@@ -762,7 +1030,11 @@ class ChatService:
         if party is None:
             raise AppError(code=40000, message="不在队伍中", http_status=400)
         if int(party.leader_character_id) != int(character.id):
-            raise AppError(code=40000, message="仅队长可踢出队友", http_status=403)
+            raise AppError(
+                code=40000,
+                message=f"仅{leader_label_zh(getattr(party, 'kind', None))}可踢出队友",
+                http_status=403,
+            )
         target = await self._resolve_character(peer_character_id, peer_name)
         if int(target.id) == int(character.id):
             raise AppError(code=40000, message="不可踢出自己，请使用离队", http_status=400)
@@ -805,6 +1077,7 @@ class ChatService:
             "message": f"已将「{target.name}」移出队伍",
             "party": public,
             "pending_invites": await self._pending_invites_for(character.id),
+            "outgoing_invites": await self._outgoing_invites_for(character.id),
         }
 
     # ----- helpers -----
@@ -1123,6 +1396,18 @@ class ChatService:
         ).scalars().all()
         return [await self._invite_public(row) for row in rows]
 
+    async def _outgoing_invites_for(self, character_id: int) -> list[dict[str, Any]]:
+        """Outgoing pending invites sent by this character."""
+        rows = (
+            await self._session.execute(
+                select(PartyInvite).where(
+                    PartyInvite.inviter_id == int(character_id),
+                    PartyInvite.status == "pending",
+                ),
+            )
+        ).scalars().all()
+        return [await self._invite_public(row) for row in rows]
+
     async def _invite_public(self, invite: PartyInvite) -> dict[str, Any]:
         """Serialize a party invite for API / WS payloads."""
         inviter = await self._session.get(Character, invite.inviter_id)
@@ -1135,8 +1420,8 @@ class ChatService:
             "invitee_name": invitee.name if invitee else str(invite.invitee_id),
             "party_id": invite.party_id,
             "status": invite.status,
-            "expires_at": invite.expires_at.isoformat() if invite.expires_at else None,
-            "created_at": invite.created_at.isoformat() if invite.created_at else None,
+            "expires_at": to_utc_iso(invite.expires_at) if invite.expires_at else None,
+            "created_at": to_utc_iso(invite.created_at) if invite.created_at else None,
         }
 
     async def _push_to_character(
@@ -1224,13 +1509,34 @@ class ChatService:
             ch = await self._session.get(Character, m.character_id)
             items.append(await self._party_member_public(party, ch, m.character_id))
         pref = build_party_ref(party.id)
+        kind = normalize_party_kind(getattr(party, "kind", None))
+        cfg = self._cfg()
+        cap = party_max_for_kind(kind, cfg=cfg)
         return {
             "id": party.id,
             "status": party.status,
+            "kind": kind,
+            "kind_label_zh": kind_label_zh(kind),
+            "leader_label_zh": leader_label_zh(kind),
             "leader_character_id": party.leader_character_id,
+            "member_count": len(items),
+            "max_members": cap,
             "members": items,
             "channel_ref": pref.channel_ref,
             "room_id": pref.room_id,
+            "restrictions": (
+                {
+                    "allowed": ["team_secret_realm", "team_boss", "wild_boss", "faction_war"],
+                    "forbidden": ["normal_secret_realm"],
+                    "no_reward_non_team_boss": True,
+                    "summary_zh": (
+                        "团队仅可进入团队秘境、挑战团队/野外 Boss、参加势力争夺；"
+                        "不可进普通秘境；击杀非团队 Boss 无掉落、不获修为"
+                    ),
+                }
+                if kind == KIND_TEAM
+                else None
+            ),
         }
 
     async def _party_member_public(

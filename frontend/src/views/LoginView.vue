@@ -18,9 +18,10 @@ import {
   submitIdVerifyApi,
 } from '../api/verification'
 import { useAuthStore } from '../stores/auth'
+import { useCharacterStore } from '../stores/character'
 import type { LoginMethod, RegisterPayload } from '../types/auth'
 import { getRememberMe } from '../utils/storage'
-import { resolveSafeRedirect } from '../utils/safeRedirect'
+import { clearLastPlayPath } from '../utils/safeRedirect'
 
 /** 当前展示的表单模式（同页切换，不加载新路由页） */
 type AuthFormMode = 'login' | 'register' | 'forgot'
@@ -572,19 +573,40 @@ function resetRegisterSensitiveFields(): void {
 }
 
 /**
- * 登录成功后跳转：优先站内合法 redirect，否则按是否已创角分流。
- * has_character 已由 login 响应写入；此处 ensureSession 多为短路径确认。
+ * 登录成功后跳转：一律大厅（或创角 / 引渡 / 渡劫等状态页），不回跳上次玩法页。
  */
 async function navigateAfterLogin(): Promise<void> {
   await authStore.ensureSession()
+  clearLastPlayPath()
 
-  const redirect = resolveSafeRedirect(route.query.redirect)
-  if (redirect) {
-    await router.replace(redirect)
+  if (!authStore.hasCharacter) {
+    await router.replace('/create-character')
     return
   }
 
-  await router.replace(authStore.homePathAfterAuth())
+  const characterStore = useCharacterStore()
+  if (!characterStore.character) {
+    try {
+      await characterStore.fetchMe()
+    } catch {
+      await router.replace('/hall')
+      return
+    }
+  }
+  const status = characterStore.character?.status
+  if (status === 'awaiting_ferry') {
+    await router.replace({ path: '/reincarnation', query: { mode: 'ferry' } })
+    return
+  }
+  if (status === 'reincarnating') {
+    await router.replace({ path: '/reincarnation', query: { mode: 'newborn' } })
+    return
+  }
+  if (status === 'tribulation') {
+    await router.replace('/tribulation')
+    return
+  }
+  await router.replace('/hall')
 }
 
 /**

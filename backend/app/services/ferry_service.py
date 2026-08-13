@@ -163,22 +163,202 @@ class FerryService:
         }
 
     def _social_rescue_costs_public(self) -> dict[str, Any]:
-        """道友/同门引渡成本摘要（与自救对比）。"""
+        """道友/同门/亲友引渡成本摘要（与自救对比）。"""
         cfg = get_game_config().reincarnation
         social = dict(getattr(cfg, "social_rescue", None) or {})
         friend = dict(social.get("friend") or {})
+        kin = dict(social.get("kin") or {})
         sect = dict(social.get("sect") or {})
         self_cost = int(cfg.self_rescue.get("spirit_stone_cost", 500))
         friend_cost = int(friend.get("spirit_stone_cost", 100))
+        kin_cost = int(kin.get("spirit_stone_cost", friend_cost))
         sect_cost = int(sect.get("spirit_stone_cost", 150))
         return {
             "same_region_stub": bool(social.get("same_region_stub", True)),
             "friend_cost": friend_cost,
+            "kin_cost": kin_cost,
             "sect_cost": sect_cost,
             "self_rescue_cost": self_cost,
             "friend_cheaper_by": max(0, self_cost - friend_cost),
+            "kin_cheaper_by": max(0, self_cost - kin_cost),
             "sect_cheaper_by": max(0, self_cost - sect_cost),
             "payer_label_zh": "救援者支付灵石",
+        }
+
+    async def list_rescue_targets(
+        self,
+        user: User,
+        *,
+        category: str = "universal",
+    ) -> dict[str, Any]:
+        """
+        List awaiting-ferry targets for the rescue panel tabs.
+
+        Categories:
+            ``universal`` (普渡众生): friends awaiting ferry.
+            ``sect`` (同门引渡): same-sect members awaiting ferry.
+            ``kin`` (亲友引渡): friends / companions / mentors / vessels.
+
+        Args:
+            user: Authenticated rescuer.
+            category: universal | sect | kin.
+
+        Returns:
+            ``category``, ``items``, and cost summary.
+        """
+        from sqlalchemy import or_, select
+
+        from app.db.models.bond import (
+            BOND_KIND_COMPANION,
+            BOND_KIND_VESSEL,
+            CharacterBond,
+        )
+        from app.db.models.mentor import MentorBond
+        from app.services.friend_service import FriendService
+        from app.services.realm_config import get_major_realm
+
+        character = await self._gate.require_character(user)
+        cat = str(category or "universal").strip().lower()
+        if cat in {"pudu", "friend", "friends"}:
+            cat = "universal"
+        if cat in {"close", "kinfolk", "family"}:
+            cat = "kin"
+        if cat not in {"universal", "sect", "kin"}:
+            raise AppError(
+                code=40000,
+                message="类别须为普渡众生 / 同门 / 亲友",
+                http_status=400,
+            )
+
+        peer_meta: dict[int, set[str]] = {}
+
+        def _add(peer_id: int, relation: str) -> None:
+            if int(peer_id) == int(character.id):
+                return
+            peer_meta.setdefault(int(peer_id), set()).add(relation)
+
+        if cat in {"universal", "kin"}:
+            friends_payload = await FriendService(self._session).list_friends(user)
+            for f in friends_payload.get("friends") or []:
+                _add(int(f["peer_character_id"]), "friend")
+
+        if cat == "sect":
+            if character.sect_id is not None:
+                rows = (
+                    await self._session.execute(
+                        select(Character).where(
+                            Character.sect_id == int(character.sect_id),
+                            Character.id != int(character.id),
+                            Character.status == "awaiting_ferry",
+                        ),
+                    )
+                ).scalars().all()
+                for ch in rows:
+                    _add(int(ch.id), "sect")
+
+        if cat == "kin":
+            bond_rows = (
+                await self._session.execute(
+                    select(CharacterBond).where(
+                        CharacterBond.status == "active",
+                        CharacterBond.bond_kind.in_(
+                            (BOND_KIND_COMPANION, BOND_KIND_VESSEL),
+                        ),
+                        or_(
+                            CharacterBond.character_low_id == character.id,
+                            CharacterBond.character_high_id == character.id,
+                        ),
+                    ),
+                )
+            ).scalars().all()
+            for row in bond_rows:
+                peer_id = (
+                    row.character_high_id
+                    if int(row.character_low_id) == int(character.id)
+                    else row.character_low_id
+                )
+                rel = "companion" if row.bond_kind == BOND_KIND_COMPANION else "vessel"
+                _add(int(peer_id), rel)
+
+            mentor_rows = (
+                await self._session.execute(
+                    select(MentorBond).where(
+                        MentorBond.status == "active",
+                        or_(
+                            MentorBond.master_character_id == character.id,
+                            MentorBond.apprentice_character_id == character.id,
+                        ),
+                    ),
+                )
+            ).scalars().all()
+            for bond in mentor_rows:
+                peer_id = (
+                    bond.apprentice_character_id
+                    if int(bond.master_character_id) == int(character.id)
+                    else bond.master_character_id
+                )
+                role = (
+                    "disciple"
+                    if int(bond.master_character_id) == int(character.id)
+                    else "master"
+                )
+                _add(int(peer_id), role)
+
+        # 普渡/亲友：仅保留 awaiting_ferry
+        items: list[dict[str, Any]] = []
+        if cat == "sect":
+            # already filtered to awaiting_ferry when collecting
+            peer_ids = list(peer_meta.keys())
+        else:
+            peer_ids = list(peer_meta.keys())
+
+        if peer_ids:
+            chars = (
+                await self._session.execute(
+                    select(Character).where(Character.id.in_(peer_ids)),
+                )
+            ).scalars().all()
+            by_id = {int(c.id): c for c in chars}
+            for pid in peer_ids:
+                ch = by_id.get(int(pid))
+                if ch is None:
+                    continue
+                await self.check_timeout_and_force(ch)
+                if ch.status != "awaiting_ferry":
+                    continue
+                relations = sorted(peer_meta.get(int(pid)) or [])
+                mr = get_major_realm(str(ch.major_realm or ""))
+                rescue_mode = "sect" if cat == "sect" else ("kin" if cat == "kin" else "friend")
+                items.append(
+                    {
+                        "character_id": ch.id,
+                        "name": ch.name,
+                        "major_realm": ch.major_realm,
+                        "major_realm_name": mr.name if mr else ch.major_realm,
+                        "relations": relations,
+                        "relation_labels_zh": [
+                            _relation_label_zh(r) for r in relations
+                        ],
+                        "deadline_at": (
+                            to_utc_iso(ensure_aware_utc(ch.ferry_deadline_at))
+                            if ch.ferry_deadline_at is not None
+                            else None
+                        ),
+                        "rescue_mode": rescue_mode,
+                    },
+                )
+
+        items.sort(key=lambda x: (x.get("deadline_at") or "", x["name"]))
+        label_zh = {
+            "universal": "普渡众生",
+            "sect": "同门引渡",
+            "kin": "亲友引渡",
+        }[cat]
+        return {
+            "category": cat,
+            "category_label_zh": label_zh,
+            "items": items,
+            "costs": self._social_rescue_costs_public(),
         }
 
     async def social_rescue(
@@ -191,28 +371,38 @@ class FerryService:
         now: datetime | None = None,
     ) -> dict[str, Any]:
         """
-        道友 / 同门引渡（救援者支付较低灵石）。
+        道友 / 同门 / 亲友引渡（救援者支付较低灵石）。
 
         Args:
             user: 救援者。
             target_character_id: 待救角色 id。
             target_name: 待救道号。
-            mode: friend | sect。
+            mode: friend | sect | kin。
             now: 可选冻结时间。
 
         Returns:
             dict: 救援结果。
         """
-        from sqlalchemy import select
+        from sqlalchemy import and_, or_, select
 
+        from app.db.models.bond import (
+            BOND_KIND_COMPANION,
+            BOND_KIND_VESSEL,
+            CharacterBond,
+        )
+        from app.db.models.mentor import MentorBond
         from app.domain.mentor_rules import realm_index, same_region_stub
         from app.services.currency_ledger_service import CurrencyLedgerService
         from app.services.friend_service import FriendService
 
         rescuer, _ = await self._gate.prepare_for_play(user, settle=True)
         mode_l = str(mode or "").strip().lower()
-        if mode_l not in {"friend", "sect"}:
-            raise AppError(code=40000, message="引渡方式须为道友或同门", http_status=400)
+        if mode_l not in {"friend", "sect", "kin"}:
+            raise AppError(
+                code=40000,
+                message="引渡方式须为普渡/道友、同门或亲友",
+                http_status=400,
+            )
 
         # 解析目标
         if target_character_id is not None:
@@ -242,11 +432,65 @@ class FerryService:
         if not same_region_stub(stub_enabled=stub):
             raise AppError(code=40180, message="同图判定失败（未同区）", http_status=400)
 
+        mode_label = "道友引渡"
         if mode_l == "friend":
             ok = await FriendService(self._session).are_friends(rescuer.id, victim.id)
             if not ok:
-                raise AppError(code=40180, message="仅道友可发起道友引渡", http_status=403)
+                raise AppError(code=40180, message="仅道友可发起普渡/道友引渡", http_status=403)
             cost = int((social.get("friend") or {}).get("spirit_stone_cost", 100))
+            mode_label = "普渡众生"
+        elif mode_l == "kin":
+            linked = await FriendService(self._session).are_friends(rescuer.id, victim.id)
+            if not linked:
+                bond = (
+                    await self._session.execute(
+                        select(CharacterBond.id).where(
+                            CharacterBond.status == "active",
+                            CharacterBond.bond_kind.in_(
+                                (BOND_KIND_COMPANION, BOND_KIND_VESSEL),
+                            ),
+                            or_(
+                                and_(
+                                    CharacterBond.character_low_id == rescuer.id,
+                                    CharacterBond.character_high_id == victim.id,
+                                ),
+                                and_(
+                                    CharacterBond.character_low_id == victim.id,
+                                    CharacterBond.character_high_id == rescuer.id,
+                                ),
+                            ),
+                        ).limit(1),
+                    )
+                ).scalar_one_or_none()
+                linked = bond is not None
+            if not linked:
+                mentor = (
+                    await self._session.execute(
+                        select(MentorBond.id).where(
+                            MentorBond.status == "active",
+                            or_(
+                                and_(
+                                    MentorBond.master_character_id == rescuer.id,
+                                    MentorBond.apprentice_character_id == victim.id,
+                                ),
+                                and_(
+                                    MentorBond.master_character_id == victim.id,
+                                    MentorBond.apprentice_character_id == rescuer.id,
+                                ),
+                            ),
+                        ).limit(1),
+                    )
+                ).scalar_one_or_none()
+                linked = mentor is not None
+            if not linked:
+                raise AppError(
+                    code=40180,
+                    message="仅道友、道侣、师徒或炉鼎可发起亲友引渡",
+                    http_status=403,
+                )
+            friend_cost = int((social.get("friend") or {}).get("spirit_stone_cost", 100))
+            cost = int((social.get("kin") or {}).get("spirit_stone_cost", friend_cost))
+            mode_label = "亲友引渡"
         else:
             if rescuer.sect_id is None or victim.sect_id is None:
                 raise AppError(code=40180, message="双方须同宗", http_status=403)
@@ -265,13 +509,14 @@ class FerryService:
                         http_status=403,
                     )
             cost = int(sect_cfg.get("spirit_stone_cost", 150))
+            mode_label = "同门引渡"
 
         current = now_utc(now)
         await CurrencyLedgerService(self._session).adjust_spirit_stones(
             rescuer,
             delta=-cost,
             reason="ferry_social_rescue",
-            note_zh=f"{'道友' if mode_l == 'friend' else '同门'}引渡·{victim.name}",
+            note_zh=f"{mode_label}·{victim.name}",
             ref_type="ferry",
             ref_id=str(victim.id),
         )
@@ -289,7 +534,7 @@ class FerryService:
         return {
             "rescued": True,
             "mode": mode_l,
-            "mode_label_zh": "道友引渡" if mode_l == "friend" else "同门引渡",
+            "mode_label_zh": mode_label,
             "spirit_stones_spent": cost,
             "payer": "rescuer",
             "victim_character_id": victim.id,
@@ -447,3 +692,15 @@ class FerryService:
         result["message"] = "自选轮回已结算，请前往新生页选择灵根/传承"
         result["character"] = await self._character_dict(character)
         return result
+
+
+def _relation_label_zh(relation: str) -> str:
+    """Map internal relation key to Chinese label for rescue lists."""
+    return {
+        "friend": "道友",
+        "sect": "同门",
+        "companion": "道侣",
+        "vessel": "炉鼎",
+        "master": "师父",
+        "disciple": "弟子",
+    }.get(str(relation), str(relation))

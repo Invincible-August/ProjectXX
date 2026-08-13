@@ -8,6 +8,7 @@ import { ElMessage } from 'element-plus'
 import { changePasswordApi } from '../api/auth'
 import { useAuthStore } from '../stores/auth'
 import { useCharacterStore } from '../stores/character'
+import { clearLastPlayPath } from '../utils/safeRedirect'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -75,8 +76,10 @@ async function onChangePassword(): Promise<void> {
 }
 
 async function onLogout(): Promise<void> {
+  clearLastPlayPath()
   authStore.logout()
-  await router.replace('/login')
+  // 重新登录后固定进大厅，不带 redirect
+  await router.replace({ name: 'login' })
 }
 </script>
 

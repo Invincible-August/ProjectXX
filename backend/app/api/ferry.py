@@ -22,6 +22,20 @@ async def ferry_me(
     return success(await svc.get_me(current_user))
 
 
+@router.get("/rescue-targets", response_model=None)
+async def ferry_rescue_targets(
+    category: str = "universal",
+    svc: FerryService = Depends(get_ferry_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """
+    引渡救援名单。
+
+    category: universal=普渡众生（道友）· sect=同门 · kin=亲友（道友/道侣/师徒/炉鼎）
+    """
+    return success(await svc.list_rescue_targets(current_user, category=category))
+
+
 @router.post("/self-rescue", response_model=None)
 async def ferry_self_rescue(
     svc: FerryService = Depends(get_ferry_service),
@@ -37,7 +51,7 @@ async def ferry_social_rescue(
     svc: FerryService = Depends(get_ferry_service),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """道友 / 同门引渡。"""
+    """普渡/道友 / 同门 / 亲友引渡。"""
     return success(
         await svc.social_rescue(
             current_user,

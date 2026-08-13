@@ -8,6 +8,7 @@ import { computed, ref } from 'vue'
 import {
   enterReincarnation,
   fetchFerry,
+  fetchRescueTargets,
   selfRescue,
   socialRescue,
 } from '../api/ferry'
@@ -16,7 +17,12 @@ import {
   fetchReincarnationLogs,
   previewReincarnation,
 } from '../api/reincarnation'
-import type { FerryPublic, SocialRescueCosts } from '../types/ferry'
+import type {
+  FerryPublic,
+  FerryRescueCategory,
+  FerryRescueTarget,
+  SocialRescueCosts,
+} from '../types/ferry'
 import type {
   ReincarnationLogItem,
   ReincarnationPath,
@@ -78,6 +84,10 @@ export const useFerryStore = defineStore('ferry', () => {
   const ferry = ref<FerryPublic | null>(null)
   /** 社交引渡成本（非待引渡时也可从 /ferry/me 拿到） */
   const socialRescueCosts = ref<SocialRescueCosts | null>(null)
+  /** 当前类别救援名单 */
+  const rescueTargets = ref<FerryRescueTarget[]>([])
+  const rescueCategory = ref<FerryRescueCategory>('universal')
+  const rescueCategoryLabel = ref('普渡众生')
   const preview = ref<ReincarnationPreview | null>(null)
   const logs = ref<ReincarnationLogItem[]>([])
   const loading = ref(false)
@@ -156,14 +166,14 @@ export const useFerryStore = defineStore('ferry', () => {
   }
 
   /**
-   * 道友 / 同门引渡（救援者支付灵石）。
+   * 道友 / 同门 / 亲友引渡（救援者支付灵石）。
    *
-   * @param mode - friend | sect
+   * @param mode - friend | sect | kin
    * @param targetName - 待救道号
    * @param targetCharacterId - 可选角色 id
    */
   async function doSocialRescue(
-    mode: 'friend' | 'sect',
+    mode: 'friend' | 'sect' | 'kin',
     targetName?: string,
     targetCharacterId?: number,
   ): Promise<string | null> {
@@ -179,6 +189,34 @@ export const useFerryStore = defineStore('ferry', () => {
       }
       await applyOrRefresh(envelope.data.character)
       lastMessage.value = envelope.data.message || '引渡成功'
+      await loadRescueTargets(rescueCategory.value)
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /**
+   * 按类别加载待引渡救援名单。
+   *
+   * @param category - universal | sect | kin
+   */
+  async function loadRescueTargets(
+    category: FerryRescueCategory = 'universal',
+  ): Promise<string | null> {
+    loading.value = true
+    try {
+      const envelope = await fetchRescueTargets(category)
+      if (envelope.code !== 0 || !envelope.data) {
+        rescueTargets.value = []
+        return envelope.message || `加载救援名单失败（code=${envelope.code}）`
+      }
+      rescueCategory.value = (envelope.data.category as FerryRescueCategory) || category
+      rescueCategoryLabel.value = envelope.data.category_label_zh || ''
+      rescueTargets.value = envelope.data.items ?? []
+      if (envelope.data.costs) {
+        socialRescueCosts.value = envelope.data.costs
+      }
       return null
     } finally {
       loading.value = false
@@ -274,6 +312,7 @@ export const useFerryStore = defineStore('ferry', () => {
   function clear(): void {
     ferry.value = null
     socialRescueCosts.value = null
+    rescueTargets.value = []
     preview.value = null
     logs.value = []
     lastMessage.value = ''
@@ -282,6 +321,9 @@ export const useFerryStore = defineStore('ferry', () => {
   return {
     ferry,
     socialRescueCosts,
+    rescueTargets,
+    rescueCategory,
+    rescueCategoryLabel,
     preview,
     logs,
     loading,
@@ -291,6 +333,7 @@ export const useFerryStore = defineStore('ferry', () => {
     loadFerry,
     doSelfRescue,
     doSocialRescue,
+    loadRescueTargets,
     enter,
     loadPreview,
     altar,

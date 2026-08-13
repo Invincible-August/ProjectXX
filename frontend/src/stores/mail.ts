@@ -1,16 +1,20 @@
 /**
- * M7 L3 邮件 / 赠送 Pinia store。
+ * M7 L3 邮件 Pinia store（附物发信并入）。
  */
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import {
   claimMail,
+  claimMailAll,
+  deleteMail,
+  deleteMailAll,
+  fetchMailComposeOptions,
   listMail,
   markMailRead,
-  sendGift,
+  markMailReadAll,
   sendMail,
 } from '../api/mail'
-import type { MailItem } from '../types/mail'
+import type { MailComposeOptions, MailItem, MailLimits } from '../types/mail'
 import { useCharacterStore } from './character'
 
 export const useMailStore = defineStore('mail', () => {
@@ -19,6 +23,8 @@ export const useMailStore = defineStore('mail', () => {
   const loading = ref(false)
   const lastMessage = ref('')
   const lastError = ref('')
+  const limits = ref<MailLimits | null>(null)
+  const composeOptions = ref<MailComposeOptions | null>(null)
 
   function syncBadge(nextUnread: number): void {
     unread.value = nextUnread
@@ -49,10 +55,21 @@ export const useMailStore = defineStore('mail', () => {
       }
       items.value = envelope.data.items ?? []
       syncBadge(Number(envelope.data.unread ?? 0))
+      if (envelope.data.limits) limits.value = envelope.data.limits
       return null
     } finally {
       loading.value = false
     }
+  }
+
+  async function loadComposeOptions(): Promise<string | null> {
+    const envelope = await fetchMailComposeOptions()
+    if (envelope.code !== 0 || !envelope.data) {
+      return envelope.message || `加载写信选项失败（code=${envelope.code}）`
+    }
+    composeOptions.value = envelope.data
+    if (envelope.data.limits) limits.value = envelope.data.limits
+    return null
   }
 
   async function claim(mailId: number): Promise<string | null> {
@@ -75,6 +92,26 @@ export const useMailStore = defineStore('mail', () => {
     }
   }
 
+  async function claimAll(): Promise<string | null> {
+    loading.value = true
+    try {
+      const envelope = await claimMailAll()
+      if (envelope.code !== 0 || !envelope.data) {
+        const msg = envelope.message || `一键领取失败（code=${envelope.code}）`
+        lastError.value = msg
+        return msg
+      }
+      lastMessage.value = envelope.data.message || '已领取'
+      if (envelope.data.character) {
+        useCharacterStore().applyCharacter(envelope.data.character as never)
+      }
+      await refresh()
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function markRead(mailId: number): Promise<string | null> {
     const envelope = await markMailRead(mailId)
     if (envelope.code !== 0) {
@@ -84,10 +121,65 @@ export const useMailStore = defineStore('mail', () => {
     return null
   }
 
+  async function markReadAll(): Promise<string | null> {
+    loading.value = true
+    try {
+      const envelope = await markMailReadAll()
+      if (envelope.code !== 0 || !envelope.data) {
+        const msg = envelope.message || `一键已读失败（code=${envelope.code}）`
+        lastError.value = msg
+        return msg
+      }
+      lastMessage.value = envelope.data.message || '已全部标读'
+      await refresh()
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function remove(mailId: number): Promise<string | null> {
+    loading.value = true
+    try {
+      const envelope = await deleteMail(mailId)
+      if (envelope.code !== 0 || !envelope.data) {
+        const msg = envelope.message || `删除失败（code=${envelope.code}）`
+        lastError.value = msg
+        return msg
+      }
+      lastMessage.value = envelope.data.message || '已删除'
+      await refresh()
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function removeAllEligible(): Promise<string | null> {
+    loading.value = true
+    try {
+      const envelope = await deleteMailAll()
+      if (envelope.code !== 0 || !envelope.data) {
+        const msg = envelope.message || `一键删除失败（code=${envelope.code}）`
+        lastError.value = msg
+        return msg
+      }
+      lastMessage.value = envelope.data.message || '已删除'
+      await refresh()
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function sendPlayerMail(body: {
-    to_name: string
+    to_name?: string
+    to_character_id?: number
     subject_zh?: string
     body_zh?: string
+    spirit_stones?: number
+    items?: Array<{ item_id: string; quantity: number }>
+    broadcast?: 'sect' | 'disciples' | null
   }): Promise<string | null> {
     loading.value = true
     try {
@@ -98,27 +190,6 @@ export const useMailStore = defineStore('mail', () => {
         return msg
       }
       lastMessage.value = envelope.data.message || '已送信'
-      return null
-    } finally {
-      loading.value = false
-    }
-  }
-
-  async function giftToFriend(body: {
-    to_name: string
-    spirit_stones?: number
-    items?: Array<{ item_id: string; quantity: number }>
-    note_zh?: string
-  }): Promise<string | null> {
-    loading.value = true
-    try {
-      const envelope = await sendGift(body)
-      if (envelope.code !== 0 || !envelope.data) {
-        const msg = envelope.message || `赠送失败（code=${envelope.code}）`
-        lastError.value = msg
-        return msg
-      }
-      lastMessage.value = envelope.data.message || '已赠送'
       if (envelope.data.character) {
         useCharacterStore().applyCharacter(envelope.data.character as never)
       }
@@ -134,10 +205,16 @@ export const useMailStore = defineStore('mail', () => {
     loading,
     lastMessage,
     lastError,
+    limits,
+    composeOptions,
     refresh,
+    loadComposeOptions,
     claim,
+    claimAll,
     markRead,
+    markReadAll,
+    remove,
+    removeAllEligible,
     sendPlayerMail,
-    giftToFriend,
   }
 })

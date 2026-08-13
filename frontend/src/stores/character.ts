@@ -4,13 +4,14 @@
  * - character：服务端权威（突破/战斗/禁战只读此对象）
  * - display*：客户端预测，供角色面板 + IdlePanel 片内进度条
  * - startIdleRealtime：按 next_tick_at 对齐 sync，无固定 5s 打满
+ * - 玩法壳（showWorldBar）级生命周期：离开大厅不停 sync，避免误判离线
  */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { createCharacterApi, fetchMyCharacterApi } from '../api/character'
+import { createCharacterApi, fetchMyCharacterApi, ackPendingEventLogsApi } from '../api/character'
 import { setIdleDirectionApi, syncIdleApi, claimOfflineApi } from '../api/idle'
 import type { CharacterPublic } from '../types/character'
-import type { IdleDirection, IdleSyncData } from '../types/idle'
+import type { IdleDirection, IdleSyncData, OfflineClaimData } from '../types/idle'
 import { validateCharacterName } from '../utils/characterName'
 import {
   isIdleBusyDirection,
@@ -22,6 +23,7 @@ import {
 } from '../utils/idlePredict'
 import { computeTickGainForDirection } from '../utils/idleRateClient'
 import { useAuthStore } from './auth'
+import { useGameLogStore } from './gameLog'
 import { useWorldStore } from './world'
 
 /** 兜底最大对表间隔（防定时器漂移）；默认 120s */
@@ -57,6 +59,8 @@ export const useCharacterStore = defineStore('character', () => {
   let visibilityHandler: (() => void) | null = null
   let onSettledCb: ((data: IdleSyncData) => void) | null = null
   let realtimeActive = false
+  /** 玩法壳是否激活（与 App.vue showWorldBar 对齐） */
+  let playShellActive = false
 
   /**
    * 刷新预测时钟（驱动 computed 重算）。
@@ -92,6 +96,24 @@ export const useCharacterStore = defineStore('character', () => {
   })
 
   /**
+   * 玩法壳内且无 pending 时确保 realtime 已开。
+   */
+  function ensurePlayShellRealtime(): void {
+    if (!playShellActive) return
+    const ch = character.value
+    if (!ch || ch.offline_pending) {
+      if (realtimeActive && ch?.offline_pending) {
+        clearSyncTimers()
+        stopPredictClock()
+      }
+      return
+    }
+    if (!realtimeActive) {
+      startIdleRealtime(onSettledCb ?? undefined)
+    }
+  }
+
+  /**
    * 各玩法 API 返回的 character 统一写入权威态。
    *
    * @param ch - 最新角色
@@ -117,18 +139,86 @@ export const useCharacterStore = defineStore('character', () => {
       nextTickAt.value = due ? new Date(due).toISOString() : null
     }
     bumpDisplay()
-    if (realtimeActive) {
-      if (ch.offline_pending) {
-        // pending：停 sync / 预测时钟，避免无意义 250ms 刷新与误入账
+    // 无离线 pending 时：把缓冲的传授等日志立刻写入大厅，再 ack 清空
+    drainPendingEventLogsIfReady(ch)
+    if (ch.offline_pending) {
+      // pending：停 sync / 预测时钟，避免无意义 250ms 刷新与误入账
+      if (realtimeActive) {
         clearSyncTimers()
         stopPredictClock()
-      } else {
-        if (predictTimer === null) {
-          startPredictClock()
-        }
-        scheduleSyncAligned()
       }
+      return
     }
+    if (playShellActive) {
+      ensurePlayShellRealtime()
+    }
+    if (realtimeActive) {
+      if (predictTimer === null) {
+        startPredictClock()
+      }
+      scheduleSyncAligned()
+    }
+  }
+
+  /**
+   * 将 ``pending_event_logs`` 写入大厅日志并 ack（有离线收益时留给领取接口）。
+   *
+   * @param ch - 最新角色
+   */
+  function drainPendingEventLogsIfReady(ch: CharacterPublic): void {
+    if (ch.offline_pending) return
+    const logs = Array.isArray(ch.pending_event_logs) ? ch.pending_event_logs : []
+    if (!logs.length) return
+    // 本地先清空，避免 sync/其它 apply 在 ack 完成前重复刷屏
+    if (character.value) {
+      character.value = { ...character.value, pending_event_logs: [] }
+    }
+    const gameLog = useGameLogStore()
+    for (const row of logs) {
+      const msg = String(row?.message || '').trim()
+      if (!msg) continue
+      const levelRaw = String(row?.level || 'info')
+      const level =
+        levelRaw === 'success' ||
+        levelRaw === 'warning' ||
+        levelRaw === 'system'
+          ? levelRaw
+          : 'info'
+      gameLog.push(msg, level)
+    }
+    void ackPendingEventLogsApi().then((envelope) => {
+      if (envelope.code === 0 && envelope.data?.character) {
+        character.value = {
+          ...envelope.data.character,
+          pending_event_logs: [],
+        }
+      }
+    })
+  }
+
+  /**
+   * 绑定/解绑大厅结算日志回调（不停 realtime）。
+   *
+   * @param cb - 权威入账有收益时回调；null 清除
+   */
+  function setIdleSettledCallback(
+    cb: ((data: IdleSyncData) => void) | null,
+  ): void {
+    onSettledCb = cb
+  }
+
+  /**
+   * 玩法壳开/关：与世界轮询 / WS 同生命周期；离开大厅不停挂机 sync。
+   *
+   * @param active - 是否处于玩法壳
+   */
+  function setPlayShellActive(active: boolean): void {
+    playShellActive = active
+    if (!active) {
+      stopIdleRealtime()
+      return
+    }
+    ensurePlayShellRealtime()
   }
 
   /**
@@ -253,13 +343,18 @@ export const useCharacterStore = defineStore('character', () => {
   /**
    * 领取离线 pending；成功后恢复 tick 对齐调度。
    */
-  async function claimOffline(): Promise<IdleSyncData> {
+  async function claimOffline(): Promise<
+    IdleSyncData & { event_logs?: OfflineClaimData['event_logs'] }
+  > {
     const envelope = await claimOfflineApi()
     if (envelope.code !== 0 || !envelope.data) {
       throw new Error(envelope.message || `领取离线失败（code=${envelope.code}）`)
     }
     applyCharacter(
-      envelope.data.character,
+      {
+        ...envelope.data.character,
+        pending_event_logs: [],
+      },
       envelope.data.next_tick_at ?? null,
     )
     return {
@@ -270,6 +365,7 @@ export const useCharacterStore = defineStore('character', () => {
       gained_crafting: envelope.data.applied.gained_crafting,
       spent_spirit_stones: envelope.data.applied.spent_spirit_stones,
       next_tick_at: envelope.data.next_tick_at ?? null,
+      event_logs: envelope.data.event_logs ?? [],
     }
   }
 
@@ -399,19 +495,17 @@ export const useCharacterStore = defineStore('character', () => {
   ): void {
     stopIdleRealtime()
     realtimeActive = true
-    onSettledCb = onSettled ?? null
+    if (onSettled !== undefined) {
+      onSettledCb = onSettled
+    }
     startPredictClock()
     scheduleSyncAligned()
 
     visibilityHandler = () => {
       if (!realtimeActive) return
       if (document.visibilityState === 'visible') {
-        const dueMs = resolveNextDueMs(character.value, nextTickAt.value)
-        if (dueMs != null && dueMs <= Date.now()) {
-          void runAlignedSync()
-        } else {
-          scheduleSyncAligned()
-        }
+        // 切回前台：立刻对表，避免隐藏期间锚点空窗 ≥ 离线阈值
+        void runAlignedSync()
         bumpDisplay()
       } else {
         clearSyncTimers()
@@ -428,7 +522,6 @@ export const useCharacterStore = defineStore('character', () => {
   /** 停止实时调度与预测时钟。 */
   function stopIdleRealtime(): void {
     realtimeActive = false
-    onSettledCb = null
     clearSyncTimers()
     stopPredictClock()
     if (visibilityHandler) {
@@ -444,7 +537,9 @@ export const useCharacterStore = defineStore('character', () => {
 
   /** 登出时清空内存中的角色并停表。 */
   function clear(): void {
+    playShellActive = false
     stopIdleRealtime()
+    onSettledCb = null
     character.value = null
     nextTickAt.value = null
   }
@@ -463,6 +558,8 @@ export const useCharacterStore = defineStore('character', () => {
     syncNow,
     setDirection,
     claimOffline,
+    setIdleSettledCallback,
+    setPlayShellActive,
     startIdleRealtime,
     stopIdleRealtime,
     startPolling,

@@ -259,6 +259,277 @@ def test_face_trade_commit_and_timeout_unlock(tmp_path: Path) -> None:
     _run(_body())
 
 
+
+def test_face_peer_offer_keeps_other_lock(tmp_path: Path) -> None:
+    """一方已锁定后，另一方改草稿不得拆掉对方锁定/托管。"""
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "face_lock_keep.db") as factory:
+            async with factory() as session:
+                a = await _register(session, "lk_a@example.com", "锁甲")
+                b = await _register(session, "lk_b@example.com", "锁乙")
+                await GmService(session).gm_set_character(a, spirit_stones=500)
+                await GmService(session).gm_set_character(b, spirit_stones=500)
+                await session.commit()
+                inv = InventoryService(session)
+                ach = await character_service.get_character_by_user_id(session, a.id)
+                bch = await character_service.get_character_by_user_id(session, b.id)
+                await inv.add_item(
+                    ach.id,
+                    item_type="material",
+                    item_id="ore_iron_raw",
+                    quantity=2,
+                )
+                await inv.add_item(
+                    bch.id,
+                    item_type="material",
+                    item_id="wood_spirit",
+                    quantity=2,
+                )
+                await session.commit()
+                friends = FriendService(session)
+                applied = await friends.apply(a, target_character_id=None, target_name="锁乙")
+                await session.commit()
+                await friends.accept(b, int(applied["friendship_id"]))
+                await session.commit()
+
+                trade = TradeService(session)
+                invited = await trade.face_invite(a, peer_character_id=None, peer_name="锁乙")
+                await session.commit()
+                sid = int(invited["session"]["id"])
+                await trade.face_accept(b, sid)
+                await session.commit()
+                ver = int((await trade.face_get(a, sid))["session"]["version"])
+
+                o1 = await trade.face_set_offer(
+                    a,
+                    sid,
+                    items=[{"item_id": "ore_iron_raw", "quantity": 1}],
+                    spirit_stones=50,
+                    version=ver,
+                )
+                await session.commit()
+                ver = int(o1["session"]["version"])
+                lock_a = await trade.face_lock(a, sid, version=ver)
+                await session.commit()
+                ver = int(lock_a["session"]["version"])
+                assert lock_a["session"]["initiator_locked"] is True
+                await session.refresh(ach)
+                stones_after_lock = int(ach.spirit_stones)
+
+                # B 改草稿：A 仍应锁定且托管未退回
+                o2 = await trade.face_set_offer(
+                    b,
+                    sid,
+                    items=[{"item_id": "wood_spirit", "quantity": 1}],
+                    spirit_stones=0,
+                    version=ver,
+                )
+                await session.commit()
+                assert o2["session"]["initiator_locked"] is True
+                assert o2["session"]["peer_locked"] is False
+                assert o2["session"]["you_are"] == "peer"
+                await session.refresh(ach)
+                assert int(ach.spirit_stones) == stones_after_lock
+                a_counts = await inv.material_counts(ach.id)
+                assert a_counts.get("ore_iron_raw", 0) == 1
+
+                # 推送给对方的视角校验：以 A 视角拉取
+                pub_a = (await trade.face_get(a, sid))["session"]
+                assert pub_a["you_are"] == "initiator"
+                assert pub_a["initiator_locked"] is True
+
+    _run(_body())
+
+
+def test_face_trade_vessel_offer_create_and_mutex(tmp_path: Path) -> None:
+    """面交要约炉鼎：单侧可设；成交建关系；双方互斥。"""
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "face_vessel.db") as factory:
+            async with factory() as session:
+                a = await _register(session, "fv_a@example.com", "炉交甲")
+                b = await _register(session, "fv_b@example.com", "炉交乙")
+                await GmService(session).gm_set_character(a, spirit_stones=200)
+                await GmService(session).gm_set_character(b, spirit_stones=200)
+                await session.commit()
+                friends = FriendService(session)
+                applied = await friends.apply(a, target_character_id=None, target_name="炉交乙")
+                await session.commit()
+                await friends.accept(b, int(applied["friendship_id"]))
+                await session.commit()
+
+                trade = TradeService(session)
+                invited = await trade.face_invite(
+                    a,
+                    peer_character_id=None,
+                    peer_name="炉交乙",
+                )
+                await session.commit()
+                sid = int(invited["session"]["id"])
+                ver = int(invited["session"]["version"])
+                await trade.face_accept(b, sid)
+                await session.commit()
+                pub = await trade.face_get(a, sid)
+                ver = int(pub["session"]["version"])
+
+                o1 = await trade.face_set_offer(
+                    a,
+                    sid,
+                    items=[],
+                    spirit_stones=0,
+                    version=ver,
+                    vessel_offer={"hours": 24},
+                )
+                await session.commit()
+                assert o1["session"]["initiator_offer"]["vessel_offer"]["hours"] == 24
+                ver = int(o1["session"]["version"])
+
+                with pytest.raises(AppError) as mutex_err:
+                    await trade.face_set_offer(
+                        b,
+                        sid,
+                        items=[],
+                        spirit_stones=0,
+                        version=ver,
+                        vessel_offer={"hours": 12},
+                    )
+                assert "仅一方" in mutex_err.value.message
+
+                o2 = await trade.face_set_offer(
+                    b,
+                    sid,
+                    items=[],
+                    spirit_stones=10,
+                    version=ver,
+                )
+                await session.commit()
+                ver = int(o2["session"]["version"])
+                await trade.face_lock(a, sid, version=ver)
+                await session.commit()
+                pub = await trade.face_get(b, sid)
+                ver = int(pub["session"]["version"])
+                await trade.face_lock(b, sid, version=ver)
+                await session.commit()
+                pub = await trade.face_get(a, sid)
+                ver = int(pub["session"]["version"])
+                await trade.face_confirm(a, sid, version=ver)
+                await session.commit()
+                pub = await trade.face_get(b, sid)
+                ver = int(pub["session"]["version"])
+                done = await trade.face_confirm(b, sid, version=ver)
+                await session.commit()
+                assert done["session"]["status"] == "committed"
+                assert done.get("vessel")
+                assert done["vessel"]["extended"] is False
+
+                from app.services.bond_service import BondService
+
+                bonds = BondService(session)
+                listed = await bonds.list_bonds(b)
+                assert listed["vessel_count"] == 1
+                assert listed["vessels"][0]["peer_name"] == "炉交甲"
+                master = await bonds.list_bonds(a)
+                assert master["my_master"] is not None
+                assert master["my_master"]["peer_name"] == "炉交乙"
+
+                # 主人不可再要约成为炉鼎；炉鼎方可延长
+                invited2 = await trade.face_invite(
+                    a,
+                    peer_character_id=None,
+                    peer_name="炉交乙",
+                )
+                await session.commit()
+                sid2 = int(invited2["session"]["id"])
+                await trade.face_accept(b, sid2)
+                await session.commit()
+                pub2 = await trade.face_get(b, sid2)
+                assert pub2["session"]["vessel_context"]["can_offer_extend"] is False
+                assert pub2["session"]["vessel_context"]["can_offer_become"] is False
+                assert pub2["session"]["vessel_context"]["relation"] == "i_am_master"
+                pub2a = await trade.face_get(a, sid2)
+                assert pub2a["session"]["vessel_context"]["relation"] == "i_am_vessel"
+                assert pub2a["session"]["vessel_context"]["can_offer_extend"] is True
+                with pytest.raises(AppError):
+                    await trade.face_set_offer(
+                        b,
+                        sid2,
+                        items=[],
+                        spirit_stones=0,
+                        version=int(pub2["session"]["version"]),
+                        vessel_offer={"hours": 5},
+                    )
+                # 炉鼎方可延长
+                ext = await trade.face_set_offer(
+                    a,
+                    sid2,
+                    items=[],
+                    spirit_stones=0,
+                    version=int(pub2a["session"]["version"]),
+                    vessel_offer={"hours": 5},
+                )
+                await session.commit()
+                assert ext["session"]["initiator_offer"]["vessel_offer"]["hours"] == 5
+
+    _run(_body())
+
+
+def test_companions_cannot_become_each_others_vessel(tmp_path: Path) -> None:
+    """互为道侣不可面交要约互为炉鼎。"""
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "comp_vessel.db") as factory:
+            async with factory() as session:
+                a = await _register(session, "cv_a@example.com", "侣甲")
+                b = await _register(session, "cv_b@example.com", "侣乙")
+                await GmService(session).gm_set_character(a, spirit_stones=200)
+                await GmService(session).gm_set_character(b, spirit_stones=200)
+                await session.commit()
+                friends = FriendService(session)
+                applied = await friends.apply(a, target_character_id=None, target_name="侣乙")
+                await session.commit()
+                await friends.accept(b, int(applied["friendship_id"]))
+                await session.commit()
+
+                from app.services.bond_service import BondService
+
+                bonds = BondService(session)
+                c_applied = await bonds.apply_companion(
+                    a,
+                    target_character_id=None,
+                    target_name="侣乙",
+                )
+                await session.commit()
+                await bonds.accept(b, int(c_applied["bond_id"]))
+                await session.commit()
+
+                trade = TradeService(session)
+                invited = await trade.face_invite(
+                    a,
+                    peer_character_id=None,
+                    peer_name="侣乙",
+                )
+                await session.commit()
+                sid = int(invited["session"]["id"])
+                await trade.face_accept(b, sid)
+                await session.commit()
+                pub = await trade.face_get(a, sid)
+                assert pub["session"]["vessel_context"]["are_companions"] is True
+                assert pub["session"]["vessel_context"]["can_offer_become"] is False
+                with pytest.raises(AppError) as err:
+                    await trade.face_set_offer(
+                        a,
+                        sid,
+                        items=[],
+                        spirit_stones=0,
+                        version=int(pub["session"]["version"]),
+                        vessel_offer={"hours": 24},
+                    )
+                assert "道侣" in err.value.message
+
+    _run(_body())
+
+
 def test_face_trade_reject_invite(tmp_path: Path) -> None:
     """受邀方拒绝 pending_invite。"""
 
@@ -280,8 +551,55 @@ def test_face_trade_reject_invite(tmp_path: Path) -> None:
                 )
                 await session.commit()
                 sid = int(invited["session"]["id"])
+                pending = await trade.face_list_pending(b)
+                assert len(pending["items"]) == 1
+                assert int(pending["items"][0]["session_id"]) == sid
+                opts = await trade.face_invite_options(a)
+                assert opts["face_max_item_lines"] == 16
+                assert any(x["name"] == "拒乙" for x in opts["friends"])
                 rejected = await trade.face_reject(b, sid)
                 await session.commit()
                 assert rejected["session"]["status"] == "cancelled"
+                pending2 = await trade.face_list_pending(b)
+                assert pending2["items"] == []
+
+    _run(_body())
+
+
+def test_face_offer_max_sixteen_lines(tmp_path: Path) -> None:
+    """单侧报价最多 16 种道具。"""
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "face_16.db") as factory:
+            async with factory() as session:
+                a = await _register(session, "f16_a@example.com", "十六甲")
+                b = await _register(session, "f16_b@example.com", "十六乙")
+                friends = FriendService(session)
+                applied = await friends.apply(a, target_character_id=None, target_name="十六乙")
+                await session.commit()
+                await friends.accept(b, int(applied["friendship_id"]))
+                await session.commit()
+                trade = TradeService(session)
+                invited = await trade.face_invite(
+                    a,
+                    peer_character_id=None,
+                    peer_name="十六乙",
+                )
+                await session.commit()
+                sid = int(invited["session"]["id"])
+                await trade.face_accept(b, sid)
+                await session.commit()
+                got = await trade.face_get(a, sid)
+                ver = int(got["session"]["version"])
+                lines = [{"item_id": "ore_iron_raw", "quantity": 1}] * 17
+                with pytest.raises(AppError) as ei:
+                    await trade.face_set_offer(
+                        a,
+                        sid,
+                        items=lines,
+                        spirit_stones=0,
+                        version=ver,
+                    )
+                assert ei.value.http_status == 400
 
     _run(_body())
