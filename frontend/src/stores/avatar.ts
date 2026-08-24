@@ -24,21 +24,34 @@ import type {
 import type { CharacterPublic } from '../types/character'
 import { useCharacterStore } from './character'
 
+/** 判断是否为化身面板本体（非 { avatar, character } 包装） */
+function isAvatarPublic(data: object): data is AvatarPublic {
+  return (
+    'id' in data &&
+    'idle_direction' in data &&
+    typeof (data as AvatarPublic).id === 'number'
+  )
+}
+
 /** 解析后端多种响应形态：{character, avatar} 或直接 avatar 面板 */
 function unwrapAvatarPayload(
   data: AvatarMutationPayload | AvatarPublic | null | undefined,
 ): { avatar: AvatarPublic | null; character?: CharacterPublic } {
   if (!data || typeof data !== 'object') return { avatar: null }
-  const wrapped = data as AvatarMutationPayload & AvatarPublic
-  if (wrapped.avatar && typeof wrapped.avatar === 'object') {
-    return { avatar: wrapped.avatar, character: wrapped.character }
+
+  const payload = data as AvatarMutationPayload
+  if (payload.avatar && typeof payload.avatar === 'object') {
+    return { avatar: payload.avatar, character: payload.character }
   }
-  if ('id' in wrapped && 'idle_direction' in wrapped) {
-    return { avatar: wrapped as AvatarPublic, character: wrapped.character }
+
+  if (isAvatarPublic(data)) {
+    return { avatar: data }
   }
-  if (wrapped.character) {
-    return { avatar: null, character: wrapped.character }
+
+  if (payload.character) {
+    return { avatar: null, character: payload.character }
   }
+
   return { avatar: null }
 }
 
