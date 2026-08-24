@@ -5,14 +5,17 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { usePetsStore } from '../../stores/pets'
+import { useCharacterStore } from '../../stores/character'
 import { shichenLabel } from '../../utils/shichenLabel'
 import { weatherLabel } from '../../utils/weatherIcon'
+import { alertIfIdleBlocked } from '../../utils/idleBlockDialog'
 
 const emit = defineEmits<{
   log: [message: string, level?: 'info' | 'success' | 'warning' | 'system']
 }>()
 
 const petsStore = usePetsStore()
+const characterStore = useCharacterStore()
 const busy = ref(false)
 const loadError = ref('')
 const regionId = ref('default')
@@ -32,6 +35,10 @@ async function refreshPreview(): Promise<void> {
 
 async function onEncounter(): Promise<void> {
   if (busy.value) return
+  if (await alertIfIdleBlocked(characterStore.character, '探索')) {
+    emit('log', '修炼中无法探索，请先停止修炼', 'warning')
+    return
+  }
   busy.value = true
   try {
     const error = await petsStore.exploreEncounter(regionId.value)
@@ -53,6 +60,10 @@ async function onEncounter(): Promise<void> {
 
 async function onCapture(): Promise<void> {
   if (busy.value || !encounter.value?.capturable) return
+  if (await alertIfIdleBlocked(characterStore.character, '探索')) {
+    emit('log', '修炼中无法探索，请先停止修炼', 'warning')
+    return
+  }
   busy.value = true
   try {
     const error = await petsStore.exploreCapture()
@@ -78,6 +89,10 @@ async function onCapture(): Promise<void> {
 
 async function onAuto(): Promise<void> {
   if (busy.value) return
+  if (await alertIfIdleBlocked(characterStore.character, '探索')) {
+    emit('log', '修炼中无法探索，请先停止修炼', 'warning')
+    return
+  }
   busy.value = true
   try {
     const error = await petsStore.exploreAuto(regionId.value)

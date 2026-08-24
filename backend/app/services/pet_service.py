@@ -752,6 +752,7 @@ class PetService:
         self._session.add(pet)
         await self._session.flush()
         await self._session.refresh(pet)
+        await self._ensure_inventory_face(pet)
         await self._mark_dex(character.id, species_id, caught=True)
         logger.info(
             "pet spawned character_id=%s pet_id=%s species=%s grade=%s via=%s "
@@ -1355,6 +1356,47 @@ class PetService:
             "nickname": pet.nickname,
             "is_deploy_preferred": pet.is_deploy_preferred,
         }
+
+    async def ensure_all_inventory_faces(self, character_id: int) -> None:
+        """为所有灵宠补背包面（存量角色进装备栏时调用）。"""
+        result = await self._session.execute(
+            select(Pet).where(Pet.character_id == character_id).order_by(Pet.id),
+        )
+        for pet in result.scalars().all():
+            await self._ensure_inventory_face(pet)
+
+    async def _ensure_inventory_face(self, pet: Pet) -> None:
+        """每只灵宠对应一行 item_type=pet 的背包面，meta.pet_id 绑定 ORM。"""
+        from app.constants.inventory import ItemType
+        from app.db.models.inventory_item import InventoryItem
+        from app.services.inventory_service import InventoryService
+
+        result = await self._session.execute(
+            select(InventoryItem).where(
+                InventoryItem.character_id == pet.character_id,
+                InventoryItem.item_type == ItemType.PET,
+            ),
+        )
+        for row in result.scalars().all():
+            meta = {}
+            try:
+                meta = json.loads(row.meta_json or "{}")
+            except json.JSONDecodeError:
+                meta = {}
+            if int(meta.get("pet_id") or 0) == int(pet.id):
+                return
+        inv = InventoryService(self._session)
+        await inv.add_item(
+            int(pet.character_id),
+            item_type=ItemType.PET,
+            item_id=f"pet:{pet.id}",
+            quantity=1,
+            meta={
+                "pet_id": int(pet.id),
+                "species_id": pet.species_id,
+                "nickname": pet.nickname or pet.species_id,
+            },
+        )
 
     async def _get_owned_pet(self, character_id: int, pet_id: int) -> Pet:
         """按 id 取所属灵宠。"""

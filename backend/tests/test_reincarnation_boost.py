@@ -65,10 +65,11 @@ def test_permanent_delta_scales_with_realm() -> None:
 
 
 def test_slot_cap_and_bag() -> None:
-    """槽位与轮回袋容量随次数增长。"""
+    """槽位与轮回袋容量随次数增长；体质槽软顶无硬拒。"""
     slots = get_game_config().reincarnation.slots["constitution"]
-    assert compute_slot_cap(reincarnation_count=0, bought=0, slots_kind_cfg=slots) == 1
-    assert compute_slot_cap(reincarnation_count=3, bought=0, slots_kind_cfg=slots) == 2
+    assert compute_slot_cap(reincarnation_count=0, bought=0, slots_kind_cfg=slots) == 3
+    assert compute_slot_cap(reincarnation_count=3, bought=0, slots_kind_cfg=slots) == 4
+    assert compute_slot_cap(reincarnation_count=0, bought=8, slots_kind_cfg=slots) == 11
     bags = get_game_config().reincarnation.bags
     assert compute_reincarnation_bag_slots(0, bags) == 4
     assert compute_reincarnation_bag_slots(5, bags) == 9

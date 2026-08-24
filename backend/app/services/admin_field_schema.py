@@ -675,6 +675,7 @@ ITEMS_SCHEMA = DomainEditSchema(
         _f("stackable", "可堆叠", "是否可堆叠", "bool"),
         _f("max_stack", "堆叠上限", "整数", "int"),
         _f("description", "说明", "运营/玩家说明", "string"),
+        _f("inspect", "悬停检视", "单一属性/功效/境界门槛/说明", "json"),
     ),
 )
 
@@ -1078,9 +1079,15 @@ AVATAR_SCHEMA = DomainEditSchema(
     fields=(
         _f("unlock_major_realm", "凝练门槛大境界", "如 jindan", "string"),
         _f("max_avatars", "化身上限", "定案必须为 1", "int"),
+        _f("max_major_realm", "常规修为硬顶", "如 true_immortal；不可为道主/轮回", "string"),
+        _f("avatar_lead_majors", "可比本体高几个大境", "默认 0", "int"),
         _f("initial_stat_ratio", "初始属性比例", "凝练时相对本体", "float"),
         _f("material_mod_placeholder", "材料修正占位", "乘区占位", "float"),
         _f("condense_spirit_stone_cost", "凝练灵石", "整数", "int"),
+        _f("condense_cultivation_cost", "凝练灵力", "本体修为池", "int"),
+        _f("condense_technique_ids", "化身功法白名单", "空=任意已学功法", "json"),
+        _f("condense_medium_item_ids", "媒介物品 id", "背包材料白名单", "json"),
+        _f("condense_medium_quantity", "媒介数量", "每次凝练消耗", "int"),
         _f("spirit_stone_cost_per_tick_ratio", "化身耗石比例", "相对本体同境", "float"),
         _f("feature_unlocks", "功能解锁表", "feature_id→min_major/label/summary", "json"),
         _f("transfer", "互传规则", "allow/deny/retention", "json"),
@@ -1107,7 +1114,7 @@ AVATAR_SCHEMA = DomainEditSchema(
             description_zh="本体大境界 ≥ min_major 则解锁；禁止业务写死境界。",
             primary_keys=("feature_id",),
             columns=(
-                _f("feature_id", "功能 ID", "如 idle_spirit / solo_battle", "string"),
+                _f("feature_id", "功能 ID", "如 idle_spirit / friend_assist", "string"),
                 _f("min_major", "最低大境界", "须存在于 realms", "string"),
                 _f("label_zh", "中文名", "玩家可见", "string"),
                 _f("summary", "说明", "玩家可见摘要", "string"),
@@ -1143,7 +1150,7 @@ AVATAR_SCHEMA = DomainEditSchema(
             description_zh="独战/探索/接任务等行动的体力消耗。",
             primary_keys=("action_id",),
             columns=(
-                _f("action_id", "行动 ID", "solo_battle / assist_battle / explore_step", "string"),
+                _f("action_id", "行动 ID", "assist_battle / explore_step / quest_accept", "string"),
                 _f("cost", "体力消耗", "整数", "int"),
             ),
         ),

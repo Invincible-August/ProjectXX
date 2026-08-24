@@ -85,7 +85,6 @@ def test_duel_uses_live_attack_presets_not_stale_snapshot(tmp_path: Path) -> Non
                 form = FormationService(session)
                 units = [
                     {"unit_uid": "main", "unit_kind": "main", "x": 0, "y": 3},
-                    {"unit_uid": "puppet_1", "unit_kind": "puppet", "x": 1, "y": 2},
                 ]
                 await form.save_preset(
                     ca,
@@ -144,8 +143,8 @@ def test_duel_uses_live_attack_presets_not_stale_snapshot(tmp_path: Path) -> Non
                 assert side_b.get("source") == "attack_preset_live"
                 assert side_a.get("formation_id") == "stone_wall_left"
                 assert side_b.get("formation_id") == "mist_domain"
-                assert int(side_a.get("unit_count") or 0) == 2
-                assert int(side_b.get("unit_count") or 0) == 2
+                assert int(side_a.get("unit_count") or 0) == 1
+                assert int(side_b.get("unit_count") or 0) == 1
                 assert report.get("defender_mode") == "live_attack"
 
                 # 库内快照仍是 stale，证明没有被赛会写回、也未被当作编成来源

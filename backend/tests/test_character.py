@@ -43,7 +43,7 @@ def test_create_character_defaults(
     settings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """创角成功：锻体一层、灵石=配置、未修炼、状态正常。"""
+    """创角成功：锻体一层、灵石=配置、空闲、状态正常。"""
     monkeypatch.setattr(settings, "debug", True)
     monkeypatch.setattr(settings, "register_require_phone", False)
     monkeypatch.setattr(settings, "register_require_real_name", False)
@@ -70,7 +70,7 @@ def test_create_character_defaults(
                 assert public.spirit_stones == 1000
                 assert public.cultivation_points == 0
                 assert public.idle_direction == "none"
-                assert public.idle_direction_name == "未修炼"
+                assert public.idle_direction_name == "空闲"
                 assert public.status == "normal"
                 assert public.status_name == "正常"
 

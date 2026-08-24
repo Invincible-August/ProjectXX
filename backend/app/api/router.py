@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api import (
+    account,
     allocate,
     auth,
     avatar,
@@ -15,6 +16,8 @@ from app.api import (
     craft,
     dao,
     dao_lord,
+    divine_abilities,
+    equipment,
     facilities,
     ferry,
     formation,
@@ -24,6 +27,8 @@ from app.api import (
     pets,
     quench,
     reincarnation,
+    cave,
+    research,
     server,
     snapshot,
     techniques,
@@ -47,6 +52,7 @@ from app.api import (
 api_router = APIRouter()
 api_router.include_router(server.router)
 api_router.include_router(auth.router)
+api_router.include_router(account.router)
 api_router.include_router(verification.router)
 api_router.include_router(character.router)
 api_router.include_router(idle.router)
@@ -57,7 +63,12 @@ api_router.include_router(gm.router)
 # M2 成长深度
 api_router.include_router(allocate.router)
 api_router.include_router(techniques.router)
+api_router.include_router(divine_abilities.router)
 api_router.include_router(constitution.router)
+api_router.include_router(equipment.router)
+api_router.include_router(cave.router)
+# 研究室权威路径是 /cave/lab；旧 /research 仅兼容书签与旧客户端
+api_router.include_router(research.router, prefix="/research", include_in_schema=False)
 # M3 战斗成型
 api_router.include_router(formation.router)
 api_router.include_router(snapshot.router)

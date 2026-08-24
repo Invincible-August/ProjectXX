@@ -384,7 +384,8 @@ def compute_slot_cap(
     """
     Equippable / selectable slot cap for constitution or spirit_root.
 
-    Formula: min(total_max, free_by_count + bought).
+    Formula: free_by_count + bought, optionally clamped by shop_max_buy / total_max.
+    Omit those keys for no hard cap (constitution soft_cap is display-only).
 
     Args:
         reincarnation_count: Character reincarnation_count.
@@ -397,10 +398,17 @@ def compute_slot_cap(
     initial = int(slots_kind_cfg.get("initial", 1))
     free_by = slots_kind_cfg.get("free_by_count") or {}
     free = free_slots_from_count(reincarnation_count, free_by, initial)
-    total_max = int(slots_kind_cfg.get("total_max", free + int(bought)))
-    shop_max = int(slots_kind_cfg.get("shop_max_buy", 99))
-    bought_clamped = max(0, min(int(bought), shop_max))
-    return max(0, min(total_max, free + bought_clamped))
+    bought_n = max(0, int(bought))
+    shop_max_raw = slots_kind_cfg.get("shop_max_buy")
+    if shop_max_raw is None:
+        bought_clamped = bought_n
+    else:
+        bought_clamped = min(bought_n, int(shop_max_raw))
+    total = free + bought_clamped
+    total_max_raw = slots_kind_cfg.get("total_max")
+    if total_max_raw is None:
+        return max(0, total)
+    return max(0, min(int(total_max_raw), total))
 
 
 def compute_reincarnation_bag_slots(

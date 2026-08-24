@@ -317,9 +317,20 @@ def treasury_page_allowed(
     return page <= max_page
 
 
-def deposit_type_forbidden(item_type: str, forbidden: list[str]) -> bool:
-    """图纸类是否禁止入藏宝阁。"""
-    return str(item_type) in {str(x) for x in forbidden}
+def deposit_type_forbidden(
+    item_type: str,
+    forbidden: list[str],
+    *,
+    manual_kind: str | None = None,
+) -> bool:
+    """图纸类是否禁止入藏宝阁（委托 sect_blueprint_rules）。"""
+    from app.domain.sect_blueprint_rules import deposit_forbidden
+
+    return deposit_forbidden(
+        item_type=item_type,
+        forbidden=forbidden,
+        manual_kind=manual_kind,
+    )
 
 
 def council_action_allowed(

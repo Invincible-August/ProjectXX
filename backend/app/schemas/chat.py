@@ -12,7 +12,11 @@ class ChatSendRequest(BaseModel):
     body_zh: str = Field(min_length=1, max_length=2000)
     channel_ref: str | None = None
     peer_character_id: int | None = None
-    peer_name: str | None = None
+    peer_name: str | None = Field(
+        default=None,
+        description="道号；也可填纯数字 user_id",
+    )
+    peer_user_id: int | None = Field(default=None, description="账号 user_id")
 
 
 class ChatReadRequest(BaseModel):
@@ -27,6 +31,7 @@ class ChatDmClearRequest(BaseModel):
     channel_ref: str | None = None
     peer_character_id: int | None = None
     peer_name: str | None = None
+    peer_user_id: int | None = None
 
 
 class PartyActionRequest(BaseModel):
@@ -36,8 +41,13 @@ class PartyActionRequest(BaseModel):
         description="create|invite|accept|reject|leave|kick|convert_to_team|convert_to_party",
     )
     peer_character_id: int | None = None
-    peer_name: str | None = None
+    peer_name: str | None = Field(
+        default=None,
+        description="道号；也可填纯数字 user_id",
+    )
+    peer_user_id: int | None = Field(default=None, description="账号 user_id")
     # accept / reject 时必填
     invite_id: int | None = None
     # kick 时目标（与 peer_* 二选一）
     target_character_id: int | None = None
+    target_user_id: int | None = None

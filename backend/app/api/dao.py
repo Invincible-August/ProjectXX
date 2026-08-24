@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.core.deps import get_current_user, get_dao_service
 from app.db.models import User
 from app.schemas.common import success
-from app.schemas.dao import DaoOpenChooseRequest, DaoUsagePreviewRequest
+from app.schemas.dao import DaoOpenChooseRequest, DaoOpenRollRequest, DaoUsagePreviewRequest
 from app.services.dao_service import DaoService
 
 router = APIRouter(prefix="/dao", tags=["dao"])
@@ -15,38 +15,43 @@ router = APIRouter(prefix="/dao", tags=["dao"])
 
 @router.get("/catalog")
 async def dao_catalog(
+    actor: str = Query(default="main"),
     user: User = Depends(get_current_user),
     service: DaoService = Depends(get_dao_service),
 ) -> dict:
-    """样本图鉴。"""
-    return success(await service.get_catalog(user))
+    """样本图鉴（该主体须真仙）。"""
+    return success(await service.get_catalog(user, actor=actor))
 
 
 @router.get("/me")
 async def dao_me(
+    actor: str = Query(default="main"),
     user: User = Depends(get_current_user),
     service: DaoService = Depends(get_dao_service),
 ) -> dict:
-    """本命与道资源。"""
-    return success(await service.get_me(user))
+    """本命与道资源（该主体须真仙）。"""
+    return success(await service.get_me(user, actor=actor))
 
 
 @router.get("/pool")
 async def dao_pool(
+    actor: str = Query(default="main"),
     user: User = Depends(get_current_user),
     service: DaoService = Depends(get_dao_service),
 ) -> dict:
-    """道池列表。"""
-    return success(await service.get_pool(user))
+    """道池列表（该主体须真仙）。"""
+    return success(await service.get_pool(user, actor=actor))
 
 
 @router.post("/open/roll")
 async def dao_open_roll(
+    payload: DaoOpenRollRequest | None = None,
     user: User = Depends(get_current_user),
     service: DaoService = Depends(get_dao_service),
 ) -> dict:
     """生成三选项会话。"""
-    return success(await service.roll_open(user))
+    actor = payload.actor if payload is not None else "main"
+    return success(await service.roll_open(user, actor=actor))
 
 
 @router.post("/open/choose")
@@ -57,7 +62,12 @@ async def dao_open_choose(
 ) -> dict:
     """确认本命道。"""
     return success(
-        await service.choose_open(user, dao_id=payload.dao_id, session_id=payload.session_id),
+        await service.choose_open(
+            user,
+            dao_id=payload.dao_id,
+            session_id=payload.session_id,
+            actor=payload.actor,
+        ),
     )
 
 
@@ -68,4 +78,4 @@ async def dao_usage_preview(
     service: DaoService = Depends(get_dao_service),
 ) -> dict:
     """预览运用消耗。"""
-    return success(await service.preview_usage(user, kind=payload.kind))
+    return success(await service.preview_usage(user, kind=payload.kind, actor=payload.actor))

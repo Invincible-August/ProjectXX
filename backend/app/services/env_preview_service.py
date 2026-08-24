@@ -350,7 +350,9 @@ async def resolve_idle_bonus_channels(
                 item_def = constitution_items.get(def_id)
                 if item_def is None:
                     continue
-                raw_mult = item_def.effects.get("idle_mult")
+                raw_mult = item_def.effects_for_slot(str(eq.get("slot_type") or "main")).get(
+                    "idle_mult",
+                )
                 if raw_mult is None:
                     continue
                 found_any = True
@@ -372,6 +374,31 @@ async def resolve_idle_bonus_channels(
                         id=channel_id,
                         label=label,
                         mult=mult,
+                    ),
+                )
+        elif channel_id == "equipment_idle":
+            from app.services.equipment_service import EquipmentService
+
+            _, idle_product, _, _ = await EquipmentService(session).aggregate_equipped_modifiers(
+                character.id,
+            )
+            mult = float(idle_product)
+            if mult != 1.0:
+                items.append(
+                    EnvMultBreakdownItem(
+                        source=source,
+                        id="loadout",
+                        label=label,
+                        mult=mult,
+                    ),
+                )
+            else:
+                items.append(
+                    EnvMultBreakdownItem(
+                        source=source,
+                        id=channel_id,
+                        label=label,
+                        mult=float(channel.default_mult),
                     ),
                 )
         else:

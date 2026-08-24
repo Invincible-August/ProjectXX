@@ -400,7 +400,7 @@ async function onLearnBook(): Promise<void> {
         升阶
       </el-button>
       <PetDeployToggle :pet="pet" @log="(m, l) => emit('log', m, l)" />
-      <el-button size="small" @click="router.push('/formation?bench=pet')">去布阵</el-button>
+      <el-button size="small" @click="router.push('/formation?bench=pet')">去阵法</el-button>
     </div>
   </el-card>
 

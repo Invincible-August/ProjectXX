@@ -26,6 +26,12 @@ _USER_TABLE_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
     ("id_verified_level", "VARCHAR(32) NOT NULL DEFAULT 'none'"),
     ("email_verified", "BOOLEAN NOT NULL DEFAULT 0"),
     ("phone_verified", "BOOLEAN NOT NULL DEFAULT 0"),
+    # 累计打赏/充值金额（支付未接前默认 0，运营后台可展示）
+    ("total_recharge_amount", "BIGINT NOT NULL DEFAULT 0"),
+    # 对外账号号 M/P/T/G+7位；存量启动时回填
+    ("public_uid", "VARCHAR(8)"),
+    # GM 标记
+    ("is_gm", "BOOLEAN NOT NULL DEFAULT 0"),
 )
 
 # characters 表 M2 新增列补丁
@@ -74,6 +80,8 @@ _CHARACTER_TABLE_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
     ("friend_profile_visible", "BOOLEAN NOT NULL DEFAULT 1"),
     ("friend_profile_snapshot_json", "TEXT"),
     ("friend_profile_snapshot_at", "DATETIME"),
+    # 运营软删（ADM 角色管理）
+    ("is_active", "BOOLEAN NOT NULL DEFAULT 1"),
 )
 
 # inventory_items 表补列
@@ -101,6 +109,10 @@ _CRAFT_JOB_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
     ("env_lock_json", "TEXT"),
 )
 
+_TECHNIQUE_TABLE_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
+    ("source", "VARCHAR(16) NOT NULL DEFAULT 'system'"),
+)
+
 # avatars 表 AVATAR-D03 体力 / 日行动补列 + 道友助战开关
 _AVATAR_TABLE_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
     ("stamina", "INTEGER NOT NULL DEFAULT 0"),
@@ -111,6 +123,11 @@ _AVATAR_TABLE_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
     ("assist_stamina", "INTEGER NOT NULL DEFAULT 0"),
     ("assist_stamina_recovered_at", "DATETIME"),
     ("assist_stamina_locked", "INTEGER NOT NULL DEFAULT 0"),
+    ("is_deployed", "INTEGER NOT NULL DEFAULT 0"),
+    ("major_realm", "VARCHAR(32) NOT NULL DEFAULT ''"),
+    ("realm_stage", "INTEGER NOT NULL DEFAULT 1"),
+    ("realm_stage_label", "VARCHAR(32) NOT NULL DEFAULT ''"),
+    ("realm_progress", "BIGINT NOT NULL DEFAULT 0"),
 )
 
 
@@ -134,6 +151,30 @@ def _patch_sqlite_missing_craft_job_columns(connection: Connection) -> None:
             text(f"ALTER TABLE craft_jobs ADD COLUMN {column_name} {column_ddl}"),
         )
         logger.info("sqlite column patched table=craft_jobs column=%s", column_name)
+
+
+def _patch_sqlite_missing_technique_columns(connection: Connection) -> None:
+    """为存量 SQLite 补 character_techniques.source。"""
+    existing = {
+        row[1]
+        for row in connection.execute(
+            text("PRAGMA table_info(character_techniques)"),
+        ).fetchall()
+    }
+    if not existing:
+        return
+    for column_name, column_ddl in _TECHNIQUE_TABLE_COLUMN_PATCHES:
+        if column_name in existing:
+            continue
+        connection.execute(
+            text(
+                f"ALTER TABLE character_techniques ADD COLUMN {column_name} {column_ddl}",
+            ),
+        )
+        logger.info(
+            "sqlite column patched table=character_techniques column=%s",
+            column_name,
+        )
 
 
 def _patch_sqlite_missing_avatar_columns(connection: Connection) -> None:
@@ -589,6 +630,15 @@ def _patch_sqlite_character_bond_columns(connection: Connection) -> None:
     )
 
 
+def _patch_sqlite_formation_preset_columns(connection: Connection) -> None:
+    """补齐阵法预设助战锚点列（AVATAR-D09）。"""
+    _patch_sqlite_table_columns(
+        connection,
+        table="formation_presets",
+        patches=(("assist_anchor_json", "TEXT"),),
+    )
+
+
 def _patch_sqlite_mentor_columns(connection: Connection) -> None:
     """补齐师徒日课 / 传授 / 请学 / 亲传字段。"""
     _patch_sqlite_table_columns(
@@ -625,18 +675,23 @@ async def prepare_database(engine: AsyncEngine) -> None:
     """
     创建表结构、补齐 SQLite 缺列，并执行已登记的一次性数据迁移。
 
+    - **SQLite（测试）**：``create_all`` + 缺列 ALTER 补丁（存量 ``xiuxian.db`` 无痛升级）。
+    - **PostgreSQL（正式）**：``create_all`` 建缺失表；**缺列须 Alembic**（正式禁止靠启动补丁改生产结构）。
+    业务 ORM 两方言共用；切换只需改 ``DATABASE_URL``。
+
     Args:
         engine: 异步引擎。
     """
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
-        # 仅 SQLite 需要手动补列；其他数据库应通过 Alembic 迁移管理
+        # 仅 SQLite 需要手动补列；PostgreSQL 正式环境用 Alembic
         if engine.dialect.name == "sqlite":
             await connection.run_sync(_patch_sqlite_missing_user_columns)
             realm_col_added = await connection.run_sync(
                 _patch_sqlite_missing_character_columns,
             )
             await connection.run_sync(_patch_sqlite_missing_craft_job_columns)
+            await connection.run_sync(_patch_sqlite_missing_technique_columns)
             await connection.run_sync(_patch_sqlite_missing_avatar_columns)
             await connection.run_sync(_patch_sqlite_missing_inventory_columns)
             await connection.run_sync(_patch_sqlite_missing_pet_columns)
@@ -647,8 +702,13 @@ async def prepare_database(engine: AsyncEngine) -> None:
             await connection.run_sync(_patch_sqlite_dual_cultivation_columns)
             await connection.run_sync(_patch_sqlite_character_bond_columns)
             await connection.run_sync(_patch_sqlite_mentor_columns)
+            await connection.run_sync(_patch_sqlite_formation_preset_columns)
             await connection.run_sync(_backfill_peak_major_realm)
             await connection.run_sync(_backfill_reincarnation_bonus_rows)
+            # 对外账号号 M/P/T/G+7 位回填
+            from app.services.public_uid import backfill_missing_public_uids
+
+            await connection.run_sync(backfill_missing_public_uids)
             await connection.run_sync(_ensure_schema_migrations_table)
             await connection.run_sync(_backfill_sect_member_ranks)
             await connection.run_sync(_ensure_performance_indexes)

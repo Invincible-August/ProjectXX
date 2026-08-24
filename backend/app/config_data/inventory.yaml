@@ -11,9 +11,12 @@ stack_rules:
     consumable: 99
     material: 999
     talisman: 20
-    puppet: 10
+    puppet: 1
     skill_book: 20
     pet_egg: 20
+    equipment: 1
+    manual: 20
+    pet: 1
 
 # 系统识别的物品类型枚举
 item_types:
@@ -23,6 +26,9 @@ item_types:
   - puppet
   - skill_book
   - pet_egg
+  - equipment
+  - manual
+  - pet
 
 # 物品目录；后续条目字段同首条（消耗品可多 use_effect）
 items:
@@ -32,6 +38,7 @@ items:
   # max_stack    堆叠上限
   # bag_allowed  可放入的袋：normal / reincarnation；缺省仅 normal
   # use_effect   （可选）使用效果：kind=效果类，amount=数值
+  # inspect      （可选）悬停：element 单一属性（金木水火土风雷暗）、effects、realm_req_zh、help_zh
   herb_spirit_grass:
     name: 灵草
     item_type: material
@@ -68,6 +75,11 @@ items:
     use_effect:
       kind: stamina           # 恢复体力
       amount: 20              # 恢复点数
+    inspect:
+      element: wood
+      realm_req_zh: 无
+      effects: [恢复体力]
+      help_zh: 服下后恢复体力。同属性灵根额外收益尚未结算，本版只展示属性。
   bound_spirit_token:
     name: 绑定灵符（测试）
     item_type: consumable
@@ -80,16 +92,33 @@ items:
     item_type: material
     max_stack: 999
     bag_allowed: [normal]
+    inspect:
+      element: metal
+      realm_req_zh: 无
+      effects: [材料]
+      help_zh: 炼器成品。同属性灵根额外收益尚未结算，本版只展示属性。
   talisman_atk_t1:
     name: 一级攻符
     item_type: talisman
     max_stack: 20
     bag_allowed: [normal, reincarnation]
+    inspect:
+      element: fire
+      realm_req_zh: 无
+      effects: [增伤]
+      help_zh: 符箓成品。同属性灵根额外收益尚未结算，本版只展示属性。
   puppet_wood_v1:
     name: 木傀·初
     item_type: puppet
-    max_stack: 10
+    max_stack: 1
     bag_allowed: [normal]
+    actor_def_id: puppet_wood_v1
+    unique: true
+    inspect:
+      element: wood
+      realm_req_zh: 无
+      effects: [可上阵]
+      help_zh: 傀儡成品。同属性灵根额外收益尚未结算，本版只展示属性。
   pet_food_basic:
     name: 灵宠口粮
     item_type: material
@@ -111,6 +140,34 @@ items:
     use_effect:
       kind: pet_skill_book
       book_id: book_beast_roar
+  # —— M8 R5 宗门图纸样本（item_type=manual + manual_kind；无战斗属性）——
+  bp_ore_plate_t1:
+    name: 一级矿板图纸
+    item_type: manual
+    max_stack: 20
+    bag_allowed: [normal]
+    manual_kind: forge_blueprint
+    unlock_recipe_id: ore_plate_t1
+    tradable: false
+    bound: true
+  bp_pill_stamina_minor:
+    name: 小体力丹丹方
+    item_type: manual
+    max_stack: 20
+    bag_allowed: [normal]
+    manual_kind: alchemy_formula
+    unlock_recipe_id: pill_stamina_minor
+    tradable: false
+    bound: true
+  bp_talisman_atk_t1:
+    name: 一级攻符图纸
+    item_type: manual
+    max_stack: 20
+    bag_allowed: [normal]
+    manual_kind: talisman_blueprint
+    unlock_recipe_id: talisman_atk_t1
+    tradable: false
+    bound: true
   egg_fox_trial:
     name: 试炼灵狐蛋
     item_type: pet_egg
@@ -146,3 +203,39 @@ items:
     item_type: material
     max_stack: 10
     bag_allowed: [normal]
+  # —— M8 R1 教学装备（定义见 equipment.yaml）——
+  iron_sword_t1:
+    name: 玄铁剑（占位）
+    item_type: equipment
+    max_stack: 1
+    bag_allowed: [normal, reincarnation]
+    tradable: true
+    bound: false
+  iron_greatsword_t1:
+    name: 玄铁大剑（占位）
+    item_type: equipment
+    max_stack: 1
+    bag_allowed: [normal, reincarnation]
+    tradable: true
+    bound: false
+  cloth_robe_t1:
+    name: 粗布法衣（占位）
+    item_type: equipment
+    max_stack: 1
+    bag_allowed: [normal, reincarnation]
+    tradable: true
+    bound: false
+  jade_pendant_t1:
+    name: 青玉佩（占位）
+    item_type: equipment
+    max_stack: 1
+    bag_allowed: [normal, reincarnation]
+    tradable: true
+    bound: false
+  spirit_bead_t1:
+    name: 灵珠（占位）
+    item_type: equipment
+    max_stack: 1
+    bag_allowed: [normal, reincarnation]
+    tradable: true
+    bound: false

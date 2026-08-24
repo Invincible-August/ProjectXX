@@ -7,9 +7,9 @@ M4 工坊领域：效率、完成时刻、失败掷骰、队列占用。
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Mapping
 
-from app.domain.m4_constants import CRAFT_ACTIVE_STATUSES, CraftActor, IdleDirection
+from app.constants.m4 import CRAFT_ACTIVE_STATUSES, CraftActor, IdleDirection
 
 
 def compute_efficiency(
@@ -99,3 +99,93 @@ def count_active_jobs(jobs: list[Any], actor: str, max_per_actor: int) -> bool:
         and _job_field(j, "status") in CRAFT_ACTIVE_STATUSES
     )
     return active >= max_per_actor
+
+
+def read_craft_levels(
+    *,
+    growth_attrs: Mapping[str, Any] | None,
+    array_craft_level: int = 0,
+) -> dict[str, int]:
+    """
+    读取五分支制造业等级。
+
+    阵法以 ``characters.array_craft_level`` 为准；其余读 ``growth_attrs.craft_levels``。
+    """
+    from app.constants.character import (
+        CRAFT_BRANCH_ARRAY,
+        CRAFT_BRANCHES,
+        GROWTH_ATTR_CRAFT_LEVELS_KEY,
+    )
+
+    raw = (growth_attrs or {}).get(GROWTH_ATTR_CRAFT_LEVELS_KEY) or {}
+    if not isinstance(raw, dict):
+        raw = {}
+    out: dict[str, int] = {}
+    for branch in CRAFT_BRANCHES:
+        if branch == CRAFT_BRANCH_ARRAY:
+            out[branch] = max(0, int(array_craft_level or 0))
+            continue
+        try:
+            out[branch] = max(0, int(raw.get(branch, 0) or 0))
+        except (TypeError, ValueError):
+            out[branch] = 0
+    return out
+
+
+def serialize_craft_levels(
+    *,
+    growth_attrs: Mapping[str, Any] | None,
+    array_craft_level: int = 0,
+) -> list[dict[str, Any]]:
+    """角色面板用：branch / label_zh / level。"""
+    from app.constants.character import CRAFT_BRANCH_LEVEL_LABEL_ZH, CRAFT_BRANCHES
+
+    levels = read_craft_levels(
+        growth_attrs=growth_attrs,
+        array_craft_level=array_craft_level,
+    )
+    return [
+        {
+            "branch": branch,
+            "label_zh": CRAFT_BRANCH_LEVEL_LABEL_ZH.get(branch, branch),
+            "level": levels[branch],
+        }
+        for branch in CRAFT_BRANCHES
+    ]
+
+
+def bump_craft_level(
+    growth_attrs: dict[str, Any],
+    *,
+    branch: str,
+    amount: int,
+    array_craft_level: int = 0,
+) -> tuple[dict[str, Any], int]:
+    """
+    提升非阵法分支制作等级，写回 growth_attrs.craft_levels。
+
+    阵法等级仍走 characters.array_craft_level，本函数不改 array。
+
+    Returns:
+        (updated_growth_attrs, new_level_for_branch)
+    """
+    from app.constants.character import (
+        CRAFT_BRANCH_ARRAY,
+        GROWTH_ATTR_CRAFT_LEVELS_KEY,
+    )
+
+    if amount <= 0 or branch == CRAFT_BRANCH_ARRAY:
+        return growth_attrs, int(array_craft_level or 0)
+    levels = read_craft_levels(
+        growth_attrs=growth_attrs,
+        array_craft_level=array_craft_level,
+    )
+    levels[branch] = max(0, int(levels.get(branch, 0) or 0) + int(amount))
+    next_attrs = dict(growth_attrs or {})
+    stored = {
+        key: int(val)
+        for key, val in levels.items()
+        if key != CRAFT_BRANCH_ARRAY
+    }
+    next_attrs[GROWTH_ATTR_CRAFT_LEVELS_KEY] = stored
+    return next_attrs, levels[branch]

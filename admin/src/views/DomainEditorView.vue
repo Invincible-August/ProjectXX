@@ -39,66 +39,6 @@
     />
 
     <el-tabs v-model="tab">
-      <el-tab-pane v-if="isDaoLordDomain" label="赛会日程" name="contest">
-        <el-alert
-          type="success"
-          :closable="false"
-          title="设置道主之争每日报名窗与开打时刻（配置时区）。保存后须再点右上角「发布」才会进线上服。"
-          style="margin-bottom: 12px"
-        />
-        <el-form label-width="140px" class="contest-form" style="max-width: 520px">
-          <el-form-item label="时区">
-            <el-input v-model="contestForm.tz" placeholder="Asia/Shanghai" />
-          </el-form-item>
-          <el-form-item label="报名开始">
-            <el-time-select
-              v-model="contestForm.registration_start"
-              start="00:00"
-              step="00:05"
-              end="23:55"
-              placeholder="HH:MM"
-            />
-          </el-form-item>
-          <el-form-item label="报名结束">
-            <el-time-select
-              v-model="contestForm.registration_end"
-              start="00:00"
-              step="00:05"
-              end="23:55"
-              placeholder="HH:MM"
-            />
-          </el-form-item>
-          <el-form-item label="开打时刻">
-            <el-time-select
-              v-model="contestForm.fight_at"
-              start="00:00"
-              step="00:05"
-              end="23:55"
-              placeholder="HH:MM"
-            />
-          </el-form-item>
-          <el-form-item label="直播准备秒">
-            <el-input-number v-model="contestForm.live_prep_seconds" :min="3" :max="600" />
-          </el-form-item>
-          <el-form-item label="对战直播秒">
-            <el-input-number v-model="contestForm.live_playback_seconds" :min="5" :max="3600" />
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" :loading="busy" @click="onSaveContestSchedule">
-              保存赛会日程到草稿
-            </el-button>
-            <el-button :loading="busy" @click="syncContestFormFromDraft">从草稿重载</el-button>
-          </el-form-item>
-        </el-form>
-        <p class="hint">
-          <strong>立刻开赛 / 剔除道主</strong>在左侧「大道与道主 → 道主运营」。
-          本页只改报名/开打时刻；改完请「保存赛会日程」再「发布」。
-        </p>
-        <div class="entry-toolbar">
-          <el-button type="warning" @click="goDaoLordOps">打开道主运营（立刻开赛 / 剔除）</el-button>
-        </div>
-      </el-tab-pane>
-
       <el-tab-pane label="字段说明" name="fields">
         <el-alert
           type="info"
@@ -133,60 +73,33 @@
       </el-tab-pane>
 
       <el-tab-pane v-if="supportsSheets" label="表格编辑" name="sheets">
-        <p class="hint">
-          面向非编码运营：改表后点「保存表格→草稿」，后端会 format 成域 JSON。会 coding 的同事也可切到「JSON 覆盖」。
-        </p>
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 10px"
+          title="Navicat 风格网格：勾选批量删、新增、保存修改写入草稿；须再点右上角「发布」才进玩家服。底表仍为 YAML，草稿/发布在数据库，后期整域迁库无需改此操作方式。"
+        />
         <div class="entry-toolbar">
-          <el-button size="small" type="primary" :loading="busy" @click="onSaveSheets">
-            保存表格 → 草稿
-          </el-button>
           <el-button size="small" @click="onExportJson">导出生效 JSON</el-button>
           <el-button size="small" @click="showJsonImport = true">导入 JSON/YAML</el-button>
+          <el-button size="small" :loading="busy" @click="reloadSheetsOnly">重新加载表格</el-button>
         </div>
-        <el-collapse v-model="openSheets">
-          <el-collapse-item
-            v-for="sheet in sheetViews"
-            :key="sheet.sheet_id"
-            :name="sheet.sheet_id"
-            :title="`${sheet.title_zh}（${sheet.sheet_id}）`"
-          >
-            <p class="hint">{{ sheet.description_zh }}</p>
-            <div class="entry-toolbar">
-              <el-button size="small" @click="addSheetRow(sheet.sheet_id)">新增行</el-button>
-            </div>
-            <el-table :data="sheet.rows" border stripe size="small" max-height="360">
-              <el-table-column
-                v-for="col in sheet.columns"
-                :key="col.key"
-                :prop="col.key"
-                :label="col.label_zh"
-                min-width="120"
-              >
-                <template #header>
-                  <el-tooltip :content="col.help_zh" placement="top">
-                    <span>{{ col.label_zh }}</span>
-                  </el-tooltip>
-                </template>
-                <template #default="{ row }">
-                  <el-input
-                    v-if="col.value_type === 'bool'"
-                    v-model="row[col.key]"
-                    size="small"
-                    placeholder="true/false"
-                  />
-                  <el-input v-else v-model="row[col.key]" size="small" />
-                </template>
-              </el-table-column>
-              <el-table-column label="操作" width="88" fixed="right">
-                <template #default="{ $index }">
-                  <el-button link type="danger" @click="removeSheetRow(sheet.sheet_id, $index)">
-                    删行
-                  </el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-          </el-collapse-item>
-        </el-collapse>
+        <div v-for="sheet in sheetViews" :key="sheet.sheet_id" class="sheet-block">
+          <div class="sheet-title">
+            <strong>{{ sheet.title_zh }}</strong>
+            <el-text size="small" type="info">{{ sheet.description_zh }} · {{ sheet.sheet_id }}</el-text>
+          </div>
+          <ConfigSheetGrid
+            :ref="(el) => setGridRef(sheet.sheet_id, el)"
+            v-model="sheet.rows"
+            :columns="sheet.columns"
+            :primary-keys="sheet.primary_keys"
+            :select-options="selectOptionsForSheet(sheet.sheet_id)"
+            :saving="busy"
+            @save="(rows) => onSaveOneSheet(sheet.sheet_id, rows)"
+          />
+        </div>
       </el-tab-pane>
 
       <el-tab-pane v-if="supportsEntries" label="表格编辑（条目）" name="entries">
@@ -345,7 +258,9 @@ import {
   upsertEntry,
   validateDraft,
 } from '../api/config'
-import type { DomainEditSchema, DomainSummary, FieldMeta, SheetView } from '../types/api'
+import type { DomainEditSchema, DomainSummary, SheetView } from '../types/api'
+import ConfigSheetGrid from '../components/ConfigSheetGrid.vue'
+import type { SelectOption } from '../components/ConfigSheetGrid.vue'
 
 const props = defineProps<{ domainId: string }>()
 const router = useRouter()
@@ -365,6 +280,12 @@ const draftEntryIds = ref<string[]>([])
 const sheetViews = ref<SheetView[]>([])
 const openSheets = ref<string[]>([])
 const fieldFilter = ref('')
+/** 生效配置对象（供道目录 category/rarity 下拉） */
+const effectivePayload = ref<Record<string, unknown>>({})
+/** sheet_id → 网格组件实例 */
+const gridRefs = ref<Record<string, { acceptSaved: (rows?: Record<string, unknown>[]) => void } | null>>(
+  {},
+)
 
 const entryDialog = ref(false)
 const editingId = ref('')
@@ -376,16 +297,6 @@ const importText = ref('')
 const importFmt = ref<'json' | 'yaml'>('json')
 
 const title = computed(() => meta.value?.title || props.domainId)
-const isDaoLordDomain = computed(() => props.domainId === 'dao_lord')
-
-const contestForm = ref({
-  tz: 'Asia/Shanghai',
-  registration_start: '18:00',
-  registration_end: '19:55',
-  fight_at: '20:00',
-  live_prep_seconds: 15,
-  live_playback_seconds: 90,
-})
 
 const supportsEntries = computed(
   () =>
@@ -396,8 +307,7 @@ const supportsEntries = computed(
 const supportsSheets = computed(
   () =>
     Boolean(schema.value?.supports_sheets) ||
-    Boolean(meta.value?.supports_sheets) ||
-    Boolean(schema.value?.sheets?.length),
+    Boolean(meta.value?.supports_sheets),
 )
 const entryDialogTitle = computed(() =>
   editingOriginalId.value ? `编辑 ${editingOriginalId.value}` : '新增条目',
@@ -430,78 +340,6 @@ const entryRows = computed(() =>
   })),
 )
 
-function goDaoLordOps() {
-  void router.push({ name: 'ops-dao-lords' })
-}
-
-function syncContestFormFromDraft() {
-  try {
-    const draft = parseDraft()
-    const contest =
-      draft.contest && typeof draft.contest === 'object' && !Array.isArray(draft.contest)
-        ? (draft.contest as Record<string, unknown>)
-        : {}
-    // 草稿为空时回落生效配置
-    let base: Record<string, unknown> = contest
-    if (!Object.keys(contest).length) {
-      try {
-        const eff = JSON.parse(effectiveText.value || '{}') as Record<string, unknown>
-        const c = eff.contest
-        if (c && typeof c === 'object' && !Array.isArray(c)) {
-          base = c as Record<string, unknown>
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-    contestForm.value = {
-      tz: String(base.tz || 'Asia/Shanghai'),
-      registration_start: String(base.registration_start || '18:00'),
-      registration_end: String(base.registration_end || '19:55'),
-      fight_at: String(base.fight_at || '20:00'),
-      live_prep_seconds: Number(base.live_prep_seconds ?? 15),
-      live_playback_seconds: Number(base.live_playback_seconds ?? 90),
-    }
-  } catch (err) {
-    ElMessage.error(err instanceof Error ? err.message : '读取草稿失败')
-  }
-}
-
-async function onSaveContestSchedule() {
-  busy.value = true
-  try {
-    const start = String(contestForm.value.registration_start || '').trim()
-    const end = String(contestForm.value.registration_end || '').trim()
-    const fight = String(contestForm.value.fight_at || '').trim()
-    const hhmm = /^\d{1,2}:\d{2}$/
-    if (!hhmm.test(start) || !hhmm.test(end) || !hhmm.test(fight)) {
-      throw new Error('报名开始/结束与开打时刻须为 HH:MM（请用时间选择器）')
-    }
-    const draft = parseDraft()
-    const prev =
-      draft.contest && typeof draft.contest === 'object' && !Array.isArray(draft.contest)
-        ? { ...(draft.contest as Record<string, unknown>) }
-        : {}
-    draft.contest = {
-      ...prev,
-      tz: contestForm.value.tz.trim() || 'Asia/Shanghai',
-      registration_start: start,
-      registration_end: end,
-      fight_at: fight,
-      live_prep_seconds: Number(contestForm.value.live_prep_seconds),
-      live_playback_seconds: Number(contestForm.value.live_playback_seconds),
-    }
-    draftText.value = JSON.stringify(draft, null, 2)
-    await saveDraft(props.domainId, draft)
-    ElMessage.success('赛会日程已写入草稿；请再点「发布」生效')
-    message.value = '赛会日程草稿已保存'
-  } catch (err) {
-    ElMessage.error(err instanceof Error ? err.message : '保存赛会日程失败')
-  } finally {
-    busy.value = false
-  }
-}
-
 function formatSample(sample: unknown): string {
   if (sample === null || sample === undefined) return ''
   if (typeof sample === 'object') return JSON.stringify(sample)
@@ -523,24 +361,56 @@ function parseDraft(): Record<string, unknown> {
   return raw as Record<string, unknown>
 }
 
-function emptyRow(columns: FieldMeta[]): Record<string, unknown> {
-  const row: Record<string, unknown> = {}
-  for (const col of columns) {
-    row[col.key] = col.value_type === 'bool' ? 'false' : ''
+function setGridRef(sheetId: string, el: unknown): void {
+  if (!el || typeof el !== 'object') {
+    gridRefs.value[sheetId] = null
+    return
   }
-  return row
+  gridRefs.value[sheetId] = el as {
+    acceptSaved: (rows?: Record<string, unknown>[]) => void
+  }
 }
 
-function addSheetRow(sheetId: string) {
-  const sheet = sheetViews.value.find((item) => item.sheet_id === sheetId)
-  if (!sheet) return
-  sheet.rows.push(emptyRow(sheet.columns))
+/** 从生效配置提取枚举下拉（大道 categories / rarities） */
+function mapLabelDict(raw: unknown): SelectOption[] {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return []
+  return Object.entries(raw as Record<string, unknown>).map(([value, label]) => ({
+    value,
+    label: typeof label === 'string' && label ? `${label}（${value}）` : value,
+  }))
 }
 
-function removeSheetRow(sheetId: string, index: number) {
+function selectOptionsForSheet(sheetId: string): Record<string, SelectOption[]> {
+  if (props.domainId === 'dao' && sheetId === 'entries') {
+    return {
+      category: mapLabelDict(effectivePayload.value.categories),
+      rarity: mapLabelDict(effectivePayload.value.rarities),
+    }
+  }
+  return {}
+}
+
+async function reloadSheetsOnly(): Promise<void> {
+  busy.value = true
+  try {
+    const sheetData = await fetchSheets(props.domainId)
+    sheetViews.value = sheetData.sheets.map((sheet) => ({
+      ...sheet,
+      rows: sheet.rows.map((row) => ({ ...row })),
+    }))
+    openSheets.value = sheetViews.value.map((s) => s.sheet_id)
+    ElMessage.success('表格已重新加载')
+  } catch (err) {
+    ElMessage.error(err instanceof Error ? err.message : '加载表格失败')
+  } finally {
+    busy.value = false
+  }
+}
+
+async function onSaveOneSheet(sheetId: string, rows: Record<string, unknown>[]): Promise<void> {
   const sheet = sheetViews.value.find((item) => item.sheet_id === sheetId)
-  if (!sheet) return
-  sheet.rows.splice(index, 1)
+  if (sheet) sheet.rows = rows
+  await onSaveSheets()
 }
 
 async function load() {
@@ -558,13 +428,12 @@ async function load() {
     schema.value = schemaData
     draftText.value = JSON.stringify(draft.payload ?? {}, null, 2)
     effectiveText.value = JSON.stringify(effective.payload, null, 2)
+    effectivePayload.value = (effective.payload || {}) as Record<string, unknown>
     yamlText.value = JSON.stringify(effective.yaml_base, null, 2)
     revisions.value = revs.revisions
 
     const wantSheets =
-      Boolean(schemaData.supports_sheets) ||
-      Boolean(meta.value?.supports_sheets) ||
-      Boolean(schemaData.sheets?.length)
+      Boolean(schemaData.supports_sheets) || Boolean(meta.value?.supports_sheets)
     const wantEntries =
       Boolean(schemaData.supports_entries) ||
       Boolean(meta.value?.supports_entries) ||
@@ -578,16 +447,10 @@ async function load() {
       }))
       openSheets.value = sheetViews.value.slice(0, 2).map((s) => s.sheet_id)
       tab.value = 'sheets'
-    } else if (props.domainId === 'dao_lord') {
-      tab.value = 'contest'
     } else if (wantEntries) {
       tab.value = 'entries'
     } else {
       tab.value = 'fields'
-    }
-
-    if (props.domainId === 'dao_lord') {
-      syncContestFormFromDraft()
     }
 
     if (wantEntries) {
@@ -616,9 +479,12 @@ async function onSaveSheets() {
       rows: sheet.rows,
     }))
     await saveSheets(props.domainId, payload, true)
-    ElMessage.success('表格已 format 为 JSON 并写入草稿')
+    ElMessage.success('表格已写入草稿；请再点「发布」生效')
     await load()
-    tab.value = 'draft'
+    tab.value = 'sheets'
+    for (const sheet of sheetViews.value) {
+      gridRefs.value[sheet.sheet_id]?.acceptSaved(sheet.rows)
+    }
   } catch (err) {
     ElMessage.error(err instanceof Error ? err.message : '保存表格失败')
   } finally {
@@ -799,7 +665,12 @@ async function doImportJson() {
 
 watch(
   () => props.domainId,
-  () => {
+  (id) => {
+    // dao_lord 已并入 GM 道主控制台，旧书签/链接统一跳转
+    if (id === 'dao_lord') {
+      void router.replace({ name: 'ops-dao-lords' })
+      return
+    }
     void load()
   },
   { immediate: true },
@@ -854,5 +725,18 @@ watch(
 .sample {
   font-size: 11px;
   color: #5c564c;
+}
+.sheet-block {
+  margin-top: 12px;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #d9e4df;
+  border-radius: 10px;
+}
+.sheet-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
 }
 </style>

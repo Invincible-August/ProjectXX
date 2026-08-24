@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
-# 与《后台管理系统开发计划》§6 对齐
+# 与《后台管理系统开发计划》v2.0 §6 对齐
 ROLE_VIEWER = "viewer"
 ROLE_EDITOR_CONTENT = "editor_content"
 ROLE_EDITOR_BALANCE = "editor_balance"

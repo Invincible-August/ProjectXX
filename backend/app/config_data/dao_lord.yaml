@@ -17,10 +17,12 @@ reconnect_grace_seconds: 45
 # 无有效防守快照时：reject | weak_npc
 missing_snapshot_policy: reject
 
-# 特权占位（就任时写入；轮回清空）
+# 特权默认（就任时写入；轮回清空）
+# S1-5：布尔旗标与 grants 双写；normalize 时互为投影
 privileges_default:
   heavenly_skill_unlocked: false
   can_open_secret_realm: false
+  grants: []
 
 # 时段：每日 UTC 小时窗（过渡兼容；赛会以 contest 为准）
 windows:

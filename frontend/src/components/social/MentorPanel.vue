@@ -464,7 +464,7 @@ function branchLabel(branch: string): string {
         <el-radio-button value="apprentice">拜师</el-radio-button>
         <el-radio-button value="master">收徒</el-radio-button>
       </el-radio-group>
-      <el-input v-model="targetName" size="small" placeholder="对方道号" clearable />
+      <el-input v-model="targetName" size="small" placeholder="对方道号或 user_id" clearable />
       <el-button
         type="primary"
         size="small"

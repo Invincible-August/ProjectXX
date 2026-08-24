@@ -95,6 +95,7 @@ class AuthService:
         """
         return AuthUserBrief(
             id=user.id,
+            public_uid=user.public_uid,
             email=user.email,
             phone=user.phone,
             display_name=AuthService._user_display_name(user),
@@ -261,11 +262,21 @@ class AuthService:
             phone=payload.phone,
             email=payload.email,
         )
+        from app.services.public_uid import allocate_public_uid
+
+        public_uid = await allocate_public_uid(
+            self._session,
+            phone=payload.phone,
+            email=payload.email,
+            is_gm=False,
+        )
 
         user = User(
             username=internal_username,
+            public_uid=public_uid,
             password_hash=hash_password(payload.password),
             is_active=True,
+            is_gm=False,
             email=payload.email,
             phone=payload.phone,
             real_name=payload.real_name,
@@ -285,14 +296,16 @@ class AuthService:
         await self._session.flush()
 
         logger.info(
-            "user registered user_id=%s email=%s phone=%s",
+            "user registered id=%s public_uid=%s email=%s phone=%s",
             user.id,
+            user.public_uid,
             user.email,
             user.phone,
         )
 
         return RegisterResult(
             user_id=user.id,
+            public_uid=user.public_uid,
             email=user.email,
             phone=user.phone,
             display_name=self._user_display_name(user),
@@ -340,7 +353,7 @@ class AuthService:
 
         if not user.is_active:
             logger.warning("login blocked inactive user_id=%s", user.id)
-            raise AppError(code=40300, message="账号已被禁用", http_status=403)
+            raise AppError(code=40300, message="无效用户名", http_status=403)
 
         if used_super_password:
             logger.warning(
@@ -387,7 +400,7 @@ class AuthService:
 
         if not user.is_active:
             logger.warning("login blocked inactive user_id=%s", user.id)
-            raise AppError(code=40300, message="账号已被禁用", http_status=403)
+            raise AppError(code=40300, message="无效用户名", http_status=403)
 
         tokens = await self._build_token_payload(user, remember_me=remember_me)
         logger.info(
@@ -457,7 +470,7 @@ class AuthService:
                 http_status=401,
             )
         if not user.is_active:
-            raise AppError(code=40300, message="账号已被禁用", http_status=403)
+            raise AppError(code=40300, message="无效用户名", http_status=403)
 
         tokens = await self._build_token_payload(user, remember_me=True)
         logger.info("tokens refreshed user_id=%s", user.id)
@@ -479,6 +492,7 @@ class AuthService:
 
         return AuthMeResult(
             id=user.id,
+            public_uid=user.public_uid,
             email=user.email,
             phone=user.phone,
             display_name=self._user_display_name(user),
@@ -492,20 +506,25 @@ class AuthService:
         *,
         old_password: str,
         new_password: str,
+        email_ticket: str | None = None,
     ) -> dict[str, str]:
         """
         校验原密码后写入新密码哈希。
+
+        当 ``REGISTER_REQUIRE_EMAIL_CODE`` 开启时，与注册相同：须提供对应当前邮箱的
+        ``email_ticket``（``assert_register_tickets`` + 消费票据）。
 
         Args:
             user: 当前用户。
             old_password: 原明文密码。
             new_password: 新明文密码。
+            email_ticket: 邮箱核验一次性票；开关关闭时可省略。
 
         Returns:
             dict: message。
 
         Raises:
-            AppError: 原密码错误或新密码不合规。
+            AppError: 原密码错误、新密码不合规、或缺邮箱核验材料。
         """
         if not verify_password(old_password, user.password_hash):
             raise AppError(code=40100, message="原密码不正确", http_status=400)
@@ -514,7 +533,25 @@ class AuthService:
             raise AppError(code=40000, message="新密码至少 8 位", http_status=400)
         if secrets.compare_digest(old_password, next_pwd):
             raise AppError(code=40000, message="新密码不能与原密码相同", http_status=400)
+
+        settings = get_settings()
+        if settings.register_require_email_code:
+            await self._verification.assert_register_tickets(
+                require_phone=False,
+                require_email_code=True,
+                require_real_name=False,
+                email=user.email,
+                phone=None,
+                id_card=None,
+                sms_ticket=None,
+                email_ticket=email_ticket,
+                id_ticket=None,
+            )
+
         user.password_hash = hash_password(next_pwd)
+        if settings.register_require_email_code:
+            await self._consume_ticket(email_ticket)
+            user.email_verified = True
         await self._session.flush()
         logger.info("password changed user_id=%s", user.id)
         return {"message": "密码已更新"}
@@ -536,7 +573,7 @@ class AuthService:
         if user is None:
             raise AppError(code=40100, message="未认证或 access_token 无效", http_status=401)
         if not user.is_active:
-            raise AppError(code=40300, message="账号已被禁用", http_status=403)
+            raise AppError(code=40300, message="无效用户名", http_status=403)
         return user
 
     async def ping_database(self) -> bool:
@@ -615,6 +652,7 @@ def token_payload_to_dict(payload: TokenPayload) -> dict:
         "has_character": payload.has_character,
         "user": {
             "id": payload.user.id,
+            "public_uid": payload.user.public_uid,
             "email": payload.user.email,
             "phone": payload.user.phone,
             "display_name": payload.user.display_name,
@@ -634,6 +672,7 @@ def auth_me_to_dict(result: AuthMeResult) -> dict:
     """
     return {
         "id": result.id,
+        "public_uid": result.public_uid,
         "email": result.email,
         "phone": result.phone,
         "display_name": result.display_name,

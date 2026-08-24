@@ -744,7 +744,7 @@ class ReincarnationService:
             character,
         )
         kept_constitutions: list[dict[str, Any]] = []
-        for row in cons_state.get("backpack") or []:
+        for row in cons_state.get("collection") or cons_state.get("backpack") or []:
             if not isinstance(row, dict):
                 continue
             kept_constitutions.append(
@@ -956,13 +956,15 @@ class ReincarnationService:
         if "buy_constitution_slot" in effect:
             delta = max(0, int(effect["buy_constitution_slot"]))
             slots_cfg = dict((cfg.slots or {}).get("constitution") or {})
-            shop_max = int(slots_cfg.get("shop_max_buy", 99))
-            if int(bonus.constitution_slots_bought) + delta > shop_max:
-                raise AppError(
-                    code=ERR_SLOT_CAP,
-                    message=f"体质槽购买已达上限（最多再购 {shop_max}）",
-                    http_status=400,
-                )
+            shop_max_raw = slots_cfg.get("shop_max_buy")
+            if shop_max_raw is not None:
+                shop_max = int(shop_max_raw)
+                if int(bonus.constitution_slots_bought) + delta > shop_max:
+                    raise AppError(
+                        code=ERR_SLOT_CAP,
+                        message=f"体质槽购买已达上限（最多再购 {shop_max}）",
+                        http_status=400,
+                    )
             bonus.constitution_slots_bought = int(bonus.constitution_slots_bought) + delta
             granted["buy_constitution_slot"] = delta
 

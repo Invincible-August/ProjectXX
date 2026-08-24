@@ -128,7 +128,7 @@ function onSelectCard(entry: DaoCatalogEntry): void {
       type="warning"
       :closable="false"
       show-icon
-      title="抵达真仙后方可开道；可先浏览图鉴样本"
+      title="抵达真仙后方可开道"
     />
 
     <el-tabs v-if="allowPoolPick && daoStore.opening" v-model="pickTab" class="tabs">

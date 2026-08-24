@@ -16,6 +16,11 @@ from app.config_source.registry import (
     list_domains,
 )
 from app.config_source.runtime import RuntimeConfigReloader
+from app.config_source.validate_content import (
+    ContentValidationError,
+    validate_loaded_bundle,
+    validate_startup,
+)
 from app.config_source.yaml_source import (
     YamlConfigSource,
     get_shared_yaml_source,
@@ -23,6 +28,7 @@ from app.config_source.yaml_source import (
 
 __all__ = [
     "DOMAIN_REGISTRY",
+    "ContentValidationError",
     "DomainMeta",
     "OverlayStore",
     "RuntimeConfigReloader",
@@ -32,4 +38,6 @@ __all__ = [
     "get_domain_meta",
     "get_shared_yaml_source",
     "list_domains",
+    "validate_loaded_bundle",
+    "validate_startup",
 ]

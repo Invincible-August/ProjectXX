@@ -14,10 +14,14 @@ per_realm_bonus:
   jindan: 5
   yuanying: 8
 
-# 各类单位占用的神识点数（宠可被物种 divine_sense_cost 覆盖）
+# 各类单位占用的神识点数（宠/傀可被模板 divine_sense_cost 覆盖）
+# 占用：装备栏「化身上阵开关」+ 灵宠槽 + 傀儡编成板（与棋盘是否落子无关）
+# 编成板上阵真傀硬顶（超过则拒绝勾选/保存；神识超量只削弱不因神识拒上阵）
+puppet_loadout_max: 3
 costs:
   avatar: 5
   pet: 3
+  puppet: 2
 
 # soft_cap = capacity × soft_ratio（≤ 软上限 = 舒适区，战斗乘区 1.0）
 soft_ratio: 1.0

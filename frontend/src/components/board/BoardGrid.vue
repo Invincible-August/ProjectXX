@@ -529,6 +529,11 @@ function hpStyle(piece: BoardPiece): Record<string, string> {
   background: #8b5fd6;
 }
 
+.token-assist {
+  background: #2b6cb0;
+  border: 2px dashed rgba(255, 255, 255, 0.55);
+}
+
 .token-prop {
   background: #a06a3c;
 }

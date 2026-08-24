@@ -6,16 +6,19 @@
 
 | 文档 | 说明 |
 | --- | --- |
-| [project修仙.md](./project修仙.md) | 游戏设计文档（GDD）**v4.1**（§3.3 雷劫仅跨境；§11 灵宠指针 → 灵宠系统设计） |
-| [后台管理系统开发计划.md](./后台管理系统开发计划.md) | **后台细则**（**v1.3.3** 双写表格+JSON · 字段中文 · `/management`）；与主计划 **§0.0.1** 同步 |
-| [开发计划.md](./开发计划.md) | 分里程碑开发计划（**v3.2**：§1.2 延后项计划队列 · 下一主线 **M8** · §0.6.2 属性 · M0～M13 · ADM） |
-| [后续待完成.md](./后续待完成.md) | **开新设计前必读**：延后项登记册（钩子/笔记）；阶段归属见开发计划 **§1.2** |
+| [project修仙.md](./project修仙.md) | 游戏设计文档（GDD）**v4.2**（§11 灵宠自走棋硬顶 1；§12.6 傀儡神识乘区） |
+| [后台管理系统开发计划.md](./后台管理系统开发计划.md) | **后台细则 v2.0**（玩家管理整改轨 · 配置契约保留 · `/management`）；与主计划 **§1.1 ADM-P\*** 同步 |
+| [开发计划.md](./开发计划.md) | 分里程碑开发计划（**v3.19**：§10 **M8** 已收 · **§10.1 M8+** 类型与实例整改设计中 · 拍板前不开 **M9**） |
+| [后续待完成.md](./后续待完成.md) | **开新设计前必读**：延后项登记册；**M8 R0～R6 已落地**；**§1.14 INST-D00** 待拍板；延后 **M8-D01～D06** |
 | [四象禁制与环境天气载荷设计.md](./四象禁制与环境天气载荷设计.md) | **M3-D07**：禁制子类 / 环境·天气战斗载荷 / 战报中文；**v1.1.1 已落地**（载荷与 LOS 已解耦） |
 | [异步真读条突破设计.md](./异步真读条突破设计.md) | **M5-D05 / M1-D20**：可选闭关读条；**v1.2 默认关闭**——点击同步出结果（2026-08-10） |
-| [灵宠系统设计.md](./灵宠系统设计.md) | **灵宠细则**（热插拔注册表/品阶/词条/技能/被动/喂养/野外捕获/回合制对战/灵兽宗改类型/蛋孵）；**v2.1**（2026-08-07 · **N4/N5 + PET-D01～D06 + M4-D04c 已落地**） |
-| [化身系统设计.md](./化身系统设计.md) | **化身细则**（**单化身** · 境界功能解锁 · 体力/日行动 · 互传折扣 · 独战/探索/任务）；**v1.1**（2026-08-07 · **AVATAR-D01～D06 + ADM 已落地**） |
-| [阵法部署与自研设计.md](./阵法部署与自研设计.md) | **阵法部署契约**（`deploy` 四模式 / 地形 brush 定稿 / `force_shifts` / ADM+自研同 schema）；**M3-D08 Phase A 已落地**；M8 自研 UI 待做；**v1.1**（2026-08-10） |
-| [嘲讽光环设计.md](./嘲讽光环设计.md) | **嘲讽光环** Phase A 已落地；Phase B=**M3-D06b** 挂 M3-D03；**v1.1.2**（2026-08-10） |
+| [灵宠系统设计.md](./灵宠系统设计.md) | **灵宠细则**（热插拔注册表/品阶/词条/技能/被动/喂养/野外捕获/回合制对战/灵兽宗改类型/蛋孵）；**v2.2.1**（共享神识池含傀儡；2026-08-18） |
+| [化身系统设计.md](./化身系统设计.md) | **化身细则**（**v1.3**：修士可突破、禁道主/轮回境、取消独战；**D01～D10 已落地**） |
+| [阵法部署与自研设计.md](./阵法部署与自研设计.md) | **阵法部署契约**（`deploy` 四模式 / 地形 brush 定稿 / `force_shifts` / ADM+自研同 schema）；**M3-D08 Phase A 已落地**；**Phase B 自研设计器已落地（M8 R3）**；**v1.3**（2026-08-17） |
+| [符箓叠层与异常状态设计.md](./符箓叠层与异常状态设计.md) | 符箓同种类不叠加 / 攻击触发 / 异常状态回合序（**v1.1**；引擎挂 M3-D03 / M8-D04） |
+| [战斗系统完善设计.md](./战斗系统完善设计.md) | **战斗专栏 v0.1**：抗性三族（元素/异常/暗）与异常·诅咒分类口子；公式未开 |
+| [功法系统设计.md](./功法系统设计.md) | **功法专栏 v0.2**：主功法/技法双角色、统一悬停 format、紧凑选择栏；学习条件口子、五源 |
+| [神通系统设计.md](./神通系统设计.md) | **神通专栏 v0.2.1**：神通池点槽选装、无主副、格数=修为+品阶；i 文案与紧凑格 |
 | [M0工程骨架设计.md](./M0工程骨架设计.md) | **M0** 框架与接口字段详细设计 |
 | [M0前端目录与路由设计.md](./M0前端目录与路由设计.md) | **M0** 前端 `src` 目录职责与路由对照（2026-07-27） |
 | [M1核心循环设计.md](./M1核心循环设计.md) | **M1** 挂机 / 突破 / 极简战斗详细设计（2026-08-03） |
@@ -35,7 +38,12 @@
 | [M6前端目录与路由设计.md](./M6前端目录与路由设计.md) | **M6** `/dao` `/dao-lord` + `src/ws`；赛会 mode 预告；**v1.1**（2026-08-10） |
 | [M7宗门社交与经济设计.md](./M7宗门社交与经济设计.md) | **M7** 宗门/交易/邮件/多频道聊天/传承/师徒/双修/商业化壳；竖切 **L1～L8**；**v1.0**（2026-08-11） |
 | [M7前端目录与路由设计.md](./M7前端目录与路由设计.md) | **M7** `/sect` `/market` `/social` `/friends` `/party` `/dual-cultivation` `/shop` + ChatDock；**v1.0**（2026-08-11） |
-| [ATTR战斗属性占位设计.md](./ATTR战斗属性占位设计.md) | **ATTR-D01 已落地**：统一战斗+生活属性 schema、实体适用面、叠层与面板拆解；**M13=填数不改键**；**v1.3**（2026-08-13） |
+| [道具与装备实体设计.md](./道具与装备实体设计.md) | **M8 R0**：17 区穿戴栏、化身开关、符箓编成、傀儡最多 3 只、双手双指针、丹药方案 A、福宝不可逆耐久、四页背包、穿戴悬停 format、工坊成品单一属性 `inspect`；**v0.8.11**（2026-08-19） |
+| [M8自研与内容管线设计.md](./M8自研与内容管线设计.md) | **M8** 自研功法/阵法/符箓 + ATTR-D02 装备喂属性 + 扩表校验；竖切 **R0～R6 已落地**；洞府 `/cave` + 研究室 `/cave/lab`；**v1.1.18**（2026-08-20） |
+| [M8前端目录与路由设计.md](./M8前端目录与路由设计.md) | **M8** `/cave` 洞府、`/cave/lab` 研究室；角色页 **17 区示意剪影穿戴栏**；`PlayNav` 含账号同一组按钮；工坊四分支（无阵法）+ 两列配方/队列；布阵只摆子；**v1.1.30**（2026-08-20） |
+| [ATTR战斗属性占位设计.md](./ATTR战斗属性占位设计.md) | **ATTR-D01 已落地**：统一战斗+生活属性 schema；**v1.4.2** 根基含悟性/耐力/神通（2026-08-18） |
+| [统一实体类层次与重构方案.md](./统一实体类层次与重构方案.md) | **OOP/ABC v1.0.6**：`CultivatorCharacter` 修士；化身叶 + `DivineSenseConsumer`；灵宠/傀儡仍 `SenseMinionCharacter` |
+| [双轨整改与配置兼容方案.md](./双轨整改与配置兼容方案.md) | **双轨 v1.0**：存量整改 / 增量规范；ContentStore（测试 YAML / 正式可 DB）（2026-08-14） |
 | [玩家在线状态设计.md](./玩家在线状态设计.md) | **Presence**：WS 鉴权在线 / grace / 组队·面交·助战门闸；**v1.0**（2026-08-12） |
 | [核验与超级密码设计](./docs/superpowers/specs/2026-07-28-verification-super-password-design.md) | 注册核验 / verification API / 超级密码（**已实现**，2026-07-28） |
 | [核验与超级密码实现计划](./docs/superpowers/plans/2026-07-28-verification-super-password.md) | 分任务实现清单 |
@@ -44,8 +52,26 @@
 
 ## 当前进度
 
+- **洞府 / 研究室（2026-08-20）**：顶栏「自研」改为「洞府」；研究室是洞府二级页 `/cave/lab`。权威 API `/api/v1/cave` 与 `/api/v1/cave/lab/*`；旧 `/research` 页与接口仍兼容。来源标签仍叫「自研」。
+- **工坊去掉阵法（2026-08-20）**：制造业仅炼丹/炼器/符箓/傀儡；阵法等级仍走角色面板与自研
+- **材料不足提示（2026-08-20）**：缺料显示「材料不足：灵草 缺少 2」，不再甩物品 id
+- **工坊配方收束（2026-08-19）**：两列配方/队列；材料=材料+灵石，体力另栏；悬停单一属性（金木水火土风雷暗），使用条件仅境界
+- **资源分配可超额（2026-08-19）**：投入可超过本档门槛；突破/淬体只扣所需；超额弹窗确认
+- **M8+ 类型与实例（2026-08-19 · 登记）**：下一主线；类型白板 / 实例最终属性；清单 [`后续待完成.md`](./后续待完成.md) **§1.14**；拍板前不开 M9
+- **阵法页改版（2026-08-19）**：顶栏「阵法」；预设下拉最多 5 套可命名；棋子四栏（角色/灵宠/傀儡/化身）按装备计数；棋盘不显示坐标数字；未编成傀儡（含试炼木傀）不再可上场（前端同步过滤 `puppet_N`）
+- **战斗专栏口子（2026-08-18）**：[`战斗系统完善设计.md`](./战斗系统完善设计.md) **v0.1**；[`功法系统设计.md`](./功法系统设计.md) **v0.1**；`PlayNav` 含账号同一组按钮；抗性并入战斗属性；功法方格装备 + 灵根展示
 - **前端生产构建**：`cd frontend && npm ci && npm run build`（`vue-tsc -b && vite build`）在 2026-08-12 已通过类型检查修复后可完整产出 `dist/`
-- **ATTR-D01 已落地（2026-08-13 · v1.3）**：[`ATTR战斗属性占位设计.md`](./ATTR战斗属性占位设计.md)——`combat_attrs.yaml` / `build_combat_attrs` / `AdditiveSource` 叠层封装 / 大厅分栏；道友卡键统一 `magic_atk`；装备喂入 → ATTR-D02（M8）；满曲线 → M13
+- **M8 出口打磨已收（2026-08-17）**：渡劫/待引渡页级只读；阵法脏离开；切 mode 清 session；`smoke_m8` 含 40211 门禁断言
+- **M8 R6 已落地（2026-08-17 · 校验器与总装）**：`python -m app.config_source.validate_content`；大厅「工坊」「自研」「继续草案」；`scripts/smoke_m8.py`；单测 `test_content_validator`
+- **M8 R5 已落地（2026-08-17 · 宗门图纸）**：`manual`+`manual_kind`；代工真扣材料；兑换入包；捐赠 `40209`；藏宝阁拒图纸；单测 `test_sect_blueprint_item_type`
+- **M8 R4 已落地（2026-08-17 · 自研符箓）**：`/research?mode=talisman` 白名单定稿 `custom:talisman:…`；工坊 `?branch=talisman` 画符+预载；开战战报 `item_trigger` 中文「符箓：××」；单测 `test_research_talisman_whitelist`
+- **M8 R3 已落地（2026-08-17 · 自研阵法）**：`/research?mode=formation` 设计器 + 定稿 `custom:formation:…`；布阵 picker 自研分组；防守快照内联蓝图；单测 `test_research_formation_blueprint`
+- **M8 R0 已落地（2026-08-18）**：[`道具与装备实体设计.md`](./道具与装备实体设计.md) **v0.8.6**——工厂/四法则/四页/丹药白名单；**17 区穿戴 + 傀儡编成最多 3 只 + 双手双指针**；角色页示意剪影槽名（主手/项链/符宝）
+- **M8 R2 已落地（2026-08-17 · 自研功法）**：`/research?mode=technique` + `/research/sessions*`；定稿私有功法 `custom:technique:…`；角色页功法来源列；审核池占位 `40210`
+- **M8 R1 已落地（2026-08-17 · ATTR-D02）**：`/equipment/*` + 角色页 `EquipmentSlotsPanel`（槽表 **17 区** + 编成板）；`build_combat_attrs` / 挂机 / 骰子装备通道
+- **M8 设计（2026-08-17 · 核心 v1.0.3 / 前端 v1.1.1）**：[`M8自研与内容管线设计.md`](./M8自研与内容管线设计.md) / [`M8前端目录与路由设计.md`](./M8前端目录与路由设计.md)——竖切 **R1～R6**；前端含布局/样式文字方案
+- **ATTR-D01 已落地（2026-08-18 · v1.4.2）**：[`ATTR战斗属性占位设计.md`](./ATTR战斗属性占位设计.md)——抗性并入战斗属性；简介轮回点/体力；根基含悟性/耐力/神通；装备喂入 → ATTR-D02（**M8 R1**）；满曲线 → M13
+- **ARCH 底层重构已收口 S1（2026-08-14 · v1.0.2）**：[`统一实体类层次与重构方案.md`](./统一实体类层次与重构方案.md) / [`双轨整改与配置兼容方案.md`](./双轨整改与配置兼容方案.md)——`app/game` + ContentStore + 傀儡 Actor + 道主 privilege + shim 收敛；**下一主线 M8 / ATTR-D02**
 - **玩家在线状态 Presence 已落地（2026-08-12）**：[`玩家在线状态设计.md`](./玩家在线状态设计.md) **v1.0**——`PresenceService` + Hub 索引/grace；组队/面交/助战/道友/赛会共用；`presence.changed` 推送；多 worker → **PRESENCE-R01**
 - **M7 已收口（2026-08-13）**：L1～L8 + V+ + 打磨包（真正坊市、大厅导航、社交交易/双修/师徒等）；`scripts/smoke_m7.py`；设计见 [`M7宗门社交与经济设计.md`](./M7宗门社交与经济设计.md)；延后见 [`后续待完成.md`](./后续待完成.md) **CHAT-D03** / **M7-D***
 - **M7 L1～L8 已落地（2026-08-11）**：宗门 + 道友/交易 + 邮件（附物发信，原赠送并入）+ 五频道聊天/ChatDock + **机缘**（原聊天红包）+ 师徒/真引渡 + 双修/四榜 + 会员/天道商店沙盒
@@ -53,19 +79,20 @@
 - **M7 前端**：`/sect` `/market` `/friends` `/party` `/social` `/dual-cultivation` `/shop`；创角必选性别；ChatDock（世界等）+ **DmDialog 私聊弹窗**；组队在队伍页；`HallSocialGate`
 - **M6 大道 / 道主 / WS + 打磨包已收口（2026-08-11）**：W1～W6 + **M6-D06** + 收尾包；延后见 **M6-D01～D05、D07**
 - **M6 前端已接路由（2026-08-10）**：`/dao` `/dao-lord`；`src/ws` + `WsStatusBadge`；大厅 `HallDaoGate`；战斗/工坊 `use_dao`
-- **ADM 后台骨架已落地（2026-08-07）+ 深化 v1.3.3**：同端口 `/management`；**境界/挂机/修为骰表格+JSON 双写**与字段中文说明（§0.0.1）；细则 [`后台管理系统开发计划.md`](./后台管理系统开发计划.md) **v1.3.3**
+- **ADM 后台 v2.0（2026-08-14）**：同端口 `/management`；整改首轨 **玩家管理 → 账号管理**（含打赏/仙缘/广告流水）；细则 [`后台管理系统开发计划.md`](./后台管理系统开发计划.md) **v2.0**；配置双写契约仍见 §0.0.1
 - **M5 前后端均已落地（2026-08-06）+ 强化/优先打磨收口（2026-08-07）+ 横切打磨（2026-08-10）**：竖切 **E1～E6** + 轮回强化 + **D10～D12 / 幂等 / 开战修为×环境**；**§0.0.2 玩家可见中文**、切段 env 缓存、DB 复合索引见开发计划 **§0.6.1**
 - **M5 轮回页修复（2026-08-06）**：对齐 ferry/preview/logs 响应契约；回大厅、待引渡倒计时、祭坛预览、流水/阅历可正常使用（详见 CHANGELOG）
 - **M4 前后端均已落地（2026-08-05）**：T1～T6——化身/工坊/灵宠/神识；前端 `/avatar` `/workshop` `/pets` + `HallDualThreadGate`
 - **灵宠愿景 + N4/N5/PET-D01～D06/M4-D04c 落地（2026-08-07）**：[`灵宠系统设计.md`](./灵宠系统设计.md) **v2.1**；真地图 region → M9
-- **化身定案 + 深化落地（2026-08-07）**：取消多化身；[`化身系统设计.md`](./化身系统设计.md) **v1.2**；**AVATAR-D01～D06 + 域 `avatar` ADM** 已落地；**OOP/减负**：CapabilityIndex 预计算、体力脏写、`get_summary` 轻量摘要
+- **化身独立穿戴 + 大厅修炼日志（2026-08-19）**：装备/功法/神通 `actor` 分槽；破除转修为、装备回包、再凝练金丹起；大厅 10 周天结算日志
+- **化身定案 + 深化落地（2026-08-07）**：取消多化身；[`化身系统设计.md`](./化身系统设计.md) **v1.2 落地 / v1.3 设定冻结**；**AVATAR-D01～D06** 已落地；**D07～D10** 待做；**OOP/减负**：CapabilityIndex 预计算、体力脏写、`get_summary` 轻量摘要
 - **异步真读条突破已落地后默认关闭（2026-08-10）**：[`异步真读条突破设计.md`](./异步真读条突破设计.md) **v1.2**——玩家点击突破同步出结果；`async_channel` 可运营再开；API `/breakthrough/channel/*` 保留
 - **四象加深 M3-D07 Phase A 落地（2026-08-10）**：[`四象禁制与环境天气载荷设计.md`](./四象禁制与环境天气载荷设计.md) **v1.1**——禁制三子类 LOS；迷雾/雷暴 combat 载荷；战报中文；样本金锁障·咒缄幕·万缄障
 - **阵法部署 M3-D08 Phase A 落地（2026-08-10）**：[`阵法部署与自研设计.md`](./阵法部署与自研设计.md) **v1.1**——`deploy` 四模式 / `force_shifts` / presets `effective_deploy_cells` / 前端换阵高亮；样本 wide_front·cloud_drift·left_wing_mask·shift_gust
 - **嘲讽光环 M3-D06 Phase A 落地（2026-08-10）**：[`嘲讽光环设计.md`](./嘲讽光环设计.md) **v1.1**——静态 `taunt_auras` / 进入触发 / 决策短路 / 死亡解除 / 样本 `taunt_guardian` / ADM 域
 - **延后/并行项**：总表见 [`开发计划.md`](./开发计划.md) **§1.2**；细则钩子见 [`后续待完成.md`](./后续待完成.md)（M3 §1.5 · M4 §1.6 · M5 §1.7 · M6 §1.11 · M7 §1.12 · ATTR/CHAT/IDLE/DICE）
-- **扩展层已排期（开发计划 v3.2）**：~~M6~~ / ~~M7~~ → **下一主线 M8**（自研 + ATTR-D02）→ M9～M13；新功能须遵循 **§0.7 显性设计**、**§0.0 后台适配**、**§0.0.2 中文信条** 与 **§0.6.2 属性路线**
-- **M7 L1～L8 已收口**（含 V+ 与打磨包）；后端测试含 M0～M7 + ADM；冒烟 `smoke_m3` / `smoke_m4` / `smoke_m5` / `smoke_m6` / `smoke_m7` / `smoke_adm`
+- **扩展层已排期（开发计划 v3.17）**：~~M6~~ / ~~M7~~ → **M8 R0～R6 已落地** → M9～M13；新功能须遵循 **§0.7 显性设计**、**§0.0 后台适配**、**§0.0.2 中文信条** 与 **§0.6.2 属性路线**
+- **M7 L1～L8 已收口**（含 V+ 与打磨包）；后端测试含 M0～M8 + ADM；冒烟 `smoke_m3` / `smoke_m4` / `smoke_m5` / `smoke_m6` / `smoke_m7` / `smoke_m8` / `smoke_adm`
 - **后端 OOP 分层**：见下方「后端架构」
 
 ## 后端架构
@@ -79,16 +106,20 @@ services/       # Application Service（__init__(session)）用例编排
 config_source/  # M2-D01：共享 YamlConfigSource（mtime 缓存）+ OverlayStore + RuntimeConfigReloader
 admin_spa.py    # AdminSpaHost：同端口 /management；assets immutable 长缓存
 domain/         # 无 IO 纯规则与值对象（SettleResult / CombatCalculator 等）
+game/           # OOP 实体层 Character/Item/Ability/ContentStore（ARCH v1.0）
 core/           # Settings / JWT（玩家+后台）/ time_utils / deps 工厂
 db/             # ORM（含 admin_users / config_*）+ bootstrap
 schemas/        # HTTP DTO（Pydantic）
 ```
 
+> **OOP 重构（v1.0.6）**：`app/game` 实体层——`Character` 含 hp/mp；**修士** `CultivatorCharacter`（玩家/NPC/化身）；玩家/NPC 持神识池；化身上阵消耗神识（`DivineSenseConsumer`）；灵宠/傀儡 `SenseMinionCharacter`。细则 [`统一实体类层次与重构方案.md`](./统一实体类层次与重构方案.md)。测试可设 `CONTENT_STORE_MODE=yaml_authority` 只改 YAML。
+
 | 概念 | 说明 |
 | --- | --- |
 | 应用服务 | 如 `IdleService` / `AuthService` / `AdminConfigService`（组合 `AdminEntryEditor`）/ `PlayGate`；路由经 deps 注入 |
 | 跨玩法门禁 | `PlayGate`：加载角色 + 自动 claim 离线 pending |
-| 配置热更 | YAML ∪ 已发布覆盖 → `GameConfigBundle`；发布走 `RuntimeConfigReloader` |
+| 配置热更 | `.env` `CONTENT_STORE_MODE` → `ContentStore` → `GameConfigBundle`（`yaml_authority` 只 YAML；默认 YAML∪DB 发布） |
+| **常量** | **`app/constants/`**（开发计划 **§0.6.3 法律级**）：协议枚举/映射/魔数统一管理，须中文注释；禁止业务文件新增裸魔数 |
 | 后台 SPA | `AdminSpaHost` 托管 `/management`（与 API 同端口） |
 | 核验 Provider | `SmsProvider` / `EmailProvider` / `IdentityProvider` |
 | 时间工具 | 全站唯一 `app.core.time_utils` |
@@ -119,25 +150,19 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 - **CORS**：玩家端 `5173`（见 `backend/.env.example`）；运营后台与 API **同端口**，走 `/management`，一般无需再开 5174
 - **ADM 环境变量**（可选）：`ADMIN_JWT_SECRET_KEY`、`ADMIN_BOOTSTRAP_USERNAME`/`PASSWORD`（默认 `admin`/`admin123`）
-- 健康检查：`GET http://127.0.0.1:8000/api/v1/server/health`（或兼容路径 `GET /health`）；`data.db` 应为 `ok`
+- 健康检查：`GET http://127.0.0.1:8000/api/v1/server/health`（或兼容路径 `GET /health`）；`data.db` 应为 `ok`；并看 `database_dialect` / `database_target`（须指向 `backend/xiuxian.db` 或正式 PG）与 `content_store_mode`
+- **运行时库**：测试账号/角色在 `backend/xiuxian.db`（`DATABASE_URL`）；设定在 YAML/`CONTENT_STORE_MODE`。正式只改 `DATABASE_URL=postgresql+asyncpg://...`，ORM 与后台账号管理同一套代码。勿使用仓库根目录误生成的旧 `xiuxian.db`
 - 后台登录页：`http://127.0.0.1:8000/management/`（须先 `cd admin && npm run build`）
 - 后台 API：`POST http://127.0.0.1:8000/admin/auth/login` Body `{"username":"admin","password":"admin123"}`
-- **道主运营**：`/management/ops/dao-lords` — **立刻开赛**、**跳过等待·进入战斗**、**重新开放报名**、**剔除道主**（侧栏「大道与道主 → 道主运营」）
-  - **收口**：无人报名→`cancelled`；有人报名则 RSVP→擂台各轮结束→`settled`（到点 `fight_at` 或点「立刻开赛」关闭报名）
-  - **再开赛**：须 `registration`；自然为下一业务日新开；联调点「重新开放报名」清空本场后再「立刻开赛」
-  - 「立刻开赛」进入 RSVP/擂台分阶段；玩家 `/dao-lord/arena`
-  - **跳过等待**：RSVP/擂台进行中可点「跳过等待 · 进入战斗」（`POST /admin/ops/dao-contests/advance-arena`），跳过入席确认/倒计时/整备/轮间/直播倒计时并推进至对战演出；可连点跳过本场演出进入下一轮
-  - **RSVP**：默认 **60 秒**确认窗（超时报名弃权 / 道主改快照）；弹窗仅对 `needs_rsvp` 本人；确认提示仅本账号；结束后再等 **30 秒**开第一轮
-  - **倒计时**：擂台用 `phase_ends_at` + `server_now` 本地滴答，双端对齐
-  - **直播棋盘**：播控由后端 `battle_kind`/`playback_policy` 下发（直播=`dao_contest_live`：强制详细、禁简易/暂停/单步/跳过；回放=`dao_contest_replay`：可播/单步/跳过）；按 `battle_event_cursor` 全服同步；结束后可重播
-  - **对战表**：tournament bracket 列序（淘汰→半决→决赛→道主）；按人数动态生成（1 人直进道主战、2 人决赛）
-  - **整备改阵**：`can_adjust_loadout` 在 **入席确认 / 开赛倒计时 / 轮间 / 半决整备** 为真；擂台点「调整上阵」进 `/formation?from=dao-arena`（仅此时显示「回擂台」）；日常布阵无该按钮
-  - **开打编成**：挑战者互殴 / 道主在线时，**开打瞬间双方现场读取进攻预设+实时战力**并冻结入局（不必依赖手动防守快照）；道主离线/强制快照时道主侧仍用库内防守快照
-  - **播报窗**：无棋盘数据不开空抽屉；整备中点对阵只 Toast；直播可关窗再进
-  - **离场判负**：仅服务端根据 `playing`/`adjusting` 判定；客户端不可关闭判负；收口后离开不判负；**整备中**一方离场且本阶段场次均已结束时，立刻跳过剩余整备倒计时并推进
-  - **安全**：挑战结算禁止客户端指定胜负；核心战报/晋级/席位均服务端权威
-- **道主之争日程**：侧栏「大道与道主 → 道主」→ **赛会日程** Tab（报名开始/结束、开打时刻）；保存草稿后须发布（`dao_lord` 域草稿校验已支持）。节奏键：`contest.rsvp_seconds` / `arena_first_round_countdown_seconds` / `round_gap_seconds` / `live_adjust_seconds`
-- 侧栏配置按**类目折叠**（灵宠 / 战斗 / 成长…）；类目区与内容区**独立滚动**
+- **后台整改（进行中）**：侧栏 **玩家管理 → 账号管理 / 角色管理**
+  - 账号：`/management/players/accounts`；道号可跳转角色管理
+  - 角色：`/management/players/characters`；软删/死亡/轮回/突破/给予；属性·状态·背包·功法·境界·制造业·货币
+  - 网格列（账号）：数据库ID、user_id（`M/P/T/G`+7位）、邮箱、手机号、剩余仙缘、总打赏金额、状态、GM、道号
+  - 顶栏批量（勾选）：封号/解封、重置密码（`12345678`）、修改联系方式、派发仙缘、删除账号（软删 `is_active=false`）、设为/取消GM（功能暂未开放）
+  - 行内：记录打赏、查看打赏、仙缘派发记录、广告观看记录（不再折叠「更多」）
+  - 搜索：邮箱 / 手机 / user_id；分页 10/20/50/100；登录对无效账号提示「无效用户名」
+  - API：`GET/POST /admin/ops/players*` · `/admin/ops/characters*`（写操作须 publisher/admin）
+  - 旧配置域 / 道主控制台 / 审计菜单暂下线（路由重定向到账号管理），后续按类目重建
 - 冒烟：`python scripts/smoke_adm.py`
 
 ### 1b. 运营后台前端（ADM）
@@ -185,7 +210,10 @@ npm run build
 - 当前用户：`GET http://127.0.0.1:8000/api/v1/auth/me`  
   Header：`Authorization: Bearer <access_token>`（返回 `email` / `phone` / `display_name` / `has_character`）
 - 修改密码：`POST http://127.0.0.1:8000/api/v1/auth/change-password`  
-  Body：`{"old_password":"...","new_password":"..."}`（新密码至少 8 位）
+  Body：`{"old_password":"...","new_password":"..."}`（新密码至少 8 位）  
+  若 `REGISTER_REQUIRE_EMAIL_CODE=true`：须先 `POST /verification/email/send|confirm` 换 `email_ticket` 一并提交（与注册同源）
+- 账号摘要：`GET http://127.0.0.1:8000/api/v1/account/summary`（仙缘余额 / 累计打赏 / 累计观看广告次数）
+- 打赏账单：`GET http://127.0.0.1:8000/api/v1/account/tips`（时间 / 金额 / 单号 / 途径）
 - 创建角色：`POST http://127.0.0.1:8000/api/v1/characters`  
   Header：`Authorization: Bearer <access_token>`  
   Body：`{"name":"青柠散人"}`（道号 2～16，中文/字母/数字）  
@@ -213,17 +241,100 @@ npm run build
 | POST | `/api/v1/quench/attempt` | 发起淬体（炼体境晋级） |
 | POST | `/api/v1/battle/pve` | Body `{"monster_id":"tutorial_slime"}`；返回战报 |
 | POST | `/api/v1/allocate` | Body `{"target_type":"realm"\|"body_temper"\|"technique","target_id":"...","amount":N}`；炼体功法自动扣淬体度池 |
-| GET | `/api/v1/techniques/me` | 角色功法等级列表 |
-| GET/POST | `/api/v1/constitution/*` | 体质背包 / 镶嵌 / 卸下 / 升品 / 融合（骨架） |
+| GET | `/api/v1/techniques/me` | 角色功法等级列表（含 `source` / `source_label_zh`）；`actor=main|avatar` 分槽 |
+| GET/POST | `/api/v1/constitution/*` | 体质收藏 / 本源·旁支镶嵌 / 卸下 / 升品 / 融合（骨架） |
 | POST | `/api/v1/gm/character/set` | 仅 development；支持 `realm_progress` / `clear_offline_pending` 等 |
+
+### M8 装备与洞府研究室 API（需 Bearer）
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/v1/equipment/slots` | 17 区指针槽穿戴（含 `pet`）+ 傀儡编成列表；`actor=main|avatar` 分槽 |
+| POST | `/api/v1/equipment/equip` | 穿戴（双手武器双写两槽） |
+| POST | `/api/v1/equipment/unequip` | 卸下（双手同清两侧） |
+| POST | `/api/v1/equipment/puppet-loadout/add` | 傀儡加入编成板 |
+| POST | `/api/v1/equipment/puppet-loadout/remove` | 傀儡移出编成板 |
+| GET | `/api/v1/equipment/catalog` | 可穿样本 |
+| GET | `/api/v1/cave` | 洞府房间列表（研究室） |
+| GET | `/api/v1/cave/lab/catalog` | 研究室材料/词条白名单 |
+| GET | `/api/v1/cave/lab/mine` | 已定稿私有内容 |
+| GET | `/api/v1/cave/lab/sessions` | 进行中草案列表（大厅「继续草案」） |
+| POST | `/api/v1/cave/lab/sessions` | 开会话（`kind=technique\|formation\|talisman`） |
+| GET | `/api/v1/cave/lab/sessions/{id}` | 会话预览 |
+| POST | `/api/v1/cave/lab/sessions/{id}/draft` | 保存阵法蓝图或符箓效果 |
+| POST | `/api/v1/cave/lab/sessions/{id}/reroll` | 重投词条（仅功法） |
+| POST | `/api/v1/cave/lab/sessions/{id}/finalize` | 定稿中文名 |
+| POST | `/api/v1/cave/lab/sessions/{id}/submit-review` | 审核池占位，恒 `40210` |
+| POST | `/api/v1/craft/talisman/scribe` | 画符入包 |
+| GET/PUT | `/api/v1/craft/talisman/preload` | 出战预载栏 |
+
+非法材料 `40200`；审核未开放 `40210`；待引渡/渡劫写自研或画符 `40211`。
+
+大厅 nav：角色 · **阵法** · 战斗 · 化身 · **工坊** · **洞府** · 宗门 · …；有草案时标题行 warning「继续草案」进研究室。
+
+冒烟：`python scripts/smoke_m8.py`（穿戴→功法→阵法快照→画符开战→工坊真扣→待引渡写门禁 40211）。
+
+### 新增一条官方样本（只改 YAML / 后台，不改玩家代码）
+
+> 校验器：启动加载与 CI 共用。本地可跑：
+>
+> ```powershell
+> cd backend
+> .\.venv\Scripts\python.exe -m app.config_source.validate_content
+> .\.venv\Scripts\python.exe -m pytest tests/test_content_validator.py -q
+> ```
+>
+> 坏表（未知 ATTR 键、符效果缺 `label_zh` / 非法 `trigger`、体质词条发明新 effects 键）→ **拒绝启动** / 发布探针 `40050`。
+
+**例：新增一件样本装备**（须同时在 `inventory.yaml` 与 `equipment.yaml` 登记同 id；`stats` 键 ∈ `combat_attrs.yaml`）：
+
+```yaml
+# inventory.yaml → items
+jade_ring_t1:
+  name: 翠玉戒（占位）
+  item_type: equipment
+  # …堆叠/绑定等沿用同类
+
+# equipment.yaml → items
+jade_ring_t1:
+  label_zh: 翠玉戒（占位）
+  help_zh: 教学饰品
+  slot: accessory
+  stats:
+    phys_atk: 1
+  grants: []
+  required_major_realm: body_tempering
+```
+
+**例：新增一条符效果白名单**（自研只能引用已发布 id）：
+
+```yaml
+# talisman_effects.yaml
+first_hit_ward:          # 已有样本
+  label_zh: 护体残符
+  help_zh: …
+  trigger: first_hit     # 仅白名单 trigger
+```
+
+**例：新增自研词条**（`research.yaml` → `affixes`；`stats` 键须已登记 ATTR）：
+
+```yaml
+affixes:
+  phys_edge:
+    label_zh: 锋锐
+    stats:
+      phys_atk: 2
+```
+
+后台域名（`/management`）：`equipment` · `research` · `talisman_effects` · `combat_attrs` · `items`（inventory）· `techniques` · `formations`。改草稿 → 校验 → 发布；玩家服经 ContentStore 热更，**无需改前端/玩法分支代码**。
 
 ### M3 战斗成型 API（需 Bearer）
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/v1/formation/board-meta` | 棋盘只读元数据（尺寸 / 三区 / 默认部署格 / 镜像规则 / 种类闸门） |
-| GET | `/api/v1/formation/presets` | 预设三槽 + 已解锁阵法 + 可上阵棋子（Bench）+ 上阵上限 |
-| PUT | `/api/v1/formation/presets/{slot}` | 保存预设：`{name, role, formation_id, units}`；非法占位 `40041/40042/40043` |
+| GET | `/api/v1/formation/presets` | 预设五槽 + 已解锁阵法 + 可上阵棋子（Bench）+ 上阵上限 + `assist_guest` |
+| PUT | `/api/v1/formation/presets/{slot}` | 保存预设：`{name, role, formation_id, units, assist_anchor}`（slot 0～4；`role` 仅开战/快照回退；`assist_anchor` 为助战虚位）；非法占位 `40041/40042/40043`；有助战会话无锚点开战 `40093` |
 | POST | `/api/v1/formation/validate` | 干跑校验占位（编辑器即时反馈，不落库） |
 | GET | `/api/v1/snapshot/defense/me` | 我的防守快照摘要（触发每日定点**惰性**补刷） |
 | POST | `/api/v1/snapshot/defense/update` | 手动更新快照；冷却中 `40045`；状态禁止 `40046` |
@@ -243,9 +354,10 @@ M3 GM 扩展（`POST /gm/character/set` 新增可选字段）：`set_stamina` / 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/v1/avatar/me` | 化身面板；含 `features`/`stamina`/`unlock_preview`；未凝练 `data=null` |
-| GET | `/api/v1/avatar/features` | 功能解锁看板 + 下一档预告 + **`condense` 权威闸**（`can_condense`/`realm_ok`/`stones_ok`/`block_*`；与 POST 同源） |
-| POST | `/api/v1/avatar/condense` | 凝练化身（金丹**及以上**门槛 `40050`，含真仙；已有化身 `40051`；灵石不足 `40000`；UI 闸读 `/features.condense`） |
-| POST | `/api/v1/avatar/idle` | Body `{"direction":"spirit"\|"body"\|"crafting"\|"sect_mining"\|"none"}`；采矿需入宗且计入矿脉名额；未解锁方向 `40090` |
+| GET | `/api/v1/avatar/features` | 功能解锁看板 + 下一档预告 + **`condense` 权威闸**（`can_condense`/`realm_ok`/`stones_ok`/`cultivation_ok`/功法·媒介候选；与 POST 同源） |
+| POST | `/api/v1/avatar/condense` | 凝练化身（金丹**及以上**门槛 `40050`；已有化身 `40051`；灵石不足 `40000`；灵力不足 `40053`；功法 `40054`；媒介不足 `40055`；Body `technique_id` + `medium_item_id`） |
+| POST | `/api/v1/avatar/dismiss` | 破除已凝练化身：修为池全额转入本体、淬体丢弃、装备回背包；不退凝练材料；工坊占用中 `40056` |
+| POST | `/api/v1/avatar/idle` | Body `{"direction":"spirit"\|"body"\|"crafting"\|"sect_mining"\|"none"}`；采矿需入宗且计入矿脉名额；未解锁方向 `40090`。回包 `{avatar, character, idle_gains}`，化身锚点与本体独立 |
 | POST | `/api/v1/avatar/transfer/preview` | 互传预览（gross/net/retention；不扣池） |
 | POST | `/api/v1/avatar/transfer` | 互传实扣；回包含 gross/net/fee |
 | GET | `/api/v1/avatar/sense` | 神识读数（capacity/load/soft/hard/zone/overload_mult/backlash） |
@@ -255,9 +367,9 @@ M3 GM 扩展（`POST /gm/character/set` 新增可选字段）：`set_stamina` / 
 | POST | `/api/v1/avatar/assist/invite` | Body `target_character_id` 或 `target_name`；**邀请化身**：开则立即入队；关→「闭关中」；忙→「助战中」 |
 | POST | `/api/v1/avatar/assist/{id}/accept\|reject\|end` | 兼容旧 invited / 手动结束；PVE 战后自动离队 |
 | GET | `/api/v1/avatar/assist/me` | 助战会话 + 开关 + **助战专用体力**（独立槽，仅随境界变容） |
-| GET | `/api/v1/craft/recipes` | 配方列表（五分支） |
+| GET | `/api/v1/craft/recipes` | 配方列表（炼丹/炼器/符箓/傀儡；不含阵法） |
 | GET | `/api/v1/craft/jobs` | 工坊队列 |
-| POST | `/api/v1/craft/start` | Body `{"recipe_id":"...","actor":"main"\|"avatar"}` |
+| POST | `/api/v1/craft/start` | Body `{"recipe_id":"...","actor":"main"\|"avatar","use_dao":bool}`；`use_dao` 扣该 actor 道值 |
 | POST | `/api/v1/craft/claim` | Body `{"job_id":N}` |
 | GET | `/api/v1/inventory` | 背包列表 |
 | POST | `/api/v1/inventory/use` | 使用消耗品（如体力丹） |
@@ -291,8 +403,8 @@ M4 冒烟：`python scripts/smoke_m4.py http://127.0.0.1:8000/api/v1`（金丹�
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/dao/catalog` `/dao/me` `/dao/pool` | 图鉴 / 本命资源 / 道池 |
-| POST | `/dao/open/roll` `/dao/open/choose` | 开道三选一 |
+| GET | `/dao/catalog` `/dao/me` `/dao/pool` | 图鉴 / 本命资源 / 道池（`actor=main\|avatar`；须该主体真仙） |
+| POST | `/dao/open/roll` `/dao/open/choose` | 开道三选一（body `actor`） |
 | POST | `/dao/usage/preview` | 运用预览 |
 | GET | `/dao-lord/board` `/dao-lord/windows` | 道主榜 / 开窗 |
 | POST | `/dao-lord/claim` | 空位自动就任（兼容） |
@@ -312,6 +424,8 @@ M4 冒烟：`python scripts/smoke_m4.py http://127.0.0.1:8000/api/v1`（金丹�
 M6 GM：`force_true_immortal` / `lock_fate_dao` / `grant_dao_pool` / `set_dao_qi` / `set_dao_level` / `set_dao_lord` / `open_dao_challenge_window` / `clear_dao_challenge_cooldown` / `push_world_env` / **`m6_quick_kit`（一键联调）**。
 
 本地 DEV：将 `backend/.env.example` 中 M6 段（尤其 `DAO_LORD_FORCE_WINDOW=true`、`WORLD_EVENTS_ENABLED=true`）同步进 `backend/.env` 后重启 uvicorn；大厅展开「调参（DEV）」→ **M6 一键联调套装**。
+
+开通悟道后，大厅简览 / 角色页 / 化身页角色栏展示本命道与道值。本体与化身之道独立；**悟道**入口在角色页/化身页，须该主体真仙后才显示，未达真仙不可进 `/dao`。
 
 M6 冒烟：`python scripts/smoke_m6.py`（backend 目录、已激活 venv）。
 
@@ -350,7 +464,7 @@ M6 冒烟：`python scripts/smoke_m6.py`（backend 目录、已激活 venv）。
 | GET/POST | `/trade/auctions` · `…/{id}/bid` | 拍卖行·竞拍 |
 | POST/GET | `/trade/face` · `GET …/pending` · `GET …/invite-options` · `…/{id}` · `…/accept` · `…/reject` · `…/offer` · `…/lock` · `…/confirm` · `…/cancel` | 社交交易（邀约提交后推送；页内待接受列表即时出现→锁定→确认；点通知先拉会话再进页手动接受）；道具格同邮件 72px；报价自动同步；改草稿不拆对方锁定；WS `session` 为接收方视角；`vessel_offer.hours`；单侧最多 16 种；WS `face.invite`/`face.update` |
 
-前端：大厅顶栏 **社交**（`/social`：道友关系/队伍/双修/**交易**/邮件/师徒/引渡）· **商店**（`/shop`：`mode=bazaar|auction|tiandao`）；另有 **化身**（`/avatar`，挂机含采矿）· **账号**（`/account`：资料/改密/退出）；修炼区标题行「资源分配/进阶」入口弹窗；`/market` 为拍卖行独立入口（`mode=listings|auction`，旧 `face` 深链重定向社交交易）；`/friends` `/party` `/dual-cultivation` 深链保留。道友页为单页分区：我的道友/道侣/炉鼎；若自身为他人炉鼎则显示「我的主人」（含到期时间）。交易可要约「愿为对方炉鼎」并设现实小时；双方至多一侧；**互为道侣不可互为炉鼎**（道侣仍可为他人炉鼎）；主人可随时解除，到期自动解除。大厅日志下方有**邀请列表**；社交页操作日志同步进大厅事件日志；右上角 WS 邀请提示可点击跳转对应社交子页（交易/组队/双修/道友/道侣）。
+前端：大厅顶栏 **社交**（`/social`：道友关系/队伍/双修/**交易**/邮件/师徒/引渡）· **商店**（`/shop`：`mode=bazaar|auction|tiandao`）；另有 **化身**（顶栏在「角色」后；`/avatar`：凝练/装备功法神通/互传/助战；**挂机在大厅修炼区**）· **账号**（`/account`：资料/仙缘与打赏摘要/改密弹窗/打赏账单/退出）；修炼区标题行「资源分配/进阶」入口弹窗；已凝练化身后修炼区本体下方出现化身线程，大厅简览可点角色名/化身切换。开通悟道后角色栏显示该主体本命道名与道值；角色页/化身页真仙后出现「悟道」。`/market` 为拍卖行独立入口（`mode=listings|auction`，旧 `face` 深链重定向社交交易）；`/friends` `/party` `/dual-cultivation` 深链保留。道友页为单页分区：我的道友/道侣/炉鼎；若自身为他人炉鼎则显示「我的主人」（含到期时间）。交易可要约「愿为对方炉鼎」并设现实小时；双方至多一侧；**互为道侣不可互为炉鼎**（道侣仍可为他人炉鼎）；主人可随时解除，到期自动解除。大厅日志下方有**邀请列表**；社交页操作日志同步进大厅事件日志；右上角 WS 邀请提示可点击跳转对应社交子页（交易/组队/双修/道友/道侣）。
 
 ### M7 L3 邮件 API（需 Bearer；原赠送已并入发信）
 
@@ -446,7 +560,7 @@ WS：`heritage.created` / `heritage.claimed` / `heritage.expired`（随聊天房
 功法模式：`mutual_gain` 双增 · `transfer` 传功 · `extract` 索取（蛇蝎：被索取过低初始转化率 0，索取方过低初始为负）。
 体力：`stamina_costs`（双增双方相同；传功传方>受方；索取索取方>被索取）；管理后台域 `dual_cultivation` 可改初始设定。
 高潮循环由 `climax` 驱动（每轮≈1s±20%）。WS：`dual.invite` / `dual.update`（弹窗点进 `/social?mode=dual`）。
-角色摘要/角色页展示战斗体力（`battle_stamina.left/cap`）。
+角色摘要/角色页展示体力（`battle_stamina.left/cap`）。
 
 前端：社交双修台「双修台 / 时长榜」；右侧道侣·炉鼎选人；接受 / 宽衣解带 / 开始。
 
@@ -489,7 +603,7 @@ WS：`heritage.created` / `heritage.claimed` / `heritage.expired`（随聊天房
 
 M5 GM 扩展：`force_shichen` / `force_weather` / `start_tribulation` / `force_tribulation_outcome`（won|failed|fallen）/ `grant_acceptance_constitution` / `set_awaiting_ferry` / `force_ferry_timeout` / `mark_story_node` / `fate_luck` / `demonic_nature` / `force_yuanying_peak` / `spirit_root_tags`。
 
-**环境锁定**：开战、工坊开工在**点击确认那一刻**写入时辰/天气快照；进页面时的预览只是当前世界态，不锁定。任务/战斗进行中世界天气再滚动，不影响本场已锁环境。
+**环境锁定**：开战、工坊开工在**点击确认那一刻**写入时辰/天气快照。工坊页不再展示页顶天气占位行；任务/战斗进行中世界天气再滚动，不影响本场已锁环境。
 
 角色面板 `CharacterPublic.idle_env`：spirit/body/crafting 有效挂机速率 = **大境界基础表** × 加成通道（体质钩子等）× 时辰×天气×灵根/功法 `env_tags`；`breakdown` 可拆解（含 `realm_base` / `constitution` 等）。细则见 [`挂机速率与加成设计.md`](./挂机速率与加成设计.md)。大厅修炼区默认只显示「基础→有效」与总乘区，乘区拆解与时辰/天气说明悬停旁侧 **i** 查看。
 
@@ -674,7 +788,7 @@ npm run dev
 
 1. 先启动后端（`uvicorn`），再 `npm run dev`。
 2. 注册并登录 → 无角色时进入 `/create-character`，输入道号（2～16）→「踏入仙途」。
-3. 进入 `/hall`：**左侧**角色摘要（链到 `/character`）+ 修炼 + 突破 + 战斗 +（DEV）调参；**右侧**事件日志。角色页 `/character`：左属性（详参折叠）、右体质装备与功法。
+3. 进入 `/hall`：**左侧**角色摘要（链到 `/character`）+ 修炼 + 突破 + 战斗 +（DEV）调参；**右侧**事件日志。角色页 `/character`：左属性（详参折叠）、右体质装备与功法（功法卡「去研究室」进 `/cave/lab?mode=technique`）。
 4. 「开始修灵」后修为/灵石展示随时间变化；约每个 tick 自动入账一次（无需点同步）；灵石耗尽有停滞提示。
 5. 修为达标后「发起突破」（真读条闭关进度 + 结果弹窗；可 Flag 回退假读条）；「挑战浊气蛙」需先停止修炼。
 6. 刷新页面后仍保持登录；数值以服务端为准（预测会被对齐校正）。

@@ -161,15 +161,49 @@ def test_divine_sense_comfort_overload_hard() -> None:
     assert entry.idle_mult == 0.5
     assert entry.when == "over_hard"
 
-    # 物种占用覆盖：crane cost=4
+    assert cfg.cost_puppet == 2
+
+    from app.constants.divine_sense import DIVINE_SENSE_ZONE_LABELS_ZH
+    from app.domain.divine_sense import puppet_sense_reading
+
+    preview = puppet_sense_reading(
+        load=0,
+        capacity=capacity,
+        soft_cap=soft,
+        hard_cap=hard,
+        bands=bands,
+        fallback_stat_mult=cfg.overload_stat_mult,
+        zone_labels=DIVINE_SENSE_ZONE_LABELS_ZH,
+    )
+    assert preview["percent"] == 100
+    assert preview["zone"] == "comfort"
+    assert preview["zone_label_zh"] == "舒适区"
+
+    over_preview = puppet_sense_reading(
+        load=12,
+        capacity=capacity,
+        soft_cap=soft,
+        hard_cap=hard,
+        bands=bands,
+        fallback_stat_mult=cfg.overload_stat_mult,
+        zone_labels=DIVINE_SENSE_ZONE_LABELS_ZH,
+    )
+    assert over_preview["percent"] == 85
+    assert over_preview["zone"] == "overload"
+    assert over_preview["zone_label_zh"] == "超载"
+
+    # 物种占用覆盖：crane cost=4；傀儡并入同一池
     load = compute_load(
         avatar_count=1,
         pet_count=1,
         cost_avatar=5,
         cost_pet=3,
         pet_costs=[4],
+        puppet_count=1,
+        cost_puppet=2,
+        puppet_costs=[2],
     )
-    assert load == 9
+    assert load == 11
 
 
 def test_capture_test_pet(tmp_path: Path) -> None:

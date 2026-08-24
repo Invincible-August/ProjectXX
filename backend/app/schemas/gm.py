@@ -41,6 +41,7 @@ class GmSetCharacterRequest(BaseModel):
     force_jindan: bool | None = Field(default=None, description="一键设为金丹初期")
     grant_craft_materials: bool | None = Field(default=None, description="发放配方测试材料")
     grant_test_pet: bool | None = Field(default=None, description="发放测试灵宠")
+    grant_test_equipment: bool | None = Field(default=None, description="发放测试装备（玄铁剑）")
     clear_craft_jobs: bool | None = Field(default=None, description="清空工坊队列")
     clear_divine_sense_backlash: bool | None = Field(default=None)
     # --- M5 环境与轮回 ---
@@ -133,6 +134,7 @@ class GmSetCharacterRequest(BaseModel):
             self.force_jindan,
             self.grant_craft_materials,
             self.grant_test_pet,
+            self.grant_test_equipment,
             self.clear_craft_jobs,
             self.clear_divine_sense_backlash,
             self.force_shichen,

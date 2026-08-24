@@ -12,11 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import User
 from app.domain.avatar_rules import (
     ERR_FEATURE_LOCKED,
-    ERR_SOLO_FORMATION_INVALID,
     compute_transfer_preview,
-    is_feature_unlocked,
 )
-from app.domain.m4_constants import AvatarFeature
+from app.constants.m4 import AvatarFeature
 from app.schemas.auth import RegisterRequest
 from app.schemas.character import CreateCharacterRequest
 from app.schemas.common import AppError
@@ -63,7 +61,10 @@ def test_config_max_avatars_is_one() -> None:
     """配置硬约束：max_avatars=1。"""
     cfg = get_game_config().avatar
     assert cfg.max_avatars == 1
+    assert cfg.max_major_realm == "true_immortal"
+    assert cfg.avatar_lead_majors == 0
     assert AvatarFeature.IDLE_CRAFTING in cfg.feature_unlocks
+    assert "solo_battle" not in cfg.feature_unlocks
     assert 0 < cfg.transfer.retention_ratio <= 1
 
 
@@ -103,7 +104,16 @@ def test_yuanying_idle_crafting_ok(tmp_path: Path) -> None:
                 await svc.condense(user)
                 await session.commit()
                 panel = await svc.set_idle(user, "crafting")
-                assert panel["idle_direction"] == "crafting"
+                avatar = panel.get("avatar") if isinstance(panel, dict) else panel
+                assert isinstance(avatar, dict)
+                assert avatar["idle_direction"] == "crafting"
+                from datetime import datetime, timezone
+
+                settled = datetime.fromisoformat(
+                    str(avatar["last_settled_at"]).replace("Z", "+00:00"),
+                )
+                delta = abs((datetime.now(timezone.utc) - settled).total_seconds())
+                assert delta < 8
 
     _run(_body())
 
@@ -116,7 +126,10 @@ def test_features_endpoint_explicit(tmp_path: Path) -> None:
             async with factory() as session:
                 user = await _user_with_character(session, "af03@example.com")
                 await GmService(session).gm_set_character(
-                    user, force_jindan=True, spirit_stones=5000,
+                    user,
+                    force_jindan=True,
+                    spirit_stones=5000,
+                    cultivation_points=5000,
                 )
                 await session.commit()
                 from app.services.play_gate import PlayGate
@@ -151,6 +164,7 @@ def test_features_condense_true_immortal_ok(tmp_path: Path) -> None:
                     user,
                     force_true_immortal=True,
                     spirit_stones=5000,
+                    cultivation_points=5000,
                 )
                 await session.commit()
                 from app.services.play_gate import PlayGate
@@ -277,7 +291,7 @@ def test_workshop_actor_gate(tmp_path: Path) -> None:
 
 
 def test_solo_battle_formation_gate(tmp_path: Path) -> None:
-    """化神前无本体编成拒绝 40093；化神后可存。"""
+    """任何境界无本体编成均拒绝（独战已取消）。"""
 
     async def _body() -> None:
         async with open_test_session_factory(tmp_path / "af6.db") as factory:
@@ -291,6 +305,7 @@ def test_solo_battle_formation_gate(tmp_path: Path) -> None:
                 panel = await av_svc.condense(user)
                 await session.commit()
                 avatar_id = panel["id"]
+                assert panel["major_realm"] == "jindan"
 
                 from app.services.play_gate import PlayGate
 
@@ -307,21 +322,16 @@ def test_solo_battle_formation_gate(tmp_path: Path) -> None:
                 ]
                 with pytest.raises(AppError) as exc:
                     await form_svc.validate_units(character, solo_units, "none")
-                assert exc.value.code == ERR_SOLO_FORMATION_INVALID
+                assert exc.value.code == 40042
 
-                # 抬到化神
                 await GmService(session).gm_set_character(
                     user, major_realm="huashen", realm_stage=1, spirit_stones=5000,
                 )
                 await session.commit()
                 character = await PlayGate(session).require_character(user)
-                assert is_feature_unlocked(
-                    character.major_realm,
-                    AvatarFeature.SOLO_BATTLE,
-                    feature_unlocks=get_game_config().avatar.feature_unlocks,
-                    realms=get_game_config().realms,
-                )
-                await form_svc.validate_units(character, solo_units, "none")
+                with pytest.raises(AppError) as exc2:
+                    await form_svc.validate_units(character, solo_units, "none")
+                assert exc2.value.code == 40042
 
     _run(_body())
 
@@ -351,7 +361,7 @@ def test_stamina_spend_and_daily(tmp_path: Path) -> None:
 
                 avatar.stamina = 1
                 with pytest.raises(AppError) as exc:
-                    svc.spend_avatar_action(avatar, character, action_key="solo_battle")
+                    svc.spend_avatar_action(avatar, character, action_key="quest_accept")
                 assert exc.value.code == 40091
 
                 # 灌满体力但日行动耗尽

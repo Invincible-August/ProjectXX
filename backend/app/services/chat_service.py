@@ -593,6 +593,7 @@ class ChatService:
         action: str,
         peer_character_id: int | None = None,
         peer_name: str | None = None,
+        peer_user_id: int | None = None,
         invite_id: int | None = None,
     ) -> dict[str, Any]:
         """
@@ -610,6 +611,7 @@ class ChatService:
                 character,
                 peer_character_id=peer_character_id,
                 peer_name=peer_name,
+                peer_user_id=peer_user_id,
             )
         if act == "accept":
             return await self._party_accept(character, invite_id=invite_id)
@@ -622,6 +624,7 @@ class ChatService:
                 character,
                 peer_character_id=peer_character_id,
                 peer_name=peer_name,
+                peer_user_id=peer_user_id,
             )
         if act in ("convert_to_team", "to_team", "upgrade_team"):
             return await self._party_convert_to_team(character)
@@ -785,13 +788,18 @@ class ChatService:
         *,
         peer_character_id: int | None,
         peer_name: str | None,
+        peer_user_id: int | None = None,
     ) -> dict[str, Any]:
         """
         Invite a peer into the inviter's open party (create party if needed).
 
         Gates: both online, social relation, invitee not in party, capacity.
         """
-        peer = await self._resolve_character(peer_character_id, peer_name)
+        peer = await self._resolve_character(
+            peer_character_id,
+            peer_name,
+            peer_user_id,
+        )
         if peer.id == character.id:
             raise AppError(code=40000, message="不可邀请自己", http_status=400)
 
@@ -1024,6 +1032,7 @@ class ChatService:
         *,
         peer_character_id: int | None,
         peer_name: str | None,
+        peer_user_id: int | None = None,
     ) -> dict[str, Any]:
         """Leader kicks a member out of the open party."""
         party = await self._active_party_for(character.id)
@@ -1035,7 +1044,11 @@ class ChatService:
                 message=f"仅{leader_label_zh(getattr(party, 'kind', None))}可踢出队友",
                 http_status=403,
             )
-        target = await self._resolve_character(peer_character_id, peer_name)
+        target = await self._resolve_character(
+            peer_character_id,
+            peer_name,
+            peer_user_id,
+        )
         if int(target.id) == int(character.id):
             raise AppError(code=40000, message="不可踢出自己，请使用离队", http_status=400)
         member = (
@@ -1141,21 +1154,17 @@ class ChatService:
         self,
         character_id: int | None,
         name: str | None,
+        user_id: int | None = None,
     ) -> Character:
-        if character_id is not None:
-            ch = await self._session.get(Character, int(character_id))
-            if ch is None:
-                raise AppError(code=40000, message="目标角色不存在", http_status=404)
-            return ch
-        nm = (name or "").strip()
-        if not nm:
-            raise AppError(code=40000, message="请提供目标角色 id 或道号", http_status=400)
-        ch = (
-            await self._session.execute(select(Character).where(Character.name == nm))
-        ).scalar_one_or_none()
-        if ch is None:
-            raise AppError(code=40000, message=f"找不到道号「{nm}」", http_status=404)
-        return ch
+        from app.services.character_resolve import resolve_character_ref
+
+        return await resolve_character_ref(
+            self._session,
+            character_id=character_id,
+            name=name,
+            user_id=user_id,
+            not_found_zh="目标",
+        )
 
     def _assert_rate(self, character_id: int) -> None:
         cfg = self._cfg()

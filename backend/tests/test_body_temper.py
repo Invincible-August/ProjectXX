@@ -76,6 +76,26 @@ def test_layer_advance_with_success_rate() -> None:
     assert character.body_temper_progress == 0
 
 
+def test_apply_progress_keeps_overflow_past_required() -> None:
+    """投入可超过本档门槛；淬体成功只扣门槛，超额带到下一档。"""
+    character = SimpleNamespace(
+        major_realm="body_tempering",
+        body_temper_stage="refine_skin",
+        body_temper_layer=1,
+        body_temper_layer_label="layer_1",
+        body_temper_progress=0,
+    )
+    apply_body_temper_progress(character, 80)
+    assert character.body_temper_progress == 80
+    result = attempt_quench(character, rng=random.Random(1))
+    if not result["success"]:
+        character.body_temper_progress = 80
+        result = attempt_quench(character, rng=random.Random(0))
+    assert result["success"] is True
+    assert character.body_temper_layer == 2
+    assert character.body_temper_progress == 30
+
+
 def test_quench_fail_keeps_progress_ratio() -> None:
     """失败按 keep_ratio 回退进度。"""
     character = SimpleNamespace(

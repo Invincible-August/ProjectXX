@@ -178,11 +178,16 @@ class BondService:
         *,
         target_character_id: int | None,
         target_name: str | None,
+        target_user_id: int | None = None,
     ) -> dict[str, Any]:
         """发起道侣申请（可接受/拒绝）。"""
         require_friends_enabled()
         character, _ = await self._gate.prepare_for_play(user, settle=True)
-        target = await self._resolve_target(target_character_id, target_name)
+        target = await self._resolve_target(
+            target_character_id,
+            target_name,
+            target_user_id,
+        )
         if target.id == character.id:
             raise AppError(code=40000, message="不可与自己结为道侣", http_status=400)
         await self._expire_stale()
@@ -516,20 +521,17 @@ class BondService:
         self,
         target_character_id: int | None,
         target_name: str | None,
+        target_user_id: int | None = None,
     ) -> Character:
-        if target_character_id is not None:
-            ch = await self._session.get(Character, int(target_character_id))
-        elif target_name:
-            ch = (
-                await self._session.execute(
-                    select(Character).where(Character.name == target_name.strip()).limit(1),
-                )
-            ).scalar_one_or_none()
-        else:
-            raise AppError(code=40000, message="请指定对方道号或角色 id", http_status=400)
-        if ch is None:
-            raise AppError(code=40005, message="目标角色不存在", http_status=404)
-        return ch
+        from app.services.character_resolve import resolve_character_ref
+
+        return await resolve_character_ref(
+            self._session,
+            character_id=target_character_id,
+            name=target_name,
+            user_id=target_user_id,
+            not_found_zh="对方",
+        )
 
     async def _bond_item(
         self,

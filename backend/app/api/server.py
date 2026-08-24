@@ -37,12 +37,30 @@ async def health_check(session: AsyncSession = Depends(get_db)) -> dict:
         db_status = "error"
 
     utc_now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    from app.db.runtime_url import is_postgres_url, is_sqlite_url, sqlite_file_from_url
+
+    database_url = settings.database_url
+    if is_sqlite_url(database_url):
+        dialect = "sqlite"
+        db_file = sqlite_file_from_url(database_url)
+        database_target = str(db_file) if db_file is not None else database_url
+    elif is_postgres_url(database_url):
+        dialect = "postgresql"
+        # 不回显密码：只报驱动与库名占位
+        database_target = "postgresql+asyncpg://***"
+    else:
+        dialect = "other"
+        database_target = "***"
+
     return success(
         {
             "status": "ok" if db_status == "ok" else "degraded",
             "app": settings.app_name,
             "env": settings.app_env,
             "db": db_status,
+            "database_dialect": dialect,
+            "database_target": database_target,
+            "content_store_mode": settings.content_store_mode,
             "time": utc_now,
         },
     )

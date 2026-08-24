@@ -114,12 +114,12 @@ class GradeService:
             item_def = cfg.constitution.items.get(item.def_id)
             if item_def is None:
                 continue
-            if item_def.kind == "main":
+            if slot.slot_type == "main":
                 main_affix_count += 1
             for key, value in item_def.base_attrs.items():
                 if key == "vitality":
                     vitality += int(value)
-            for key, value in item_def.effects.items():
+            for key, value in item_def.effects_for_slot(slot.slot_type).items():
                 if key == "atk_bonus":
                     atk_bonus += int(value)
                 elif key == "hp_bonus":

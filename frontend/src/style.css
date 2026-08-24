@@ -1031,3 +1031,126 @@ button {
   filter: brightness(1.06);
 }
 
+/* 悬停层挂到 body：深色底浅色字，避免浅色 tooltip 把字压成纯黑 */
+.game-hover-tip {
+  max-width: 18rem !important;
+  padding: 0.55rem 0.7rem !important;
+  line-height: 1.45;
+  white-space: normal !important;
+  word-break: break-word;
+  color: #f0f2f5 !important;
+}
+
+.item-hover-tip .item-hover-card {
+  min-width: 8.5rem;
+  color: #f0f2f5;
+}
+
+.item-hover-tip .item-hover-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-weight: 600;
+}
+
+.item-hover-tip .item-hover-corner {
+  color: #c0c4cc;
+  font-weight: 400;
+}
+
+.item-hover-tip .item-hover-sub,
+.item-hover-tip .item-hover-help {
+  margin-top: 0.25rem;
+  font-weight: 400;
+  color: #d3d7de;
+}
+
+.item-hover-tip .item-hover-help {
+  margin-top: 0.35rem;
+  max-width: 14rem;
+}
+
+.item-hover-tip .item-hover-elems {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
+}
+
+.item-hover-tip .item-hover-chip {
+  display: inline-block;
+  padding: 0 0.3rem;
+  border: 1px solid #909399;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #f0f2f5;
+}
+
+.item-hover-tip .item-hover-stats {
+  margin-top: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.item-hover-tip .item-hover-stat {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-weight: 400;
+  color: #e6e8eb;
+}
+
+.craft-inspect-tip {
+  max-width: 22rem !important;
+}
+
+.item-hover-tip .item-hover-card.has-inspect {
+  min-width: 16rem;
+}
+
+.item-hover-tip .item-hover-section {
+  margin-top: 0.45rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid rgba(201, 162, 39, 0.35);
+}
+
+.item-hover-tip .item-hover-section-title {
+  color: #c9a227;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  margin-bottom: 0.2rem;
+}
+
+.item-hover-tip .item-hover-block-label {
+  color: #a3a6ad;
+  font-size: 12px;
+  margin: 0.28rem 0 0.1rem;
+}
+
+.item-hover-tip .item-hover-kv-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.06rem 0.85rem;
+}
+
+.item-hover-tip .item-hover-realm {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.35rem;
+  color: #e6e8eb;
+}
+
+.item-hover-tip .item-hover-muted {
+  color: #909399;
+  font-size: 12px;
+}
+
+.item-hover-tip .has-inspect .item-hover-help {
+  max-width: none;
+  margin-top: 0.15rem;
+}
+
+

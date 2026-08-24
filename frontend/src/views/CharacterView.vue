@@ -1,20 +1,24 @@
 <script setup lang="ts">
 /**
- * 角色页：左属性（折叠详参）/ 右装备（体质）与功法。
+ * 角色页：左属性（折叠详参）/ 右装备 + 体质 + 功法 + 神通。
  */
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AuthSessionBar from '../components/AuthSessionBar.vue'
 import CharacterPanel from '../components/CharacterPanel.vue'
 import CharacterTechniquesPanel from '../components/character/CharacterTechniquesPanel.vue'
+import DivineAbilityPanel from '../components/character/DivineAbilityPanel.vue'
+import EquipmentSlotsPanel from '../components/character/EquipmentSlotsPanel.vue'
 import ConstitutionPanel from '../components/ConstitutionPanel.vue'
 import { useCharacterStore } from '../stores/character'
 import { createLogEntry, type GameLogEntry } from '../types/gameLog'
+import { canEnterWudao } from '../utils/realm'
 
 const router = useRouter()
 const characterStore = useCharacterStore()
 const loadError = ref('')
 const logHint = ref<GameLogEntry[]>([])
+const canWudao = computed(() => canEnterWudao(characterStore.character?.major_realm))
 
 function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
   logHint.value = [...logHint.value.slice(-19), createLogEntry(message, level)]
@@ -36,6 +40,14 @@ onMounted(async () => {
     <AuthSessionBar />
     <div class="character-title">
       <el-text tag="b" size="large">角色</el-text>
+      <el-button
+        v-if="canWudao"
+        type="warning"
+        size="small"
+        @click="router.push('/dao?actor=main')"
+      >
+        悟道
+      </el-button>
       <el-button size="small" @click="router.push('/hall')">← 大厅</el-button>
     </div>
 
@@ -53,8 +65,10 @@ onMounted(async () => {
         <CharacterPanel :character="characterStore.character" />
       </aside>
       <main class="character-right">
+        <EquipmentSlotsPanel @log="pushLog" />
         <ConstitutionPanel @log="pushLog" />
-        <CharacterTechniquesPanel />
+        <CharacterTechniquesPanel @log="pushLog" />
+        <DivineAbilityPanel @log="pushLog" />
         <el-card v-if="logHint.length" shadow="never" class="character-log">
           <template #header>
             <el-text tag="b" size="small">操作提示</el-text>

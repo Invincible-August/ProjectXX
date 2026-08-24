@@ -1,23 +1,25 @@
 <script setup lang="ts">
 /**
- * 化身页：凝练 / 功能看板 / 挂机 / 传修为 / 体力 / 神识 / 探索·任务桩入口。
+ * 化身页：未凝练仅配方槽+凝练；已凝练对齐角色页属性，并提供破除。
+ * 挂机方向在大厅修炼区操作，本页不再展示。
  */
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import AuthSessionBar from '../components/AuthSessionBar.vue'
+import CharacterPanel from '../components/CharacterPanel.vue'
 import AvatarCondensePanel from '../components/avatar/AvatarCondensePanel.vue'
-import AvatarFeaturesPanel from '../components/avatar/AvatarFeaturesPanel.vue'
-import AvatarAssistPanel from '../components/avatar/AvatarAssistPanel.vue'
-import AvatarIdlePanel from '../components/avatar/AvatarIdlePanel.vue'
-import AvatarStaminaPanel from '../components/avatar/AvatarStaminaPanel.vue'
 import AvatarTransferPanel from '../components/avatar/AvatarTransferPanel.vue'
-import DivineSenseBar from '../components/avatar/DivineSenseBar.vue'
-import { acceptAvatarQuest, fetchExploreStatus } from '../api/avatar'
+import CharacterTechniquesPanel from '../components/character/CharacterTechniquesPanel.vue'
+import DivineAbilityPanel from '../components/character/DivineAbilityPanel.vue'
+import EquipmentSlotsPanel from '../components/character/EquipmentSlotsPanel.vue'
 import { useAvatarStore } from '../stores/avatar'
 import { useCharacterStore } from '../stores/character'
+import type { CharacterPublic } from '../types/character'
 import type { GameLogEntry } from '../types/gameLog'
 import { createLogEntry } from '../types/gameLog'
+import { avatarAsCharacter } from '../utils/avatarAsCharacter'
+import { canEnterWudao } from '../utils/realm'
 
 const route = useRoute()
 const router = useRouter()
@@ -26,58 +28,54 @@ const characterStore = useCharacterStore()
 
 const loadError = ref('')
 const logEntries = ref<GameLogEntry[]>([])
-const exploreHint = ref('')
+const dismissBusy = ref(false)
 
 const hasAvatar = computed(
   () => Boolean(avatarStore.avatar) || Boolean(characterStore.character?.has_avatar),
 )
 const avatar = computed(() => avatarStore.avatar)
-const sense = computed(() => avatarStore.sense ?? characterStore.character?.divine_sense ?? null)
-const features = computed(
-  () => avatar.value?.features ?? avatarStore.features?.features ?? [],
-)
-const unlockPreview = computed(
-  () => avatar.value?.unlock_preview ?? avatarStore.features?.unlock_preview ?? null,
-)
-const majorRealm = computed(() => characterStore.character?.major_realm ?? '')
-/** M5：渡劫真态——化身不可上阵，挂机仍可用 */
 const inTribulation = computed(
   () => characterStore.character?.status === 'tribulation',
 )
-const workshopUnlocked = computed(
-  () => features.value.find((f) => f.feature_id === 'workshop_actor')?.unlocked ?? false,
-)
-const soloUnlocked = computed(
-  () => features.value.find((f) => f.feature_id === 'solo_battle')?.unlocked ?? false,
-)
-const friendAssistUnlocked = computed(
-  () => features.value.find((f) => f.feature_id === 'friend_assist')?.unlocked ?? false,
-)
+
+const avatarCharacter = computed((): CharacterPublic | null => {
+  const ch = characterStore.character
+  const av = avatar.value
+  if (!ch || !av) return ch
+  return avatarAsCharacter(ch, av)
+})
+const canWudao = computed(() => canEnterWudao(avatar.value?.major_realm))
 
 function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
   logEntries.value = [...logEntries.value.slice(-49), createLogEntry(message, level)]
 }
 
-async function loadExplore(): Promise<void> {
-  if (!hasAvatar.value) return
-  const envelope = await fetchExploreStatus()
-  if (envelope.code === 0 && envelope.data) {
-    exploreHint.value = envelope.data.message
-  }
-}
-
-async function onQuest(kind: 'npc' | 'sect'): Promise<void> {
-  const envelope = await acceptAvatarQuest(kind)
-  if (envelope.code !== 0) {
-    ElMessage.error(envelope.message || '任务闸拒绝')
-    pushLog(envelope.message || '任务未解锁', 'warning')
+async function onDismiss(): Promise<void> {
+  if (dismissBusy.value) return
+  try {
+    await ElMessageBox.confirm(
+      '破除后化身散去：修为池全额转入本体，淬体消失，装备回背包。凝练材料不退。确定破除？',
+      '破除化身',
+      {
+      confirmButtonText: '破除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch {
     return
   }
-  const msg = envelope.data?.message || '任务桩'
-  ElMessage.info(msg)
-  pushLog(msg, 'info')
-  if (envelope.data?.avatar) {
-    avatarStore.setAvatar(envelope.data.avatar)
+  dismissBusy.value = true
+  try {
+    const error = await avatarStore.dismiss()
+    if (error) {
+      ElMessage.error(error)
+      pushLog(error, 'warning')
+      return
+    }
+    ElMessage.success('化身已破除')
+    pushLog('化身已破除', 'success')
+  } finally {
+    dismissBusy.value = false
   }
 }
 
@@ -90,26 +88,11 @@ onMounted(async () => {
       return
     }
   }
-  const [avErr, senseErr] = await Promise.all([
-    avatarStore.load(),
-    avatarStore.loadSense(),
-  ])
+  const avErr = await avatarStore.load()
   if (avErr) loadError.value = avErr
-  if (senseErr) pushLog(senseErr, 'warning')
-  // 未凝练必须拉 /features（含 condense 权威闸）；已凝练则 /me 已带 features 时可省
-  const needFeatures =
-    !avatarStore.avatar ||
-    !avatarStore.features?.features?.length ||
-    !avatarStore.features?.condense
+  const needFeatures = !avatarStore.avatar || !avatarStore.features?.condense
   if (needFeatures) {
     await avatarStore.loadFeatures()
-  }
-  // 探索桩仅在已解锁 explore_proxy 时拉取（省未解锁角色的往返）
-  const exploreUnlocked = features.value.some(
-    (f) => f.feature_id === 'explore_proxy' && f.unlocked,
-  )
-  if (exploreUnlocked) {
-    await loadExplore()
   }
 
   if (route.query.tab === 'transfer') {
@@ -125,16 +108,21 @@ onMounted(async () => {
     <AuthSessionBar />
 
     <div class="page-title">
-      <el-button size="small" @click="router.push('/hall')">← 回大厅</el-button>
       <el-text tag="b" size="large">化身</el-text>
-      <el-text type="info" size="small">单化身 · 境界功能解锁</el-text>
+      <el-button
+        v-if="hasAvatar && canWudao"
+        type="warning"
+        size="small"
+        @click="router.push('/dao?actor=avatar')"
+      >
+        悟道
+      </el-button>
+      <el-button size="small" @click="router.push('/hall')">← 大厅</el-button>
     </div>
-
-    <DivineSenseBar :sense="sense" />
 
     <el-alert
       v-if="inTribulation"
-      title="渡劫中：化身不可上阵，挂机仍可用"
+      title="渡劫中：化身不可上阵；挂机请到大厅修炼区"
       type="warning"
       show-icon
       :closable="false"
@@ -150,138 +138,96 @@ onMounted(async () => {
       class="page-alert"
     />
 
-    <div class="avatar-grid">
-      <section class="avatar-main">
-        <AvatarFeaturesPanel
-          v-if="features.length"
-          :features="features"
-          :unlock-preview="unlockPreview"
-          :major-realm="majorRealm"
-        />
-
-        <AvatarCondensePanel v-if="!hasAvatar" @log="pushLog" />
-        <template v-else-if="avatar">
-          <el-card shadow="never" class="status-card">
-            <el-text tag="b">{{ avatar.name }}</el-text>
-            <el-tag size="small" type="info">{{ avatar.status }}</el-tag>
-            <el-text size="small" type="info">
-              攻防 {{ avatar.base_stats.atk ?? '?' }}/{{ avatar.base_stats.hp ?? '?' }}
-            </el-text>
-          </el-card>
-
-          <AvatarStaminaPanel v-if="avatar.stamina" :stamina="avatar.stamina" />
-          <AvatarAssistPanel
-            v-if="friendAssistUnlocked"
-            :avatar="avatar"
-            @log="pushLog"
-          />
-          <AvatarIdlePanel :avatar="avatar" :features="features" @log="pushLog" />
-          <AvatarTransferPanel :avatar="avatar" @log="pushLog" />
-
-          <el-card shadow="never">
-            <template #header>
-              <el-text tag="b">出战与探索</el-text>
-            </template>
-            <el-text size="small" type="info" class="block-hint">
-              {{
-                soloUnlocked
-                  ? '已解锁化身独战：布阵可不含本体。'
-                  : avatar.battle_modes?.solo_battle_hint || '化神后方可化身独战'
-              }}
-            </el-text>
-            <el-text v-if="exploreHint" size="small" type="info" class="block-hint">
-              {{ exploreHint }}
-            </el-text>
-            <div class="link-row">
-              <el-button
-                size="small"
-                :disabled="!workshopUnlocked"
-                @click="router.push('/workshop?actor=avatar')"
-              >
-                去工坊·化身队列
-              </el-button>
-              <el-button size="small" @click="router.push('/formation')">去布阵</el-button>
-              <el-button size="small" @click="onQuest('npc')">NPC 任务（桩）</el-button>
-              <el-button size="small" @click="onQuest('sect')">宗门任务（桩）</el-button>
-            </div>
-          </el-card>
-        </template>
-        <el-skeleton v-else animated :rows="4" />
-      </section>
-
-      <aside v-if="logEntries.length" class="avatar-log">
-        <el-card shadow="never">
-          <template #header>
-            <el-text tag="b" size="small">本页日志</el-text>
-          </template>
-          <div v-for="entry in logEntries" :key="entry.id" class="log-line">
-            <el-text size="small" :type="entry.level === 'warning' ? 'warning' : undefined">
-              {{ entry.message }}
-            </el-text>
-          </div>
-        </el-card>
-      </aside>
+    <div v-if="!hasAvatar" class="avatar-empty">
+      <AvatarCondensePanel @log="pushLog" />
     </div>
+
+    <div v-else-if="avatar" class="character-grid">
+      <aside class="character-left">
+        <CharacterPanel
+          :character="avatarCharacter"
+          variant="avatar"
+          @log="pushLog"
+        />
+        <el-button
+          type="danger"
+          plain
+          :loading="dismissBusy"
+          class="dismiss-btn"
+          @click="onDismiss"
+        >
+          破除化身
+        </el-button>
+      </aside>
+      <main class="character-right">
+        <EquipmentSlotsPanel actor="avatar" @log="pushLog" />
+        <CharacterTechniquesPanel actor="avatar" @log="pushLog" />
+        <DivineAbilityPanel actor="avatar" @log="pushLog" />
+        <AvatarTransferPanel :avatar="avatar" @log="pushLog" />
+        <el-card v-if="logEntries.length" shadow="never" class="character-log">
+          <template #header>
+            <el-text tag="b" size="small">操作提示</el-text>
+          </template>
+          <el-text
+            v-for="entry in logEntries.slice(-5)"
+            :key="entry.id"
+            size="small"
+            class="log-line"
+          >
+            {{ entry.message }}
+          </el-text>
+        </el-card>
+      </main>
+    </div>
+    <el-skeleton v-else animated :rows="6" />
   </div>
 </template>
 
 <style scoped>
 .avatar-page {
-  max-width: 900px;
+  max-width: 1100px;
   margin: 0 auto;
   padding: 1rem 1rem 2rem;
 }
 
 .page-title {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.75rem;
   margin: 0.75rem 0 1rem;
-  flex-wrap: wrap;
 }
 
 .page-alert {
   margin-bottom: 1rem;
 }
 
-.avatar-grid {
+.avatar-empty {
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.character-grid {
   display: grid;
-  grid-template-columns: 1fr minmax(180px, 240px);
+  grid-template-columns: minmax(280px, 420px) 1fr;
   gap: 1rem;
   align-items: start;
 }
 
-.avatar-main {
+.character-left,
+.character-right {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  min-width: 0;
 }
 
-.status-card :deep(.el-card__body) {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.link-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-}
-
-.block-hint {
+.character-log .log-line {
   display: block;
-  margin-bottom: 0.35rem;
-}
-
-.log-line {
   margin-bottom: 0.25rem;
 }
 
-@media (max-width: 700px) {
-  .avatar-grid {
+@media (max-width: 800px) {
+  .character-grid {
     grid-template-columns: 1fr;
   }
 }

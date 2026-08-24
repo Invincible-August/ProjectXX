@@ -18,6 +18,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.time_utils import now_utc, to_utc_iso
+from app.constants.battle import (
+    PIECE_KIND_AVATAR,
+    PIECE_KIND_MAIN,
+    PIECE_KIND_PET,
+    PIECE_KIND_PUPPET,
+    TRIAL_PUPPET_UID_PREFIX,
+)
+from app.constants.formation import (
+    FORMATION_DEFAULT_PRESET_SLOTS,
+    FORMATION_PRESET_ROLES,
+    FORMATION_PRESET_SLOT_COUNT,
+)
+from app.constants.inventory import ITEM_TYPE_PUPPET, Occupancy
 from app.db.models.avatar import Avatar
 from app.db.models.character import Character
 from app.db.models.inventory_item import InventoryItem
@@ -29,26 +42,76 @@ from app.domain.board import (
     max_units_for_realm,
     validate_placement,
 )
+from app.constants.research import PRIVATE_ID_PREFIX, SOURCE_LABEL_CUSTOM_ZH, SOURCE_LABEL_OFFICIAL_ZH
+from app.db.models.research import PrivateFormation
 from app.domain.formation_blueprint import (
     FormationDeploySnapshot,
     deploy_config_to_dict,
     force_shifts_to_dict,
+    parse_deploy_config,
+    parse_force_shifts,
+    parse_terrain_layout,
     resolve_formation_deploy,
+    validate_blueprint,
 )
+from app.domain.avatar_rules import ERR_SOLO_FORMATION_INVALID
 from app.schemas.common import AppError
-from app.services.realm_config import FormationDef, get_game_config
+from app.services.realm_config import (
+    FormationDef,
+    FormationLayerConfig,
+    FormationTerrainCell,
+    get_game_config,
+)
 
 logger = logging.getLogger(__name__)
 
-# 默认三槽：槽位 → (名称, 角色定位)
-_DEFAULT_SLOTS: tuple[tuple[int, str, str], ...] = (
-    (0, "进攻", "attack"),
-    (1, "防守", "defense"),
-    (2, "临时", "temp"),
-)
 
-# 合法角色定位枚举
-_VALID_ROLES = {"attack", "defense", "temp"}
+def parse_assist_anchor(raw: str | None) -> dict[str, int] | None:
+    """Parse ``{"x":int,"y":int}`` JSON; invalid/empty → None."""
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    try:
+        x_coord = int(data["x"])
+        y_coord = int(data["y"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not (0 <= x_coord <= 6 and 0 <= y_coord <= 6):
+        return None
+    return {"x": x_coord, "y": y_coord}
+
+
+def dump_assist_anchor(anchor: dict[str, Any] | None) -> str | None:
+    """Serialize assist anchor or None."""
+    if not anchor:
+        return None
+    try:
+        x_coord = int(anchor["x"])
+        y_coord = int(anchor["y"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return json.dumps({"x": x_coord, "y": y_coord}, ensure_ascii=False)
+
+
+def _parse_optional_layer(raw: Any) -> FormationLayerConfig | None:
+    """Parse an optional four-symbol layer from a blueprint dict."""
+    if not raw or not isinstance(raw, dict):
+        return None
+    layer_id = raw.get("id") or raw.get("layer_id")
+    if not layer_id:
+        return None
+    return FormationLayerConfig(
+        layer_id=str(layer_id),
+        force_apply=bool(raw.get("force_apply", False)),
+        counter_group=str(raw["counter_group"]) if raw.get("counter_group") else None,
+        atk_mul=float(raw.get("atk_mul", 1.0)),
+        hp_mul=float(raw.get("hp_mul", 1.0)),
+    )
 
 
 class FormationService:
@@ -72,9 +135,9 @@ class FormationService:
 
     def get_formation_def(self, formation_id: str, character: Character | None = None) -> FormationDef:
         """
-        查阵法定义；不存在或未解锁 → ``40044`` / ``40054``。
+        查官方阵法定义；不存在或未解锁 → ``40044`` / ``40054``。
 
-        M4：``unlocked_by_default`` 或 ``array_craft_level >= required_array_level``。
+        自研阵请用 ``resolve_formation_def``（读私有表）。
         """
         formations = get_game_config().formations.formations
         formation = formations.get(formation_id)
@@ -94,6 +157,100 @@ class FormationService:
                 )
             raise AppError(code=40044, message=f"阵法未解锁：{formation.name}", http_status=403)
         return formation
+
+    @staticmethod
+    def is_custom_formation_id(formation_id: str) -> bool:
+        """True when id uses the private custom prefix."""
+        return str(formation_id).startswith(f"{PRIVATE_ID_PREFIX}:formation:")
+
+    @staticmethod
+    def def_from_blueprint(
+        *,
+        formation_id: str,
+        name: str,
+        blueprint: dict[str, Any],
+        required_array_level: int = 0,
+    ) -> FormationDef:
+        """Build a FormationDef from a frozen/draft blueprint dict."""
+        terrain_raw = blueprint.get("terrain") or []
+        terrain_cells = tuple(
+            FormationTerrainCell(
+                x=int(item["x"]),
+                y=int(item["y"]),
+                terrain_type=str(item.get("type") or item.get("terrain_type") or ""),
+                subtype=str(item.get("subtype") or ""),
+            )
+            for item in terrain_raw
+        )
+        deploy = parse_deploy_config(blueprint.get("deploy"))
+        terrain_layout = parse_terrain_layout(
+            blueprint.get("terrain_layout"),
+            has_terrain=bool(terrain_cells),
+        )
+        force_shifts = parse_force_shifts(blueprint.get("force_shifts"))
+        return FormationDef(
+            formation_id=formation_id,
+            name=name,
+            level=int(blueprint.get("level") or 1),
+            unlocked_by_default=True,
+            required_array_level=required_array_level,
+            terrain=terrain_cells,
+            environment=_parse_optional_layer(blueprint.get("environment")),
+            weather=_parse_optional_layer(blueprint.get("weather")),
+            effect=_parse_optional_layer(blueprint.get("effect")),
+            deploy=deploy,
+            terrain_layout=terrain_layout,
+            force_shifts=force_shifts,
+        )
+
+    async def resolve_formation_def(
+        self,
+        formation_id: str,
+        character: Character | None = None,
+    ) -> FormationDef:
+        """Official YAML or the character's private frozen blueprint."""
+        if not self.is_custom_formation_id(formation_id):
+            return self.get_formation_def(formation_id, character)
+        result = await self._session.execute(
+            select(PrivateFormation).where(PrivateFormation.formation_id == formation_id).limit(1),
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            raise AppError(code=40044, message=f"阵法不存在：{formation_id}", http_status=404)
+        if character is not None and int(row.character_id) != int(character.id):
+            raise AppError(code=40044, message=f"阵法不存在：{formation_id}", http_status=404)
+        blueprint = json.loads(row.blueprint_json or "{}")
+        return self.def_from_blueprint(
+            formation_id=row.formation_id,
+            name=row.label_zh,
+            blueprint=blueprint,
+        )
+
+    async def list_private_formation_public(self, character: Character) -> list[dict[str, Any]]:
+        """Custom formations owned by the character, for the picker."""
+        result = await self._session.execute(
+            select(PrivateFormation)
+            .where(PrivateFormation.character_id == character.id)
+            .order_by(PrivateFormation.id),
+        )
+        items: list[dict[str, Any]] = []
+        for row in result.scalars().all():
+            blueprint = json.loads(row.blueprint_json or "{}")
+            formation = self.def_from_blueprint(
+                formation_id=row.formation_id,
+                name=row.label_zh,
+                blueprint=blueprint,
+            )
+            payload = self.formation_public_dict(
+                formation,
+                unlocked=True,
+                major_realm=character.major_realm,
+            )
+            payload["source"] = row.source
+            payload["source_label_zh"] = SOURCE_LABEL_CUSTOM_ZH
+            payload["revision"] = int(row.revision)
+            items.append(payload)
+        return items
 
     @staticmethod
     def get_formation_def_static(formation_id: str) -> FormationDef:
@@ -166,6 +323,8 @@ class FormationService:
             "effective_deploy_cells": sorted(snap.deploy_cells),
             "force_shifts": force_shifts_to_dict(formation.force_shifts),
             "max_units_formation": formation.deploy.max_units,
+            "source": "official",
+            "source_label_zh": SOURCE_LABEL_OFFICIAL_ZH,
         }
         if major_realm is not None:
             payload["max_units_effective"] = snap.max_units_for(
@@ -212,7 +371,10 @@ class FormationService:
 
     async def bench_units(self, character: Character) -> list[dict[str, Any]]:
         """
-        角色当前可上阵棋子（本体 + 化身 + 灵宠 + 傀儡库存 + 试炼木傀）。
+        角色当前可上阵棋子（本体 + 装备栏已上阵化身/灵宠/傀儡）。
+
+        化身须装备栏开关打开；灵宠须穿在灵宠槽；傀儡须编成板 occupancy=deployed。
+        试炼木傀不再进 Bench（未编成视为未装备）。阵法页不再计算神识。
 
         Returns:
             list[dict]: ``[{unit_uid, unit_kind, name, enabled, ref_id?}, ...]``。
@@ -220,116 +382,101 @@ class FormationService:
         board = get_game_config().board
         settings = get_settings()
         bench: list[dict[str, Any]] = [
-            {"unit_uid": "main", "unit_kind": "main", "name": "本体", "enabled": True},
+            {"unit_uid": "main", "unit_kind": PIECE_KIND_MAIN, "name": "本体", "enabled": True},
         ]
 
-        # 化身：已凝练且非 disabled / 渡劫禁上阵
+        # 化身：装备栏开关打开且已凝练
         avatar_gate = board.unit_kinds.get("avatar")
         avatar_enabled = bool(avatar_gate and avatar_gate.enabled and settings.avatar_enabled)
         result = await self._session.execute(
             select(Avatar).where(Avatar.character_id == character.id).limit(1),
         )
         avatar_row = result.scalar_one_or_none()
-        if avatar_row is not None:
+        if (
+            avatar_row is not None
+            and int(getattr(avatar_row, "is_deployed", 0) or 0) == 1
+        ):
             tribulation_block = character.status == "tribulation"
             av_ok = avatar_row.status != "disabled" and not tribulation_block
             bench.append(
                 {
                     "unit_uid": f"avatar_{avatar_row.id}",
-                    "unit_kind": "avatar",
+                    "unit_kind": PIECE_KIND_AVATAR,
                     "name": avatar_row.name,
                     "enabled": avatar_enabled and av_ok,
                     "ref_id": avatar_row.id,
                 },
             )
-        elif avatar_enabled:
-            bench.append(
-                {
-                    "unit_uid": "avatar",
-                    "unit_kind": "avatar",
-                    "name": "化身",
-                    "enabled": False,
-                },
-            )
 
-        # 灵宠
+        # 灵宠：仅装备栏灵宠槽
         pet_gate = board.unit_kinds.get("pet")
         pet_enabled = bool(pet_gate and pet_gate.enabled and settings.pets_enabled)
-        pet_result = await self._session.execute(
-            select(Pet).where(Pet.character_id == character.id).order_by(Pet.id),
-        )
-        pets = list(pet_result.scalars().all())
-        if pets:
-            for pet in pets:
+        from app.constants.equipment import EQUIPMENT_SLOT_PET
+        from app.db.models.character_equipment import CharacterEquipmentSlot
+        from app.db.models.inventory_item import InventoryItem
+        from app.services.pet_service import PetService
+
+        await PetService(self._session).ensure_all_inventory_faces(character.id)
+        pet_slot = (
+            await self._session.execute(
+                select(CharacterEquipmentSlot).where(
+                    CharacterEquipmentSlot.character_id == character.id,
+                    CharacterEquipmentSlot.slot == EQUIPMENT_SLOT_PET,
+                ),
+            )
+        ).scalar_one_or_none()
+        if pet_slot is not None and pet_slot.inventory_item_id is not None:
+            inv_pet = await self._session.get(InventoryItem, int(pet_slot.inventory_item_id))
+            pet_id = None
+            nickname = None
+            if inv_pet is not None:
+                try:
+                    meta = json.loads(inv_pet.meta_json or "{}")
+                except json.JSONDecodeError:
+                    meta = {}
+                if meta.get("pet_id"):
+                    pet_id = int(meta["pet_id"])
+                nickname = meta.get("nickname")
+            pet_row = None
+            if pet_id is not None:
+                pet_row = await self._session.get(Pet, pet_id)
+            if pet_row is not None:
                 bench.append(
                     {
-                        "unit_uid": f"pet_{pet.id}",
-                        "unit_kind": "pet",
-                        "name": pet.nickname or pet.species_id,
+                        "unit_uid": f"pet_{pet_row.id}",
+                        "unit_kind": PIECE_KIND_PET,
+                        "name": pet_row.nickname or nickname or pet_row.species_id,
                         "enabled": pet_enabled,
-                        "ref_id": pet.id,
+                        "ref_id": pet_row.id,
                     },
                 )
-        else:
-            bench.append(
-                {"unit_uid": "pet", "unit_kind": "pet", "name": "灵宠", "enabled": False},
-            )
 
-        # 背包傀儡 + 试炼木傀
+        # 编成板已上阵真傀（与角色页「上阵傀儡」同一数据源；不含试炼木傀）
         puppet_gate = board.unit_kinds.get("puppet")
         puppet_enabled = bool(puppet_gate and puppet_gate.enabled)
-        inv_result = await self._session.execute(
-            select(InventoryItem).where(
-                InventoryItem.character_id == character.id,
-                InventoryItem.item_type == "puppet",
-            ),
-        )
-        for inv in inv_result.scalars().all():
-            bench.append(
-                {
-                    "unit_uid": inv.item_uid,
-                    "unit_kind": "puppet",
-                    "name": inv.item_id,
-                    "enabled": puppet_enabled,
-                    "ref_id": inv.id,
-                },
-            )
-        for index in range(int(character.trial_puppet_count)):
-            bench.append(
-                {
-                    "unit_uid": f"puppet_{index + 1}",
-                    "unit_kind": "puppet",
-                    "name": "试炼木傀",
-                    "enabled": puppet_enabled,
-                },
-            )
+        from app.services.equipment_service import EquipmentService
+        from app.services.puppet_service import PuppetService
 
-        # 道友化身助战：借入中的客串化身出现在借用人 bench（仅 PVE 可用）
-        from app.services.avatar_assist_service import (
-            AvatarAssistService,
-            guest_unit_uid,
-        )
-
-        assist_svc = AvatarAssistService(self._session)
-        guest_sessions = await assist_svc.list_active_for_borrower(character.id)
-        for sess in guest_sessions:
-            owner = await self._session.get(Character, sess.owner_character_id)
-            avatar_guest = await self._session.get(Avatar, sess.avatar_id)
-            if avatar_guest is None or str(avatar_guest.status) == "disabled":
+        eq_svc = EquipmentService(self._session)
+        puppet_svc = PuppetService(self._session)
+        loadout, _bag = await eq_svc.list_puppet_loadout(character.id)
+        for entry in loadout:
+            uid = str(entry["item_uid"])
+            inv = await eq_svc._inventory_by_uid(character.id, uid)
+            if inv is None:
                 continue
-            owner_label = owner.name if owner else str(sess.owner_character_id)
+            actor = await puppet_svc.ensure_for_inventory_item(inv)
             bench.append(
                 {
-                    "unit_uid": guest_unit_uid(sess.owner_character_id, sess.avatar_id),
-                    "unit_kind": "avatar",
-                    "name": f"{owner_label}·{avatar_guest.name}",
-                    "enabled": avatar_enabled,
-                    "ref_id": avatar_guest.id,
-                    "owner_character_id": sess.owner_character_id,
-                    "assist_session_id": sess.id,
-                    "is_guest": True,
+                    "unit_uid": uid,
+                    "unit_kind": PIECE_KIND_PUPPET,
+                    "name": str(entry.get("label_zh") or actor.label_zh or inv.item_id or "傀儡"),
+                    "enabled": puppet_enabled,
+                    "ref_id": int(actor.id),
                 },
             )
+
+        # 客串化身不进棋子栏（AVATAR-D09：开战注入 assist_anchor）
         return bench
 
     # ------------------------------------------------------------------
@@ -341,20 +488,17 @@ class FormationService:
         character: Character,
         units: list[dict[str, Any]],
         formation_id: str,
+        *,
+        allow_guest: bool = False,
     ) -> None:
         """
-        校验一份布阵（占位 + 编成归属 + M4 持有物 + 化身独战闸）。
+        校验一份布阵（占位 + 编成归属 + M4 持有物）。
 
         异常:
-            AppError: 40041/40042/40043/40044/40054/40057/40090/40093。
+            AppError: 40041/40042/40043/40044/40054/40057/40090。
         """
-        from app.domain.avatar_rules import (
-            ERR_SOLO_FORMATION_INVALID,
-        )
-        from app.domain.m4_constants import AvatarFeature
-
         board = get_game_config().board
-        formation = self.get_formation_def(formation_id, character)
+        formation = await self.resolve_formation_def(formation_id, character)
         # 一次解析：禁停 + 有效区 + 上限
         snap = self.deploy_snapshot(formation)
         max_units = snap.max_units_for(
@@ -363,36 +507,6 @@ class FormationService:
             formation_max_units=formation.deploy.max_units,
         )
 
-        has_main = any(str(u.get("unit_kind")) == "main" for u in units)
-        has_avatar = any(str(u.get("unit_kind")) == "avatar" for u in units)
-        solo_mode = not has_main
-        # 走预计算能力索引，避免每次布阵重扫境界链
-        cap_idx = get_game_config().avatar.capability
-        if cap_idx is None:
-            from app.domain.avatar_capability import AvatarCapabilityIndex
-
-            cap_idx = AvatarCapabilityIndex.from_config(
-                get_game_config().avatar,
-                get_game_config().realms,
-            )
-        solo_unlocked = cap_idx.is_unlocked(
-            character.major_realm,
-            AvatarFeature.SOLO_BATTLE,
-        )
-        if solo_mode:
-            if not solo_unlocked:
-                raise AppError(
-                    code=ERR_SOLO_FORMATION_INVALID,
-                    message="化神后方可化身独战（编成须含本体）",
-                    http_status=400,
-                )
-            if not has_avatar:
-                raise AppError(
-                    code=ERR_SOLO_FORMATION_INVALID,
-                    message="独战编成须至少含化身",
-                    http_status=400,
-                )
-
         try:
             validate_placement(
                 units,
@@ -400,8 +514,8 @@ class FormationService:
                 max_units=max_units,
                 blocked_cells=snap.blocked_cells,
                 deploy_zone=snap.deploy_cells,
-                require_main=not solo_mode,
-                allow_solo_avatar=solo_mode,
+                require_main=True,
+                allow_solo_avatar=False,
             )
         except PlacementError as exc:
             raise AppError(code=exc.code, message=exc.message, http_status=400) from exc
@@ -412,7 +526,6 @@ class FormationService:
         }
 
         seen_uids: set[str] = set()
-        trial_puppet_used = 0
         guest_count = 0
         from app.services.avatar_assist_service import (
             AvatarAssistService,
@@ -428,11 +541,17 @@ class FormationService:
                 raise AppError(code=40041, message=f"棋子重复上阵：{uid}", http_status=400)
             seen_uids.add(uid)
 
-            if kind == "avatar":
+            if kind == PIECE_KIND_AVATAR:
                 if character.status == "tribulation":
                     raise AppError(code=40042, message="渡劫中禁止化身上阵", http_status=400)
                 guest_ids = parse_guest_unit_uid(uid)
                 if guest_ids is not None:
+                    if not allow_guest:
+                        raise AppError(
+                            code=40041,
+                            message="道友助战请布置助战位置，不要把客串化身存进棋子栏",
+                            http_status=400,
+                        )
                     # 客串化身：须有 active 助战会话，且归属正确
                     guest_count += 1
                     if guest_count > 1:
@@ -477,7 +596,7 @@ class FormationService:
                         raise AppError(code=40051, message="化身不可用", http_status=400)
                     if ref is not None and int(ref) != av.id:
                         raise AppError(code=40057, message="化身 ref_id 非法", http_status=400)
-            elif kind == "pet":
+            elif kind == PIECE_KIND_PET:
                 ref_id = unit.get("ref_id")
                 # 兼容：unit_uid=pet_{id} 且未传 ref_id 时回填
                 if ref_id is None and uid.startswith("pet_"):
@@ -495,30 +614,40 @@ class FormationService:
                 )
                 if pet_result.scalar_one_or_none() is None:
                     raise AppError(code=40057, message="灵宠不存在或不属于当前角色", http_status=400)
-            elif kind == "puppet":
-                if uid.startswith("puppet_") and uid[7:].isdigit():
-                    trial_puppet_used += 1
-                else:
-                    inv_result = await self._session.execute(
-                        select(InventoryItem.id).where(
-                            InventoryItem.character_id == character.id,
-                            InventoryItem.item_uid == uid,
-                            InventoryItem.item_type == "puppet",
-                        ).limit(1),
+            elif kind == PIECE_KIND_PUPPET:
+                if uid.startswith(TRIAL_PUPPET_UID_PREFIX) and uid[len(TRIAL_PUPPET_UID_PREFIX) :].isdigit():
+                    raise AppError(
+                        code=40041,
+                        message="傀儡未编成，不可上阵",
+                        http_status=400,
                     )
-                    if inv_result.scalar_one_or_none() is None:
-                        raise AppError(code=40041, message=f"傀儡未持有：{uid}", http_status=400)
+                inv_result = await self._session.execute(
+                    select(InventoryItem).where(
+                        InventoryItem.character_id == character.id,
+                        InventoryItem.item_uid == uid,
+                        InventoryItem.item_type == ITEM_TYPE_PUPPET,
+                    ).limit(1),
+                )
+                inv = inv_result.scalar_one_or_none()
+                if inv is None:
+                    raise AppError(code=40041, message=f"傀儡未持有：{uid}", http_status=400)
+                from app.services.inventory_service import InventoryService
+                from app.services.puppet_service import PuppetService
+
+                if InventoryService(self._session).read_meta_occupancy(inv) != Occupancy.DEPLOYED:
+                    raise AppError(
+                        code=40041,
+                        message=f"傀儡未编成，不可上阵：{uid}",
+                        http_status=400,
+                    )
+                actor = await PuppetService(self._session).ensure_for_inventory_item(inv)
+                if unit.get("ref_id") is not None and int(unit["ref_id"]) != int(actor.id):
+                    raise AppError(code=40057, message="傀儡 ref_id 非法", http_status=400)
+                unit["ref_id"] = int(actor.id)
 
             key = (kind, uid)
             if key in bench_index and not bench_index[key].get("enabled", False):
                 raise AppError(code=40043, message=f"棋子类型未开放或未持有：{kind}", http_status=400)
-
-        if trial_puppet_used > int(character.trial_puppet_count):
-            raise AppError(
-                code=40041,
-                message=f"试炼木傀数量不足（持有 {character.trial_puppet_count} 个）",
-                http_status=400,
-            )
 
     # ------------------------------------------------------------------
     # 预设 CRUD
@@ -537,7 +666,7 @@ class FormationService:
             [
                 {
                     "unit_uid": "main",
-                    "unit_kind": "main",
+                    "unit_kind": PIECE_KIND_MAIN,
                     "x": anchor_x,
                     "y": anchor_y,
                 },
@@ -546,7 +675,7 @@ class FormationService:
         )
 
     async def ensure_default_presets(self, character: Character) -> None:
-        """确保角色拥有默认三槽预设（惰性种子，兼容 M3 前旧号）。"""
+        """确保角色拥有默认五槽预设（惰性种子，兼容旧号缺槽）。"""
         result = await self._session.execute(
             select(FormationPreset.slot).where(
                 FormationPreset.character_id == character.id,
@@ -555,7 +684,7 @@ class FormationService:
         existing_slots = {row[0] for row in result.all()}
         created = False
         default_units = self._default_units_json()
-        for slot, name, role in _DEFAULT_SLOTS:
+        for slot, name, role in FORMATION_DEFAULT_PRESET_SLOTS:
             if slot in existing_slots:
                 continue
             self._session.add(
@@ -577,8 +706,8 @@ class FormationService:
         """
         清空并重种默认阵法预设（轮回结算用）。
 
-        删除该角色全部布阵行后，按默认三槽（进攻/防守/临时）重新插入：
-        ``formation_id=none``、仅本体锚点单位。
+        删除该角色全部布阵行后，按默认五槽重新插入：
+        ``formation_id=none``、仅本体锚点单位。内部 role 仍区分攻/守回退。
 
         Args:
             character: 角色实体。
@@ -596,9 +725,9 @@ class FormationService:
         logger.info(
             "formation presets reset character_id=%s slots=%s",
             character.id,
-            len(_DEFAULT_SLOTS),
+            FORMATION_PRESET_SLOT_COUNT,
         )
-        return len(_DEFAULT_SLOTS)
+        return FORMATION_PRESET_SLOT_COUNT
 
     @staticmethod
     def preset_to_dict(preset: FormationPreset) -> dict[str, Any]:
@@ -609,6 +738,9 @@ class FormationService:
             "role": preset.role,
             "formation_id": preset.formation_id,
             "units": json.loads(preset.units_json or "[]"),
+            "assist_anchor": parse_assist_anchor(
+                getattr(preset, "assist_anchor_json", None),
+            ),
             "updated_at": to_utc_iso(preset.updated_at),
         }
 
@@ -644,27 +776,50 @@ class FormationService:
             )
         ).scalar_one_or_none()
         avatar_ok = (
-            avatar_row is not None and str(avatar_row.status) != "disabled"
+            avatar_row is not None
+            and str(avatar_row.status) != "disabled"
+            and int(getattr(avatar_row, "is_deployed", 0) or 0) == 1
         )
         avatar_id = int(avatar_row.id) if avatar_row is not None else None
 
-        pet_rows = (
+        pet_ids: set[int] = set()
+        from app.constants.equipment import EQUIPMENT_SLOT_PET
+        from app.db.models.character_equipment import CharacterEquipmentSlot
+
+        pet_slot = (
             await self._session.execute(
-                select(Pet.id).where(Pet.character_id == character.id),
+                select(CharacterEquipmentSlot).where(
+                    CharacterEquipmentSlot.character_id == character.id,
+                    CharacterEquipmentSlot.slot == EQUIPMENT_SLOT_PET,
+                ),
             )
-        ).all()
-        pet_ids = {int(row[0]) for row in pet_rows}
+        ).scalar_one_or_none()
+        if pet_slot is not None and pet_slot.inventory_item_id is not None:
+            inv_pet = await self._session.get(InventoryItem, int(pet_slot.inventory_item_id))
+            if inv_pet is not None:
+                try:
+                    meta = json.loads(inv_pet.meta_json or "{}")
+                except json.JSONDecodeError:
+                    meta = {}
+                if meta.get("pet_id"):
+                    pet_ids.add(int(meta["pet_id"]))
 
         inv_rows = (
             await self._session.execute(
-                select(InventoryItem.item_uid).where(
+                select(InventoryItem).where(
                     InventoryItem.character_id == character.id,
-                    InventoryItem.item_type == "puppet",
+                    InventoryItem.item_type == ITEM_TYPE_PUPPET,
                 ),
             )
-        ).all()
-        puppet_uids = {str(row[0]) for row in inv_rows}
-        trial_count = int(character.trial_puppet_count)
+        ).scalars().all()
+        from app.services.inventory_service import InventoryService
+
+        inv_svc = InventoryService(self._session)
+        puppet_uids = {
+            str(row.item_uid)
+            for row in inv_rows
+            if inv_svc.read_meta_occupancy(row) == Occupancy.DEPLOYED
+        }
 
         removed_total = 0
         for preset in presets:
@@ -687,7 +842,20 @@ class FormationService:
                 ref = raw.get("ref_id")
 
                 drop = False
-                if kind == "avatar":
+                from app.services.avatar_assist_service import parse_guest_unit_uid
+
+                guest_ids = parse_guest_unit_uid(uid)
+                if guest_ids is not None:
+                    # 旧预设把客串当棋子：迁到助战锚点后撤下
+                    if parse_assist_anchor(getattr(preset, "assist_anchor_json", None)) is None:
+                        try:
+                            preset.assist_anchor_json = dump_assist_anchor(
+                                {"x": int(raw.get("x")), "y": int(raw.get("y"))},
+                            )
+                        except (TypeError, ValueError):
+                            pass
+                    drop = True
+                elif kind == PIECE_KIND_AVATAR:
                     if not avatar_ok:
                         drop = True
                     else:
@@ -697,18 +865,17 @@ class FormationService:
                         elif uid.startswith("avatar_") and uid[7:].isdigit():
                             if int(uid[7:]) != avatar_id:
                                 drop = True
-                elif kind == "pet":
+                elif kind == PIECE_KIND_PET:
                     pet_ref = ref
                     if pet_ref is None and uid.startswith("pet_") and uid[4:].isdigit():
                         pet_ref = int(uid[4:])
                     if pet_ref is None or int(pet_ref) not in pet_ids:
                         drop = True
-                elif kind == "puppet":
-                    if uid.startswith("puppet_") and uid[7:].isdigit():
-                        idx = int(uid[7:])
-                        if idx < 1 or idx > trial_count:
-                            drop = True
-                    elif uid not in puppet_uids:
+                elif kind == PIECE_KIND_PUPPET:
+                    is_trial = uid.startswith(TRIAL_PUPPET_UID_PREFIX) and uid[
+                        len(TRIAL_PUPPET_UID_PREFIX) :
+                    ].isdigit()
+                    if is_trial or uid not in puppet_uids:
                         drop = True
                 # main 与其它 kind 保留（占位校验另走）
 
@@ -761,6 +928,7 @@ class FormationService:
             )
             for f in formations_cfg.formations.values()
         ]
+        formations.extend(await self.list_private_formation_public(character))
         board = get_game_config().board
         # 列表级 max_units 仍按默认部署区；单预设以当前阵法 effective 为准（前端另读）
         return {
@@ -768,6 +936,7 @@ class FormationService:
             "formations": formations,
             "bench": await self.bench_units(character),
             "max_units": max_units_for_realm(board, character.major_realm),
+            "assist_guest": await self._assist_guest_summary(character),
         }
 
     async def get_preset(self, character: Character, slot: int) -> FormationPreset:
@@ -794,6 +963,7 @@ class FormationService:
         role: str,
         formation_id: str,
         units: list[dict[str, Any]],
+        assist_anchor: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
         保存一个预设槽（校验占位后写库；**不**自动更新防守快照）。
@@ -801,12 +971,20 @@ class FormationService:
         异常:
             AppError: ``40040`` 槽位非法；占位类错误见 ``validate_units``。
         """
-        if slot < 0 or slot >= len(_DEFAULT_SLOTS):
+        if slot < 0 or slot >= FORMATION_PRESET_SLOT_COUNT:
             raise AppError(code=40040, message=f"预设槽位非法：{slot}", http_status=400)
-        if role not in _VALID_ROLES:
+        if role not in FORMATION_PRESET_ROLES:
             raise AppError(code=40000, message=f"无效预设定位：{role}", http_status=400)
 
+        from app.services.avatar_assist_service import parse_guest_unit_uid
+
+        units = [
+            unit
+            for unit in units
+            if parse_guest_unit_uid(str(unit.get("unit_uid", ""))) is None
+        ]
         await self.validate_units(character, units, formation_id)
+        await self._validate_assist_anchor(character, units, formation_id, assist_anchor)
 
         await self.ensure_default_presets(character)
         preset = await self.get_preset(character, slot)
@@ -814,16 +992,133 @@ class FormationService:
         preset.role = role
         preset.formation_id = formation_id
         preset.units_json = json.dumps(units, ensure_ascii=False)
+        preset.assist_anchor_json = dump_assist_anchor(assist_anchor)
         preset.updated_at = now_utc()
         await self._session.flush()
         logger.info(
-            "formation preset saved character_id=%s slot=%s formation=%s units=%s",
+            "formation preset saved character_id=%s slot=%s formation=%s units=%s anchor=%s",
             character.id,
             slot,
             formation_id,
             len(units),
+            bool(assist_anchor),
         )
         return self.preset_to_dict(preset)
+
+    async def _validate_assist_anchor(
+        self,
+        character: Character,
+        units: list[dict[str, Any]],
+        formation_id: str,
+        assist_anchor: dict[str, Any] | None,
+    ) -> None:
+        """助战锚点须在可部署区、不与棋子重叠，并预留一格上阵上限。"""
+        parsed = parse_assist_anchor(dump_assist_anchor(assist_anchor)) if assist_anchor else None
+        if parsed is None:
+            if assist_anchor:
+                raise AppError(code=40041, message="助战位置坐标非法", http_status=400)
+            return
+        board = get_game_config().board
+        formation = await self.resolve_formation_def(formation_id, character)
+        snap = self.deploy_snapshot(formation)
+        max_units = snap.max_units_for(
+            board,
+            character.major_realm,
+            formation_max_units=formation.deploy.max_units,
+        )
+        cell = (int(parsed["x"]), int(parsed["y"]))
+        if cell in snap.blocked_cells:
+            raise AppError(code=40041, message="助战位置被阵法地形占用", http_status=400)
+        if cell not in snap.deploy_cells:
+            raise AppError(code=40041, message="助战位置不在可部署区", http_status=400)
+        if any(int(unit.get("x", -1)) == cell[0] and int(unit.get("y", -1)) == cell[1] for unit in units):
+            raise AppError(code=40041, message="助战位置不可与已有棋子重叠", http_status=400)
+        if len(units) + 1 > max_units:
+            raise AppError(
+                code=40041,
+                message="助战位置计入上阵上限，请先撤下一枚棋子",
+                http_status=400,
+            )
+
+    async def _assist_guest_summary(self, character: Character) -> dict[str, Any] | None:
+        """当前借入的道友化身摘要（阵法页助战栏展示；无会话为 None）。"""
+        from app.services.avatar_assist_service import AvatarAssistService, guest_unit_uid
+
+        assist_svc = AvatarAssistService(self._session)
+        sessions = await assist_svc.list_active_for_borrower(character.id)
+        if not sessions:
+            return None
+        sess = sessions[0]
+        owner = await self._session.get(Character, sess.owner_character_id)
+        avatar_guest = await self._session.get(Avatar, sess.avatar_id)
+        if avatar_guest is None or str(avatar_guest.status) == "disabled":
+            return None
+        owner_label = owner.name if owner else str(sess.owner_character_id)
+        return {
+            "session_id": sess.id,
+            "unit_uid": guest_unit_uid(sess.owner_character_id, sess.avatar_id),
+            "name": f"{owner_label}·{avatar_guest.name}",
+            "owner_character_id": sess.owner_character_id,
+            "ref_id": avatar_guest.id,
+        }
+
+    async def inject_assist_guest(
+        self,
+        character: Character,
+        units: list[dict[str, Any]],
+        assist_anchor: dict[str, int] | None,
+        *,
+        formation_id: str,
+    ) -> list[dict[str, Any]]:
+        """
+        PVE 开战：有活跃助战会话则把客串化身注入锚点。
+
+        无会话：原样返回。有会话无锚点 → 40093。
+        """
+        summary = await self._assist_guest_summary(character)
+        if summary is None:
+            return units
+        if assist_anchor is None:
+            raise AppError(
+                code=ERR_SOLO_FORMATION_INVALID,
+                message="请先在阵法页布置助战位置",
+                http_status=400,
+            )
+        x_coord = int(assist_anchor["x"])
+        y_coord = int(assist_anchor["y"])
+        if any(int(unit.get("x", -1)) == x_coord and int(unit.get("y", -1)) == y_coord for unit in units):
+            raise AppError(
+                code=ERR_SOLO_FORMATION_INVALID,
+                message="助战位置与已有棋子重叠",
+                http_status=400,
+            )
+        board = get_game_config().board
+        formation = await self.resolve_formation_def(formation_id, character)
+        snap = self.deploy_snapshot(formation)
+        max_units = snap.max_units_for(
+            board,
+            character.major_realm,
+            formation_max_units=formation.deploy.max_units,
+        )
+        if len(units) + 1 > max_units:
+            raise AppError(
+                code=40041,
+                message="上阵数量已达上限，请先给助战留一格",
+                http_status=400,
+            )
+        injected = [dict(unit) for unit in units]
+        injected.append(
+            {
+                "unit_uid": summary["unit_uid"],
+                "unit_kind": PIECE_KIND_AVATAR,
+                "x": x_coord,
+                "y": y_coord,
+                "ref_id": summary["ref_id"],
+                "owner_character_id": summary["owner_character_id"],
+                "is_guest": True,
+            },
+        )
+        return injected
 
     async def _get_role_preset(
         self,

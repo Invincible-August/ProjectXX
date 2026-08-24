@@ -12,8 +12,10 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants.inventory import ERR_BLUEPRINT_TYPE_MISMATCH, ItemType
 from app.core.time_utils import now_utc
 from app.db.models import Character, User
+from app.db.models.inventory_item import InventoryItem
 from app.db.models.sect import (
     Sect,
     SectContributionLedger,
@@ -31,6 +33,12 @@ from app.db.models.sect import (
 )
 from app.domain.dice_rules import chance
 from app.domain.game_day import game_day_number
+from app.domain.sect_blueprint_rules import (
+    blueprint_catalog_item_id,
+    manual_kind_matches_workshop,
+    recipe_branch_matches_workshop,
+    workshop_manual_kind,
+)
 from app.domain.sect_org_rules import (
     council_action_allowed,
     deposit_type_forbidden,
@@ -42,6 +50,7 @@ from app.domain.sect_org_rules import (
 )
 from app.schemas.common import AppError
 from app.services.calendar_service import CalendarService
+from app.services.inventory_service import InventoryService
 from app.services.play_gate import PlayGate
 from app.services.realm_config import get_game_config
 from app.services.sect_org_service import SectOrgService
@@ -229,7 +238,15 @@ class SectFacilityService:
         ):
             raise AppError(code=40000, message="无权向该页放入物品", http_status=403)
         forbidden = list((cfg.treasury or {}).get("forbidden_deposit_types") or [])
-        if deposit_type_forbidden(item_type, forbidden):
+        inv_cfg = get_game_config().inventory
+        defn = inv_cfg.items.get(str(item_id))
+        resolved_type = str(defn.item_type) if defn is not None else str(item_type)
+        resolved_kind = str(defn.manual_kind) if defn is not None and defn.manual_kind else None
+        if deposit_type_forbidden(
+            resolved_type,
+            forbidden,
+            manual_kind=resolved_kind,
+        ):
             raise AppError(
                 code=40000,
                 message="不可将锻造/符箓/丹方/傀儡图纸放入藏宝阁",
@@ -240,10 +257,10 @@ class SectFacilityService:
         row = SectTreasuryItem(
             sect_id=sect.id,
             page=int(page),
-            item_type=str(item_type),
+            item_type=resolved_type,
             item_id=str(item_id),
             quantity=int(quantity),
-            label_zh=label_zh,
+            label_zh=label_zh or (defn.name if defn else None),
             deposited_by=character.id,
         )
         self._session.add(row)
@@ -587,7 +604,7 @@ class SectFacilityService:
         require_sect_system_enabled()
         gate = self._workshop_gate(branch)
         self._require_facility_gate(gate)
-        _c, sect, member = await self._ctx(user)
+        character, sect, member = await self._ctx(user)
         await self._org.ensure_sect_org_fields(sect)
         cfg = self._cfg()
         bps = await self._merged_blueprints(sect_id=sect.id, branch=branch)
@@ -602,11 +619,79 @@ class SectFacilityService:
             for cid, body in cfg.craftsmen.items()
             if str(body.get("branch")) == branch
         ]
+        inv_cfg = get_game_config().inventory
+        bag_rows = (
+            await self._session.execute(
+                select(InventoryItem).where(
+                    InventoryItem.character_id == character.id,
+                    InventoryItem.item_type == ItemType.MANUAL,
+                ),
+            )
+        ).scalars().all()
+        bag_blueprints: list[dict[str, Any]] = []
+        for row in bag_rows:
+            meta: dict[str, Any] = {}
+            if row.meta_json:
+                try:
+                    parsed = json.loads(row.meta_json)
+                    if isinstance(parsed, dict):
+                        meta = parsed
+                except json.JSONDecodeError:
+                    meta = {}
+            defn = inv_cfg.items.get(str(row.item_id))
+            kind = str(
+                meta.get("manual_kind")
+                or (defn.manual_kind if defn is not None else "")
+                or "",
+            )
+            if not manual_kind_matches_workshop(kind, branch):
+                continue
+            bag_blueprints.append(
+                {
+                    "inventory_item_id": row.id,
+                    "item_id": row.item_id,
+                    "quantity": int(row.quantity),
+                    "label_zh": str(
+                        meta.get("label_zh")
+                        or (defn.name if defn is not None else row.item_id),
+                    ),
+                    "manual_kind": kind,
+                    "unlock_recipe_id": str(
+                        meta.get("unlock_recipe_id")
+                        or (defn.unlock_recipe_id if defn is not None else "")
+                        or "",
+                    ),
+                },
+            )
+        jobs = (
+            await self._session.execute(
+                select(SectCraftJob)
+                .where(
+                    SectCraftJob.character_id == character.id,
+                    SectCraftJob.branch == branch,
+                    SectCraftJob.status == "running",
+                )
+                .order_by(SectCraftJob.id),
+            )
+        ).scalars().all()
+        now = now_utc()
+        my_jobs = [
+            {
+                "job_id": j.id,
+                "recipe_id": j.recipe_id,
+                "finish_at": j.finish_at.isoformat() if j.finish_at else None,
+                "ready": bool(j.finish_at and now >= j.finish_at),
+                "quality": bool(j.quality),
+            }
+            for j in jobs
+        ]
         return {
             "branch": branch,
             "branch_label_zh": self._workshop_label_zh(branch),
             "blueprints": bps,
             "craftsmen": craftsmen,
+            "bag_blueprints": bag_blueprints,
+            "my_jobs": my_jobs,
             "contrib": int(member.contribution),
         }
 
@@ -617,16 +702,19 @@ class SectFacilityService:
         branch: str,
         recipe_id: str,
     ) -> dict[str, Any]:
-        """贡献兑换工坊图纸（须在目录且可售）。"""
+        """贡献兑换工坊图纸（须在目录且可售）；图纸入背包 ``item_type=manual``。"""
         require_sect_system_enabled()
         self._require_facility_gate(self._workshop_gate(branch))
-        _c, sect, member = await self._ctx(user)
+        character, sect, member = await self._ctx(user)
         bps = await self._merged_blueprints(sect_id=sect.id, branch=branch)
         hit = next((x for x in bps if str(x.get("recipe_id")) == recipe_id), None)
         if hit is None:
             raise AppError(code=40000, message="图纸未收录", http_status=400)
         if not bool(hit.get("sellable", True)):
             raise AppError(code=40000, message="该图纸不可兑换", http_status=400)
+        kind = workshop_manual_kind(branch)
+        if kind is None:
+            raise AppError(code=40000, message="未知工坊分支", http_status=400)
         cost = int(hit.get("cost_contribution") or 0)
         await self._apply_contrib(
             member,
@@ -634,10 +722,27 @@ class SectFacilityService:
             reason="workshop_blueprint_exchange",
             note_zh=f"{self._workshop_label_zh(branch)}兑换 {hit.get('label_zh')}",
         )
+        item_id = blueprint_catalog_item_id(recipe_id)
+        inv_cfg = get_game_config().inventory
+        defn = inv_cfg.items.get(item_id)
+        label = str(hit.get("label_zh") or (defn.name if defn else recipe_id))
+        await InventoryService(self._session).add_item(
+            character.id,
+            item_type=ItemType.MANUAL,
+            item_id=item_id if defn is not None else item_id,
+            quantity=1,
+            meta={
+                "manual_kind": kind if defn is None else (defn.manual_kind or kind),
+                "unlock_recipe_id": recipe_id,
+                "label_zh": label,
+                "source": "sect_exchange",
+            },
+        )
         await self._session.flush()
         return {
-            "message": f"已兑换「{hit.get('label_zh') or recipe_id}」",
+            "message": f"已兑换「{label}」入背包",
             "recipe_id": recipe_id,
+            "item_id": item_id,
             "contrib": int(member.contribution),
         }
 
@@ -650,34 +755,22 @@ class SectFacilityService:
         label_zh: str,
         cost_contribution: int = 40,
         self_research: bool = False,
+        inventory_item_id: int | None = None,
     ) -> dict[str, Any]:
         """
-        上缴图纸：未收录可获贡献；已收录拒绝；自创须审核。
+        上缴图纸：非自研须消耗背包 ``manual`` 行并校验 ``manual_kind``；
+        未收录可获贡献；已收录拒绝；自创须审核。
         """
         require_sect_system_enabled()
         self._require_facility_gate(self._workshop_gate(branch))
         character, sect, member = await self._ctx(user)
-        cfg = self._cfg()
         recipes = get_game_config().craft_recipes.recipes
-        if recipe_id not in recipes and not self_research:
-            raise AppError(code=40000, message="未知配方，自创请勾选自研", http_status=400)
-        # 分支与配方一致性（自研可跳过）
-        if recipe_id in recipes:
-            recipe_branch = str(getattr(recipes[recipe_id], "branch", "") or "")
-            # puppet 归入 talisman（服务工坊）
-            if recipe_branch == "puppet":
-                recipe_branch = "talisman"
-            if recipe_branch and recipe_branch != branch:
-                raise AppError(
-                    code=40000,
-                    message=f"该图纸不属于{self._workshop_label_zh(branch)}",
-                    http_status=400,
-                )
-        existing = await self._merged_blueprints(sect_id=sect.id, branch=branch)
-        if any(str(x.get("recipe_id")) == recipe_id for x in existing):
-            raise AppError(code=40000, message="该图纸已收录，无法再上缴", http_status=400)
-        cleaned_label = (label_zh or recipe_id).strip() or recipe_id
+        resolved_recipe = str(recipe_id or "").strip()
+        cleaned_label = (label_zh or resolved_recipe).strip() or resolved_recipe
+
         if self_research:
+            if not resolved_recipe:
+                raise AppError(code=40000, message="请填写自创图纸配方 id", http_status=400)
             review = SectDonationReview(
                 sect_id=sect.id,
                 character_id=character.id,
@@ -685,7 +778,7 @@ class SectFacilityService:
                 payload_json=json.dumps(
                     {
                         "branch": branch,
-                        "recipe_id": recipe_id,
+                        "recipe_id": resolved_recipe,
                         "label_zh": cleaned_label,
                         "cost_contribution": int(cost_contribution),
                     },
@@ -699,11 +792,83 @@ class SectFacilityService:
                 "message": "自创图纸已提交审核（须掌门/太上/创派同意）",
                 "review_id": review.id,
             }
+
+        if inventory_item_id is None:
+            raise AppError(code=40000, message="请选择背包中的图纸再上缴", http_status=400)
+        inv_row = await self._session.get(InventoryItem, int(inventory_item_id))
+        if inv_row is None or int(inv_row.character_id) != int(character.id):
+            raise AppError(code=40055, message="图纸不存在", http_status=400)
+        if str(inv_row.item_type) != ItemType.MANUAL:
+            raise AppError(
+                ERR_BLUEPRINT_TYPE_MISMATCH,
+                "只能上缴秘籍类图纸",
+                http_status=400,
+            )
+        if int(inv_row.quantity) < 1:
+            raise AppError(code=40055, message="图纸数量不足", http_status=400)
+        meta: dict[str, Any] = {}
+        if inv_row.meta_json:
+            try:
+                parsed = json.loads(inv_row.meta_json)
+                if isinstance(parsed, dict):
+                    meta = parsed
+            except json.JSONDecodeError:
+                meta = {}
+        inv_cfg = get_game_config().inventory
+        defn = inv_cfg.items.get(str(inv_row.item_id))
+        manual_kind = str(
+            meta.get("manual_kind")
+            or (defn.manual_kind if defn is not None else "")
+            or "",
+        ).strip()
+        if not manual_kind_matches_workshop(manual_kind, branch):
+            raise AppError(
+                ERR_BLUEPRINT_TYPE_MISMATCH,
+                f"该图纸不属于{self._workshop_label_zh(branch)}",
+                http_status=400,
+            )
+        unlock = str(
+            meta.get("unlock_recipe_id")
+            or (defn.unlock_recipe_id if defn is not None else "")
+            or resolved_recipe
+            or "",
+        ).strip()
+        if not unlock:
+            raise AppError(code=40000, message="图纸缺少配方引用", http_status=400)
+        if unlock in recipes:
+            recipe_branch = str(getattr(recipes[unlock], "branch", "") or "")
+            if recipe_branch and not recipe_branch_matches_workshop(recipe_branch, branch):
+                raise AppError(
+                    ERR_BLUEPRINT_TYPE_MISMATCH,
+                    f"该图纸不属于{self._workshop_label_zh(branch)}",
+                    http_status=400,
+                )
+        elif not resolved_recipe:
+            # 允许未在 craft_recipes 的捐赠 id（来自 meta），仍须已收录校验
+            pass
+        resolved_recipe = unlock
+        cleaned_label = (
+            (label_zh or "").strip()
+            or str(meta.get("label_zh") or "")
+            or (defn.name if defn is not None else "")
+            or resolved_recipe
+        )
+
+        existing = await self._merged_blueprints(sect_id=sect.id, branch=branch)
+        if any(str(x.get("recipe_id")) == resolved_recipe for x in existing):
+            raise AppError(code=40000, message="该图纸已收录，无法再上缴", http_status=400)
+
+        qty = int(inv_row.quantity) - 1
+        if qty <= 0:
+            await self._session.delete(inv_row)
+        else:
+            inv_row.quantity = qty
+
         self._session.add(
             SectWorkshopBlueprint(
                 sect_id=sect.id,
                 branch=branch,
-                recipe_id=recipe_id,
+                recipe_id=resolved_recipe,
                 label_zh=cleaned_label,
                 cost_contribution=int(cost_contribution),
                 source="donated",
@@ -723,6 +888,7 @@ class SectFacilityService:
             "message": f"已上缴「{cleaned_label}」，贡献 +{bonus}",
             "contrib_gain": bonus,
             "contrib": int(member.contribution),
+            "recipe_id": resolved_recipe,
         }
 
     async def workshop_hire(
@@ -733,7 +899,7 @@ class SectFacilityService:
         craftsman_id: str,
         recipe_id: str,
     ) -> dict[str, Any]:
-        """聘工匠代工（扣贡献；材料扣除占位）。"""
+        """聘工匠代工（扣贡献 + **真扣材料**）。"""
         require_sect_system_enabled()
         self._require_facility_gate(self._workshop_gate(branch))
         character, sect, member = await self._ctx(user)
@@ -748,8 +914,23 @@ class SectFacilityService:
         if recipe_id not in allowed:
             raise AppError(code=40000, message="工坊未收录该图纸，工匠不可制作", http_status=400)
         recipes = get_game_config().craft_recipes.recipes
-        if recipe_id not in recipes:
+        recipe = recipes.get(recipe_id)
+        if recipe is None:
             raise AppError(code=40000, message="配方不存在", http_status=400)
+        materials = [
+            {
+                "item_id": str(mat.item_id),
+                "quantity": int(mat.quantity),
+            }
+            for mat in (recipe.materials or ())
+            if str(mat.item_id) and int(mat.quantity) > 0
+        ]
+        try:
+            await InventoryService(self._session).remove_materials(character.id, materials)
+        except AppError as exc:
+            if exc.code == 40055:
+                raise AppError(code=40055, message=exc.message or "材料不足", http_status=400) from exc
+            raise
         cost = int(craftsman.get("cost_contribution") or 0)
         await self._apply_contrib(
             member,
@@ -782,7 +963,7 @@ class SectFacilityService:
         self._session.add(job)
         await self._session.flush()
         return {
-            "message": "工匠已接单",
+            "message": "工匠已接单（已扣除材料）",
             "job_id": job.id,
             "finish_at": finish.isoformat(),
             "quality": bool(is_quality),
@@ -790,7 +971,7 @@ class SectFacilityService:
         }
 
     async def workshop_claim(self, user: User, *, job_id: int) -> dict[str, Any]:
-        """领取代工成品。"""
+        """领取代工成品入背包。"""
         require_sect_system_enabled()
         character, _sect, _member = await self._ctx(user)
         job = await self._session.get(SectCraftJob, int(job_id))
@@ -800,6 +981,35 @@ class SectFacilityService:
             raise AppError(code=40000, message="代工单已结束", http_status=400)
         if now_utc() < job.finish_at:
             raise AppError(code=40000, message="尚未完工", http_status=400)
+        recipe = get_game_config().craft_recipes.recipes.get(str(job.recipe_id))
+        if recipe is None:
+            raise AppError(code=40000, message="配方不存在", http_status=400)
+        inv = InventoryService(self._session)
+        granted: list[dict[str, Any]] = []
+        for out in recipe.outputs or ():
+            if int(out.grant_array_craft_level or 0) > 0:
+                character.array_craft_level = max(
+                    int(character.array_craft_level or 0),
+                    int(out.grant_array_craft_level),
+                )
+                granted.append({"grant_array_craft_level": int(out.grant_array_craft_level)})
+                continue
+            if not out.item_type or not out.item_id:
+                continue
+            qty = int(out.quantity or 1) * (2 if job.quality else 1)
+            await inv.add_item(
+                character.id,
+                item_type=str(out.item_type),
+                item_id=str(out.item_id),
+                quantity=qty,
+            )
+            granted.append(
+                {
+                    "item_type": str(out.item_type),
+                    "item_id": str(out.item_id),
+                    "quantity": qty,
+                },
+            )
         job.status = "claimed"
         job.claimed_at = now_utc()
         await self._session.flush()
@@ -807,6 +1017,7 @@ class SectFacilityService:
             "message": "已领取成品" + ("（精品）" if job.quality else ""),
             "recipe_id": job.recipe_id,
             "quality": job.quality,
+            "outputs": granted,
         }
 
     # ----- 大阵 -----

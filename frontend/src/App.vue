@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 根壳：玩法页显示 WorldClockBar + WsStatusBadge + ChatDock；具体页面由 <RouterView /> 渲染。
+ * 根壳：玩法页显示 WorldClockBar + WsStatusBadge + ChatDock；玩法标签在各页 AuthSessionBar；具体页面由 <RouterView /> 渲染。
  *
  * WS 为玩法壳级长连接：壳内切页只 ``connect()`` 幂等保活，不反复断连；
  * 离开玩法壳（登录/创角等）或登出才断开。
@@ -65,6 +65,7 @@ watch(
 
 .play-chrome {
   display: flex;
+  flex-wrap: wrap;
   align-items: stretch;
   gap: 0;
 }

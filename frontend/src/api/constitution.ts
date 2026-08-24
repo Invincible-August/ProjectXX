@@ -11,7 +11,7 @@ import type {
 } from '../types/constitution'
 
 /**
- * 拉取体质背包与格子。
+ * 拉体质收藏与格子。
  */
 export async function fetchConstitutionApi(): Promise<ApiResponse<ConstitutionState>> {
   try {

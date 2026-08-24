@@ -1,0 +1,94 @@
+# =====================================================================
+# 用途：自研材料、词条池、重投与门槛（M8 R2 功法；R3 阵法；符 R4 扩展）
+# 加载时机：ResearchService 会话 / 定稿校验
+# =====================================================================
+
+schema_version: 1
+reincarnation_carry: false
+
+technique:
+  label_zh: 自研功法
+  help_zh: 投入材料与修为，掷骰预览词条后定稿为仅自己可用的残篇。
+  allowed_materials:
+    - herb_spirit_grass
+    - ore_iron_raw
+  min_materials: 1
+  spend:
+    cultivation_points: 20
+    body_tempering_points: 0
+  reroll:
+    max_rerolls: 2
+    extra_materials:
+      - item_id: herb_spirit_grass
+        quantity: 1
+  affix_slots: 2
+  extra_affix_roll: 12
+  session_ttl_seconds: 86400
+  track: spirit
+  max_level: 5
+  cost_per_level: [30, 60, 100, 160, 250]
+
+formation:
+  label_zh: 自研阵法
+  help_zh: 投入材料后在设计器画部署区与地形，定稿后可出战；蓝图冻结，再改须另开新研。
+  allowed_materials:
+    - herb_spirit_grass
+    - ore_iron_raw
+  min_materials: 1
+  spend:
+    cultivation_points: 10
+    body_tempering_points: 0
+  required_array_level: 0
+  session_ttl_seconds: 86400
+  default_deploy_mode: free_own
+  terrain_layout:
+    mode: brush
+    brush:
+      max_obstacles: 3
+      max_ravines: 1
+      allowed_types: [obstacle, ravine]
+      paint_zone: own_half
+  allowed_deploy_modes:
+    - default
+    - free_own
+    - mask
+  allowed_environment_ids: []
+  allowed_weather_ids: []
+  allowed_effect_ids: []
+  max_force_shifts: 0
+
+talisman:
+  label_zh: 自研符箓
+  help_zh: 选定白名单效果并定稿图纸，再去工坊画符；出战符箓在角色页装备栏上阵（无件数上限，同种类战斗中不叠加）。
+  allowed_materials:
+    - talisman_paper
+    - herb_spirit_grass
+  min_materials: 1
+  spend:
+    cultivation_points: 10
+    body_tempering_points: 0
+  session_ttl_seconds: 86400
+  scribe:
+    paper_item_id: talisman_paper
+    paper_per_copy: 1
+    max_batch: 20
+  preload_slots: 0
+  battle:
+    enabled: true
+
+affixes:
+  phys_edge:
+    label_zh: 锋锐
+    help_zh: 占位：增加物理攻击
+    stats:
+      phys_atk: 2
+  vitality_trace:
+    label_zh: 体魄残痕
+    help_zh: 占位：增加生命
+    stats:
+      hp: 8
+  swift_breath:
+    label_zh: 迅息
+    help_zh: 占位：略增速度
+    stats:
+      speed: 1

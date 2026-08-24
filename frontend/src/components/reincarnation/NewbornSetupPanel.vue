@@ -197,9 +197,9 @@ watch(
             （含商店额外 +{{ options?.extra_spirit_root_slots }}）
           </el-text>
         </el-descriptions-item>
-        <el-descriptions-item v-if="options?.constitution_slots != null" label="体质槽上限">
+        <el-descriptions-item v-if="options?.constitution_slots != null" label="体质槽">
           {{ options.constitution_slots }}
-          （超额镶嵌已在轮回时自动卸下）
+          （1 本源 + 旁支；可用轮回点加槽）
         </el-descriptions-item>
         <el-descriptions-item v-if="options?.permanent_bonus" label="永久加成">
           初始 {{ ((options.permanent_bonus.initial_attr_bonus || 0) * 100).toFixed(1) }}%

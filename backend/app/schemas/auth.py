@@ -129,7 +129,10 @@ class RegisterRequest(BaseModel):
 class RegisterResult(BaseModel):
     """注册成功时信封 data 中的载荷。"""
 
+    # 数据库自增主键（JWT sub / 内部关联）
     user_id: int
+    # 对外账号号：M/P/T/G + 7 位数字
+    public_uid: str | None = None
     email: str | None
     phone: str | None
     display_name: str
@@ -234,6 +237,8 @@ class AuthUserBrief(BaseModel):
     """登录 / 刷新响应中的精简用户信息。"""
 
     id: int
+    # 对外账号号（M/P/T/G + 7 位）
+    public_uid: str | None = None
     email: str | None = None
     phone: str | None = None
     display_name: str
@@ -255,6 +260,7 @@ class AuthMeResult(BaseModel):
     """GET /auth/me 成功时 data 中的载荷。"""
 
     id: int
+    public_uid: str | None = None
     email: str | None = None
     phone: str | None = None
     display_name: str
@@ -267,3 +273,13 @@ class ChangePasswordRequest(BaseModel):
 
     old_password: str = Field(min_length=1, max_length=64)
     new_password: str = Field(min_length=8, max_length=64)
+    # 与注册同源：REGISTER_REQUIRE_EMAIL_CODE=true 时必填 email_ticket
+    email_ticket: str | None = Field(default=None, max_length=64)
+
+    @field_validator("email_ticket", mode="before")
+    @classmethod
+    def empty_email_ticket_to_none(cls, value: object) -> object:
+        """空字符串视为未提供。"""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value

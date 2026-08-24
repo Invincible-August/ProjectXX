@@ -145,7 +145,7 @@ const envNotes = computed(() => {
         </el-text>
       </el-text>
       <el-tag :type="multType" size="small" effect="plain">{{ multText }}</el-tag>
-      <el-tooltip placement="top" :show-after="200" effect="light" popper-class="idle-env-tip">
+      <el-tooltip placement="top" :show-after="200" effect="dark" popper-class="game-hover-tip idle-env-tip">
         <template #content>
           <div class="tip-body">
             <div class="tip-title">加成拆解</div>
@@ -227,13 +227,14 @@ const envNotes = computed(() => {
 }
 
 .idle-env-tip .tip-body {
-  color: var(--el-text-color-primary);
+  color: #f0f2f5;
   font-size: 12px;
 }
 
 .idle-env-tip .tip-title {
   font-weight: 600;
   margin-bottom: 0.35rem;
+  color: #f0f2f5;
 }
 
 .idle-env-tip .tip-title-gap {
@@ -256,22 +257,22 @@ const envNotes = computed(() => {
 }
 
 .idle-env-tip .tip-label {
-  color: var(--el-text-color-regular);
+  color: #d3d7de;
   word-break: break-all;
 }
 
 .idle-env-tip .tip-mult {
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
-  color: var(--el-text-color-secondary);
+  color: #c0c4cc;
 }
 
 .idle-env-tip .tip-mult.up {
-  color: var(--el-color-success);
+  color: #67c23a;
 }
 
 .idle-env-tip .tip-mult.down {
-  color: var(--el-color-warning);
+  color: #e6a23c;
 }
 
 .idle-env-tip .tip-note {
@@ -279,11 +280,11 @@ const envNotes = computed(() => {
 }
 
 .idle-env-tip .tip-note-title {
-  color: var(--el-text-color-secondary);
+  color: #c0c4cc;
   margin-bottom: 0.1rem;
 }
 
 .idle-env-tip .tip-note-text {
-  color: var(--el-text-color-regular);
+  color: #d3d7de;
 }
 </style>

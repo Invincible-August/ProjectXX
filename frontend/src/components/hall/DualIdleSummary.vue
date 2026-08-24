@@ -25,7 +25,7 @@ const mainLabel = computed(() => {
     const rate = preview.value?.main_crafting_per_tick ?? ch.idle_crafting_per_tick ?? 0
     return `本体制造业修炼 +${rate}/周天`
   }
-  return '本体待机'
+  return '本体空闲'
 })
 
 const avatarLabel = computed(() => {
@@ -44,7 +44,7 @@ const avatarLabel = computed(() => {
     const rate = preview.value?.avatar_crafting_per_tick ?? 0
     return `化身制造业修炼 +${rate}/周天`
   }
-  if (dir === 'none') return '化身待机'
+  if (dir === 'none') return '化身空闲'
   return `化身 ${dir}`
 })
 </script>

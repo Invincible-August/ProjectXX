@@ -1,7 +1,21 @@
 # =====================================================================
-# 用途：功法目录（名称、轨道、升级消耗、环境标签）
-# 加载时机：M2 功法/创角默认解锁；M5 挂机时辰×天气 tag 乘区读取 env_tags
+# 用途：功法目录（名称、轨道、升级消耗、环境标签、双角色技能占位）
+# 加载时机：M2 功法/创角默认解锁；装备槽见 loadout；学习条件本版不执行
+# 专栏：功法系统设计.md
 # =====================================================================
+
+loadout:
+  main_slots: 1
+  default_art_slots: 1
+  help_zh: 主功法只能装备一本；技法可装备多本，修为越高槽位越多。
+  art_slots_by_major:
+    body_tempering: 1
+    qi_refining: 2
+    foundation: 2
+    jindan: 3
+    yuanying: 3
+    huashen: 4
+    true_immortal: 5
 
 # 功法表：键=technique_id；后续条目字段含义同第一条
 techniques:
@@ -10,6 +24,9 @@ techniques:
   # track             轨道：spirit=灵修 / body=体修 / crafting=制造
   # max_level         最大等级
   # env_tags          参与 calendar/weather tag_modifiers 的标签列表
+  # elements          属性（metal/wood/water/fire/earth/wind/thunder）
+  # learn_requires    学习条件占位（本版不执行）
+  # skills.as_main / as_art  装备为主功法或技法时展示的技能占位
   # cost_per_level    每级升级消耗（灵石等，按下标 0=升到 1 级）
   # dice_mods         按等级的骰子上下限修正（下标 0=1 级）；见 骰子系统设计.md
   basic_qi_art:
@@ -17,6 +34,14 @@ techniques:
     track: spirit
     max_level: 10
     env_tags: [common_art]
+    elements: [wood, water]
+    help_zh: 吐纳入门，可作主功法或技法。
+    learn_requires:
+      major_realm: body_tempering
+    skills:
+      as_main:
+        - { id: qi_breath, label_zh: 吐纳, effect_zh: 占位：略加快修炼（公式未开） }
+      as_art: []
     # reincarnatable=可轮回带入（功法特性）
     traits: [reincarnatable]
     cost_per_level: [20, 40, 80, 120, 200, 300, 450, 600, 800, 1000]
@@ -40,6 +65,8 @@ techniques:
     track: body
     max_level: 10
     env_tags: [common_art]
+    elements: [earth, metal]
+    help_zh: 炼体入门，可作主功法或技法。
     traits: [reincarnatable]
     cost_per_level: [20, 40, 80, 120, 200, 300, 450, 600, 800, 1000]
     effects_placeholder:
@@ -60,6 +87,8 @@ techniques:
     track: crafting
     max_level: 5
     env_tags: [water_art]
+    elements: [water, fire]
+    help_zh: 丹道残篇，可作主功法或技法。
     cost_per_level: [30, 60, 100, 160, 250]
     effects_placeholder:
       crafting_speed_bonus_per_level: 0.02  # 每级制造速度加成（比例）
@@ -69,6 +98,12 @@ techniques:
     track: spirit
     max_level: 5
     env_tags: [thunder_art]
+    elements: [thunder]
+    help_zh: 雷息吐纳，可作主功法或技法。
+    skills:
+      as_main: []
+      as_art:
+        - { id: thunder_spark, label_zh: 雷光, effect_zh: 占位：攻击附带微弱雷击（公式未开） }
     cost_per_level: [40, 80, 120, 200, 300]
     effects_placeholder:
       atk_bonus_per_level: 2

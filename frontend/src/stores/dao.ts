@@ -10,6 +10,7 @@ import {
   fetchDaoPool,
   previewDaoUsage,
   rollDaoOpen,
+  type DaoActor,
 } from '../api/dao'
 import type {
   DaoCatalogEntry,
@@ -37,6 +38,8 @@ export const useDaoStore = defineStore('dao', () => {
   const usagePreview = ref<DaoUsagePreview | null>(null)
   const loading = ref(false)
   const lastMessage = ref('')
+  /** 当前悟道页主体；战斗/工坊预览默认本体 */
+  const pageActor = ref<DaoActor>('main')
 
   /** 本地偏好：战斗默认运用本命道 */
   const preferBattleUseDao = ref(
@@ -64,9 +67,17 @@ export const useDaoStore = defineStore('dao', () => {
 
   function applyMeFromCharacter(): void {
     const ch = useCharacterStore().character
+    if (pageActor.value === 'avatar') {
+      return
+    }
     if (ch?.dao) {
       me.value = { ...ch.dao }
     }
+  }
+
+  function setPageActor(actor: DaoActor): void {
+    pageActor.value = actor
+    opening.value = null
   }
 
   /**
@@ -78,9 +89,9 @@ export const useDaoStore = defineStore('dao', () => {
     loading.value = true
     try {
       const [meEnv, poolEnv, catalogEnv] = await Promise.all([
-        fetchDaoMe(),
-        fetchDaoPool(),
-        fetchDaoCatalog(),
+        fetchDaoMe(pageActor.value),
+        fetchDaoPool(pageActor.value),
+        fetchDaoCatalog(pageActor.value),
       ])
       if (meEnv.code !== 0) {
         // 后端未就绪时仍可用角色嵌入摘要
@@ -105,7 +116,7 @@ export const useDaoStore = defineStore('dao', () => {
 
   /** 仅拉 /dao/me（轻量轮询） */
   async function refreshMe(): Promise<string | null> {
-    const envelope = await fetchDaoMe()
+    const envelope = await fetchDaoMe(pageActor.value)
     if (envelope.code !== 0 || !envelope.data) {
       applyMeFromCharacter()
       return envelope.message || null
@@ -122,7 +133,7 @@ export const useDaoStore = defineStore('dao', () => {
   async function roll(): Promise<string | null> {
     loading.value = true
     try {
-      const envelope = await rollDaoOpen()
+      const envelope = await rollDaoOpen(pageActor.value)
       if (envelope.code !== 0 || !envelope.data) {
         return envelope.message || `开道抽取失败（code=${envelope.code}）`
       }
@@ -155,12 +166,18 @@ export const useDaoStore = defineStore('dao', () => {
       const envelope = await chooseDaoOpen({
         session_id: opening.value.session_id,
         dao_id: daoId,
+        actor: pageActor.value,
       })
       if (envelope.code !== 0 || !envelope.data) {
         return envelope.message || `选定本命道失败（code=${envelope.code}）`
       }
       if (envelope.data.character) {
         useCharacterStore().applyCharacter(envelope.data.character)
+      }
+      const av = (envelope.data as { avatar?: import('../types/avatar').AvatarPublic }).avatar
+      if (av) {
+        const { useAvatarStore } = await import('./avatar')
+        useAvatarStore().setAvatar(av)
       }
       if (envelope.data.dao) {
         me.value = envelope.data.dao
@@ -183,11 +200,13 @@ export const useDaoStore = defineStore('dao', () => {
    * 拉取运用预览。
    *
    * @param context - battle | craft
+   * @param actor - 本体或化身（工坊扣该主体道值）
    */
   async function loadUsagePreview(
     context: DaoUsageContext,
+    actor: DaoActor = 'main',
   ): Promise<string | null> {
-    const envelope = await previewDaoUsage({ context })
+    const envelope = await previewDaoUsage({ context, actor })
     if (envelope.code !== 0 || !envelope.data) {
       usagePreview.value = null
       return envelope.message || null
@@ -224,12 +243,14 @@ export const useDaoStore = defineStore('dao', () => {
     usagePreview,
     loading,
     lastMessage,
+    pageActor,
     preferBattleUseDao,
     preferCraftUseDao,
     hasFateDao,
     canOpen,
     setPreferBattle,
     setPreferCraft,
+    setPageActor,
     applyMeFromCharacter,
     refresh,
     refreshMe,

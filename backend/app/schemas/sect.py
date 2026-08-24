@@ -142,10 +142,14 @@ class SectWorkshopBlueprintExchangeRequest(BaseModel):
 class SectWorkshopBlueprintDonateRequest(BaseModel):
     """上缴工坊图纸。"""
 
-    recipe_id: str = Field(description="图纸/配方 id")
-    label_zh: str = Field(description="中文名")
+    recipe_id: str = Field(default="", description="图纸/配方 id（自研必填；背包上缴可省略）")
+    label_zh: str = Field(default="", description="中文名")
     cost_contribution: int = Field(default=40, ge=1, description="日后兑换贡献价")
     self_research: bool = Field(default=False, description="自创须审核")
+    inventory_item_id: int | None = Field(
+        default=None,
+        description="背包图纸行 id（非自研必填；须 item_type=manual）",
+    )
 
 
 class SectFormationSelectRequest(BaseModel):

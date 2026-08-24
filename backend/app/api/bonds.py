@@ -34,6 +34,7 @@ async def companion_apply(
             current_user,
             target_character_id=body.target_character_id,
             target_name=body.target_name,
+            target_user_id=body.target_user_id,
         ),
     )
 

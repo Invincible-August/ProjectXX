@@ -450,6 +450,7 @@ class TradeService:
         *,
         peer_character_id: int | None,
         peer_name: str | None,
+        peer_user_id: int | None = None,
     ) -> dict[str, Any]:
         """
         Invite a peer to face trade (status ``pending_invite``).
@@ -460,7 +461,8 @@ class TradeService:
         Args:
             user: Authenticated initiator.
             peer_character_id: Optional peer character primary key.
-            peer_name: Optional peer display name (道号).
+            peer_name: Optional peer display name (道号); digits may mean user_id.
+            peer_user_id: Optional account id (``users.id``).
 
         Returns:
             Invite message and public session payload.
@@ -471,7 +473,7 @@ class TradeService:
         require_trade_enabled()
         character, _ = await self._gate.prepare_for_play(user, settle=True)
         self._reject_if_ferry_or_tribulation(character)
-        peer = await self._resolve_peer(peer_character_id, peer_name)
+        peer = await self._resolve_peer(peer_character_id, peer_name, peer_user_id)
         if peer.id == character.id:
             raise AppError(code=40000, message="不可与自己交易", http_status=400)
         cfg = self._cfg()
@@ -1583,21 +1585,17 @@ class TradeService:
         self,
         peer_character_id: int | None,
         peer_name: str | None,
+        peer_user_id: int | None = None,
     ) -> Character:
-        if peer_character_id is not None:
-            ch = await self._session.get(Character, int(peer_character_id))
-            if ch is None:
-                raise AppError(code=40000, message="对方角色不存在", http_status=404)
-            return ch
-        name = (peer_name or "").strip()
-        if not name:
-            raise AppError(code=40000, message="请提供对方角色 id 或道号", http_status=400)
-        ch = (
-            await self._session.execute(select(Character).where(Character.name == name))
-        ).scalar_one_or_none()
-        if ch is None:
-            raise AppError(code=40000, message=f"找不到道号「{name}」", http_status=404)
-        return ch
+        from app.services.character_resolve import resolve_character_ref
+
+        return await resolve_character_ref(
+            self._session,
+            character_id=peer_character_id,
+            name=peer_name,
+            user_id=peer_user_id,
+            not_found_zh="对方",
+        )
 
     async def _character_public(self, character: Character) -> dict[str, Any]:
         from app.services.character_service import CharacterService

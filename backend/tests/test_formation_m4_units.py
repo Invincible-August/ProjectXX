@@ -61,6 +61,9 @@ def test_bench_includes_avatar_after_condense(tmp_path: Path) -> None:
                 await AvatarService(session).condense(user)
                 character = await character_service.get_character_by_user_id(session, user.id)
                 assert character is not None
+                from app.services.equipment_service import EquipmentService
+
+                await EquipmentService(session).set_avatar_deployed(character, deployed=True)
                 bench = await FormationService(session).bench_units(character)
                 avatars = [b for b in bench if b["unit_kind"] == "avatar"]
                 assert any(b.get("enabled") for b in avatars)

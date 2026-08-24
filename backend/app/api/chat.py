@@ -118,6 +118,7 @@ async def party_action(
             action=body.action,
             peer_character_id=body.peer_character_id or body.target_character_id,
             peer_name=body.peer_name,
+            peer_user_id=body.peer_user_id or body.target_user_id,
             invite_id=body.invite_id,
         ),
     )

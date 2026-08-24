@@ -107,7 +107,7 @@ major_realms:
 # 炼体大境（淬体）：结构对齐主修「层 / 期」
 # - 前两境（炼皮/锻骨）stage_mode=layers：1～9 层 + 圆满(10)
 # - 其后（通脉→道体）stage_mode=phases：初/中/后/圆满
-# - 挂机只涨淬体度池；分配「投入淬体」写入 body_temper_progress
+# - 挂机只涨淬体度池；分配「投入淬体」写入 body_temper_progress（可超过本档门槛）
 # - 淬体 attempt 有成功率，失败按 keep_ratio 回退进度；永不渡劫
 # - 扩境口子：给末境填 next_major，并追加 majors 条目 + unlock 序即可
 # =====================================================================

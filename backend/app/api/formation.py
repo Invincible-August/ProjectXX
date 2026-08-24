@@ -39,7 +39,7 @@ async def list_presets(
     current_user: User = Depends(get_current_user),
 ) -> dict:
     """
-    列出预设三槽 + 已解锁阵法 + 可上阵棋子清单 + 上阵上限。
+    列出预设五槽 + 已解锁阵法 + 可上阵棋子清单 + 上阵上限。
 
     返回:
         dict: ``{presets, formations, bench, max_units}``。
@@ -60,7 +60,7 @@ async def save_preset(
     保存一个预设槽（占位校验失败 → 40041/40042/40043）。
 
     参数:
-        slot: 槽位（0=进攻 / 1=防守 / 2=临时，可改名换定位）。
+        slot: 槽位 0～4；名称由玩家自定义。内部 role 仍用于开战/快照回退。
         payload: 预设内容。
 
     返回:
@@ -74,6 +74,9 @@ async def save_preset(
         role=payload.role,
         formation_id=payload.formation_id,
         units=[unit.model_dump() for unit in payload.units],
+        assist_anchor=(
+            payload.assist_anchor.model_dump() if payload.assist_anchor is not None else None
+        ),
     )
     return success(data)
 

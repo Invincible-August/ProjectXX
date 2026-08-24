@@ -118,6 +118,7 @@ async def trade_face_invite(
             current_user,
             peer_character_id=body.peer_character_id,
             peer_name=body.peer_name,
+            peer_user_id=body.peer_user_id,
         ),
     )
 

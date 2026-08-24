@@ -4,7 +4,7 @@
  * 炼体功法（track=body）自动扣淬体度池。
  */
 import { computed, onMounted, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { allocateApi } from '../api/allocate'
 import { fetchMyTechniquesApi } from '../api/techniques'
 import { useCharacterStore } from '../stores/character'
@@ -85,6 +85,60 @@ const amountLabel = computed(() => {
   return '投入修为池点数'
 })
 
+/** 当前操作对应资源池余额（输入上限，不按本档尚需封顶）。 */
+const poolCeiling = computed(() => {
+  if (tab.value === 'realm') return Math.max(1, poolByTrack.value.spirit)
+  if (tab.value === 'body_temper') return Math.max(1, poolByTrack.value.body)
+  const tech = selectedTech.value
+  if (tech?.track === 'body') return Math.max(1, poolByTrack.value.body)
+  if (tech?.track === 'crafting') return Math.max(1, poolByTrack.value.crafting)
+  return Math.max(1, poolByTrack.value.spirit)
+})
+
+/**
+ * 超额投入时弹出确认。
+ *
+ * @returns 是否继续分配
+ */
+async function confirmIfOverflow(): Promise<boolean> {
+  const ch = character.value
+  if (!ch) return false
+  if (tab.value === 'realm') {
+    const required = ch.cultivation_to_next
+    if (required == null) return true
+    const remaining = Math.max(0, required - ch.realm_progress)
+    if (amount.value <= remaining) return true
+    try {
+      await ElMessageBox.confirm(
+        `突破当前境界所需 ${required} 点修为，本次分配 ${amount.value} 点修为，是否确认分配？`,
+        '超额分配',
+        { confirmButtonText: '确认分配', cancelButtonText: '取消', type: 'warning' },
+      )
+      return true
+    } catch {
+      return false
+    }
+  }
+  if (tab.value === 'body_temper') {
+    const remaining = ch.body_temper_to_next
+    if (remaining == null) return true
+    const progress = ch.body_temper_progress ?? 0
+    const required = remaining + progress
+    if (amount.value <= remaining) return true
+    try {
+      await ElMessageBox.confirm(
+        `淬体当前档所需 ${required} 点淬体度，本次分配 ${amount.value} 点淬体度，是否确认分配？`,
+        '超额分配',
+        { confirmButtonText: '确认分配', cancelButtonText: '取消', type: 'warning' },
+      )
+      return true
+    } catch {
+      return false
+    }
+  }
+  return true
+}
+
 async function loadTechniques(): Promise<void> {
   const envelope = await fetchMyTechniquesApi()
   if (envelope.code === 0 && envelope.data?.items) {
@@ -121,6 +175,8 @@ async function submit(): Promise<void> {
     ElMessage.warning('请选择功法')
     return
   }
+  const overflowOk = await confirmIfOverflow()
+  if (!overflowOk) return
   busy.value = true
   try {
     const envelope = await allocateApi({
@@ -156,7 +212,7 @@ async function submit(): Promise<void> {
 
     <div v-show="open">
       <el-text size="small" type="info" class="hint">
-        挂机只涨资源池；境界 / 淬体进度与功法需手动投入。炼体功法自动扣淬体度池。
+        挂机只涨资源池；境界 / 淬体进度与功法需手动投入。炼体功法自动扣淬体度池。投入可超过本档门槛，突破或淬体成功只扣本档所需，超额保留。
       </el-text>
 
       <el-descriptions v-if="character" :column="1" size="small" class="pools">
@@ -211,7 +267,7 @@ async function submit(): Promise<void> {
           </el-text>
         </el-form-item>
         <el-form-item :label="amountLabel">
-          <el-input-number v-model="amount" :min="1" :step="10" />
+          <el-input-number v-model="amount" :min="1" :max="poolCeiling" :step="10" />
         </el-form-item>
         <el-button type="primary" :loading="busy" @click="submit">确认分配</el-button>
       </el-form>

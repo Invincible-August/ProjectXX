@@ -11,6 +11,13 @@ class AvatarIdleRequest(BaseModel):
     direction: str = Field(..., description="none/spirit/body/crafting")
 
 
+class AvatarCondenseRequest(BaseModel):
+    """POST /avatar/condense 请求体（化身功法 + 媒介槽）。"""
+
+    technique_id: str = Field(..., min_length=1, description="已学功法 id")
+    medium_item_id: str = Field(..., min_length=1, description="背包媒介物品 id")
+
+
 class AvatarTransferRequest(BaseModel):
     """POST /avatar/transfer 与 preview 请求体。"""
 

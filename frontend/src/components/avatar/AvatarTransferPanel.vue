@@ -4,6 +4,7 @@
  */
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { InfoFilled } from '@element-plus/icons-vue'
 import { useAvatarStore } from '../../stores/avatar'
 import { useCharacterStore } from '../../stores/character'
 import type { AvatarPublic, AvatarTransferAudit, TransferDirection } from '../../types/avatar'
@@ -31,11 +32,14 @@ const maxAmount = computed(() => {
   return props.avatar.cultivation_points
 })
 
-const retentionHint = computed(() => {
-  const r = props.avatar.transfer_retention_ratio
-  if (r == null) return ''
-  return `保留率 ${(r * 100).toFixed(0)}%`
+const retentionPct = computed(() => {
+  const live = preview.value?.retention_ratio ?? props.avatar.transfer_retention_ratio ?? 0.8
+  return Math.round(live * 100)
 })
+
+const dirText = computed(() =>
+  direction.value === 'main_to_avatar' ? '本体 → 化身' : '化身 → 本体',
+)
 
 async function refreshPreview(): Promise<void> {
   previewError.value = ''
@@ -71,9 +75,8 @@ async function onTransfer(): Promise<void> {
       return
     }
     const net = preview.value?.net ?? amount.value
-    const dirText = direction.value === 'main_to_avatar' ? '本体→化身' : '化身→本体'
-    ElMessage.success(`已传修为：扣 ${amount.value}，到账 ${net}（${dirText}）`)
-    emit('log', `传修为扣 ${amount.value} 到账 ${net}：${dirText}`, 'success')
+    ElMessage.success(`已传修为：扣 ${amount.value}，到账 ${net}（${dirText.value}）`)
+    emit('log', `传修为扣 ${amount.value} 到账 ${net}：${dirText.value}`, 'success')
     await refreshPreview()
   } finally {
     busy.value = false
@@ -84,13 +87,23 @@ async function onTransfer(): Promise<void> {
 <template>
   <el-card shadow="never" id="transfer-panel">
     <template #header>
-      <el-text tag="b">传修为</el-text>
+      <div class="transfer-header">
+        <el-text tag="b">传修为</el-text>
+        <el-tooltip placement="bottom-start" effect="dark" :show-after="200" popper-class="game-hover-tip">
+          <template #content>
+            <div class="transfer-help">
+              <p>{{ avatar.transfer_summary || '互传修为到账按保留率结算，损耗不可逆。' }}</p>
+              <p>当前保留率 {{ retentionPct }}%（默认 80%，会随功法变化）。</p>
+              <p>仅修为池可互传；炼体度与制造业经验不可传。</p>
+              <p>到账 = floor(发送量 × 保留率)。</p>
+            </div>
+          </template>
+          <button type="button" class="transfer-info" aria-label="查看传修为说明">
+            <el-icon :size="14"><InfoFilled /></el-icon>
+          </button>
+        </el-tooltip>
+      </div>
     </template>
-
-    <el-text type="info" size="small" class="hint">
-      {{ avatar.transfer_summary || '仅修为池可互传；炼体度与制造业经验不可传。' }}
-      <template v-if="retentionHint"> · {{ retentionHint }}</template>
-    </el-text>
 
     <el-form label-position="top" size="small">
       <el-form-item label="方向">
@@ -105,10 +118,22 @@ async function onTransfer(): Promise<void> {
       </el-form-item>
 
       <div v-if="preview?.ok" class="preview-box">
-        <el-text size="small">
-          预览：扣发送方 <b>{{ preview.gross }}</b>，到账 <b>{{ preview.net }}</b>，
-          损耗 {{ preview.fee }}（保留率 {{ (preview.retention_ratio * 100).toFixed(0) }}%）
-        </el-text>
+        <div class="preview-row">
+          <el-text size="small" type="info">方向</el-text>
+          <el-text size="small">{{ dirText }}</el-text>
+        </div>
+        <div class="preview-row">
+          <el-text size="small" type="info">发送</el-text>
+          <el-text size="small">−{{ preview.gross }}</el-text>
+        </div>
+        <div class="preview-row">
+          <el-text size="small" type="info">到账</el-text>
+          <el-text size="small" type="success">+{{ preview.net }}</el-text>
+        </div>
+        <div class="preview-row">
+          <el-text size="small" type="info">损耗</el-text>
+          <el-text size="small">{{ preview.fee }}（保留 {{ retentionPct }}%）</el-text>
+        </div>
       </div>
       <el-text v-else-if="previewError" type="danger" size="small">{{ previewError }}</el-text>
 
@@ -120,9 +145,21 @@ async function onTransfer(): Promise<void> {
 </template>
 
 <style scoped>
-.hint {
-  display: block;
-  margin-bottom: 0.75rem;
+.transfer-header {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.transfer-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--el-text-color-secondary);
+  cursor: help;
 }
 
 .max-hint {
@@ -131,8 +168,30 @@ async function onTransfer(): Promise<void> {
 
 .preview-box {
   margin-bottom: 0.75rem;
-  padding: 0.5rem 0.65rem;
+  padding: 0.55rem 0.7rem;
   background: var(--el-fill-color-light);
-  border-radius: 4px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.preview-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+</style>
+
+<style>
+.transfer-help {
+  max-width: 280px;
+  line-height: 1.5;
+}
+.transfer-help p {
+  margin: 0 0 0.35rem;
+}
+.transfer-help p:last-child {
+  margin-bottom: 0;
 }
 </style>

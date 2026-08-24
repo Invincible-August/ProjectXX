@@ -120,6 +120,14 @@ class OverlayStore:
         logger.info("overlay store loaded domains=%s", list(overlays.keys()))
 
     @classmethod
+    def clear(cls) -> None:
+        """清空全部覆盖（单测 / 回退纯 YAML）。"""
+        with cls._lock:
+            cls._overlays.clear()
+            cls._versions.clear()
+        logger.info("overlay store cleared")
+
+    @classmethod
     def snapshot(cls) -> dict[str, dict[str, Any]]:
         """调试用：全部覆盖层深拷贝（开销大，摘要请用 domain_ids/versions_map）。"""
         with cls._lock:

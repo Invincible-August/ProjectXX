@@ -1,23 +1,35 @@
 """
-体质背包、镶嵌槽与创角样本发放（M2 骨架）。
+体质收藏、本源/旁支镶嵌槽与创角样本发放。
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants.constitution import (
+    CONSTITUTION_EFFECT_LABELS_ZH,
+    CONSTITUTION_SLOT_HELP_ZH,
+    CONSTITUTION_SLOT_LABELS_ZH,
+    CONSTITUTION_SLOT_MAIN,
+    CONSTITUTION_SLOT_SUB,
+    CONSTITUTION_SOFT_CAP,
+)
 from app.core.config import get_settings
 from app.db.models.character import Character
 from app.db.models.constitution import ConstitutionItem, ConstitutionSlot
+from app.db.models.reincarnation_bonus import CharacterReincarnationBonus
+from app.domain.reincarnation_rules import compute_slot_cap
 from app.schemas.common import AppError
 from app.services.realm_config import get_game_config
 
 logger = logging.getLogger(__name__)
 
-# 创角发放：1 凡体 + 1 主词条 + 2 副词条样本
+# 创角发放：根基 + 铜皮 + 两件轻身（便于同名冲突联调）
 _STARTER_ITEM_DEFS = (
     "sample_body_root",
     "sample_main_affix_iron",
@@ -51,35 +63,67 @@ class ConstitutionService:
         character_id: int,
     ) -> None:
         """
-        Initialize main/sub constitution slots (empty) on character creation.
+        Sync 本源/旁支 slots to current cap (create missing rows, never shrink).
 
         Args:
             character_id: Character primary key.
         """
-        cfg = get_game_config().constitution
-        existing = await self._session.execute(
-            select(ConstitutionSlot.id)
-            .where(ConstitutionSlot.character_id == character_id)
-            .limit(1),
-        )
-        if existing.scalar_one_or_none() is not None:
+        character = await self._session.get(Character, character_id)
+        if character is None:
             return
-        for index in range(cfg.main_slots):
-            self._session.add(
-                ConstitutionSlot(
-                    character_id=character_id,
-                    slot_type="main",
-                    slot_index=index,
+        await self.sync_slots(character)
+
+    async def sync_slots(self, character: Character) -> None:
+        """
+        Ensure slot rows match reincarnation-bought cap (1 本源 + N 旁支).
+
+        Args:
+            character: Character entity.
+        """
+        cfg = get_game_config().constitution
+        rec_cfg = get_game_config().reincarnation
+        bonus_row = (
+            await self._session.execute(
+                select(CharacterReincarnationBonus).where(
+                    CharacterReincarnationBonus.character_id == character.id,
                 ),
             )
-        for index in range(cfg.sub_slots):
-            self._session.add(
-                ConstitutionSlot(
-                    character_id=character_id,
-                    slot_type="sub",
-                    slot_index=index,
-                ),
+        ).scalar_one_or_none()
+        bought = int(bonus_row.constitution_slots_bought) if bonus_row is not None else 0
+        total = compute_slot_cap(
+            reincarnation_count=int(character.reincarnation_count),
+            bought=bought,
+            slots_kind_cfg=dict((rec_cfg.slots or {}).get("constitution") or {}),
+        )
+        floor = int(cfg.main_slots) + int(cfg.sub_slots)
+        total = max(total, floor)
+        needed_main = max(1, int(cfg.main_slots))
+        needed_sub = max(0, total - needed_main)
+
+        existing = (
+            await self._session.execute(
+                select(ConstitutionSlot).where(ConstitutionSlot.character_id == character.id),
             )
+        ).scalars().all()
+        have = {(row.slot_type, int(row.slot_index)) for row in existing}
+        for index in range(needed_main):
+            if (CONSTITUTION_SLOT_MAIN, index) not in have:
+                self._session.add(
+                    ConstitutionSlot(
+                        character_id=character.id,
+                        slot_type=CONSTITUTION_SLOT_MAIN,
+                        slot_index=index,
+                    ),
+                )
+        for index in range(needed_sub):
+            if (CONSTITUTION_SLOT_SUB, index) not in have:
+                self._session.add(
+                    ConstitutionSlot(
+                        character_id=character.id,
+                        slot_type=CONSTITUTION_SLOT_SUB,
+                        slot_index=index,
+                    ),
+                )
         await self._session.flush()
 
     async def grant_starter_constitution_kit(
@@ -149,18 +193,21 @@ class ConstitutionService:
 
             if not auto_equip:
                 continue
-            slot_type = "main" if item_def.kind == "main" else "sub"
-            # 找第一个空槽
-            slots = await self._session.execute(
-                select(ConstitutionSlot).where(
-                    ConstitutionSlot.character_id == character.id,
-                    ConstitutionSlot.slot_type == slot_type,
-                ).order_by(ConstitutionSlot.slot_index.asc()),
-            )
-            for slot in slots.scalars().all():
-                if slot.item_instance_id is None:
-                    slot.item_instance_id = item.id
-                    item.is_equipped = True
+            for slot_type in (CONSTITUTION_SLOT_MAIN, CONSTITUTION_SLOT_SUB):
+                slots = await self._session.execute(
+                    select(ConstitutionSlot).where(
+                        ConstitutionSlot.character_id == character.id,
+                        ConstitutionSlot.slot_type == slot_type,
+                    ).order_by(ConstitutionSlot.slot_index.asc()),
+                )
+                filled = False
+                for slot in slots.scalars().all():
+                    if slot.item_instance_id is None:
+                        slot.item_instance_id = item.id
+                        item.is_equipped = True
+                        filled = True
+                        break
+                if filled:
                     break
         await self._session.flush()
         logger.info(
@@ -197,43 +244,73 @@ class ConstitutionService:
         )
         return result.scalar_one_or_none()
 
+    @staticmethod
+    def _format_effects_zh(effects: Mapping[str, Any] | None) -> str:
+        """Compact player-facing effect preview, e.g. 生命+20、攻击+4."""
+        parts: list[str] = []
+        for key, raw in (effects or {}).items():
+            label = CONSTITUTION_EFFECT_LABELS_ZH.get(str(key), str(key))
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                parts.append(f"{label}{raw}")
+                continue
+            if str(key).endswith("_mult"):
+                parts.append(f"{label}×{value:g}")
+            else:
+                ival: int | float = int(value) if value == int(value) else value
+                parts.append(f"{label}+{ival}")
+        return "、".join(parts) if parts else "无"
+
+    def _serialize_item(self, item: ConstitutionItem) -> dict[str, Any]:
+        """Collection row with dual-effect preview."""
+        cfg = get_game_config().constitution
+        item_def = cfg.items.get(item.def_id)
+        main_effects = dict(item_def.main_effects) if item_def else {}
+        sub_effects = dict(item_def.sub_effects) if item_def else {}
+        return {
+            "id": item.id,
+            "def_id": item.def_id,
+            "name": item_def.name if item_def else item.def_id,
+            "quality": item.quality,
+            "grade": item.grade,
+            "kind": item.kind,
+            "is_equipped": item.is_equipped,
+            "main_effects": main_effects,
+            "sub_effects": sub_effects,
+            "main_effects_zh": self._format_effects_zh(main_effects),
+            "sub_effects_zh": self._format_effects_zh(sub_effects),
+        }
+
     async def get_constitution_state(
         self,
         character: Character,
     ) -> dict:
         """
-        Return backpack, slot grid, and equipped summary for a character.
+        Return collection vault, slot grid, and equipped summary.
 
         Args:
             character: Character entity.
 
         Returns:
-            dict: backpack, slots, equipped_summary.
+            dict: collection (backpack alias), slots, equipped_summary, help/soft_cap.
         """
         await self.ensure_default_slots(character.id)
         cfg = get_game_config().constitution
+        rec_cfg = get_game_config().reincarnation
+        slots_kind = dict((rec_cfg.slots or {}).get("constitution") or {})
+        soft_cap = int(slots_kind.get("soft_cap", cfg.soft_cap or CONSTITUTION_SOFT_CAP))
 
         items_result = await self._session.execute(
             select(ConstitutionItem).where(ConstitutionItem.character_id == character.id),
         )
         items = items_result.scalars().all()
-        backpack = []
-        for item in items:
-            item_def = cfg.items.get(item.def_id)
-            backpack.append(
-                {
-                    "id": item.id,
-                    "def_id": item.def_id,
-                    "name": item_def.name if item_def else item.def_id,
-                    "quality": item.quality,
-                    "grade": item.grade,
-                    "kind": item.kind,
-                    "is_equipped": item.is_equipped,
-                },
-            )
+        collection = [self._serialize_item(item) for item in items]
 
         slots_result = await self._session.execute(
-            select(ConstitutionSlot).where(ConstitutionSlot.character_id == character.id),
+            select(ConstitutionSlot)
+            .where(ConstitutionSlot.character_id == character.id)
+            .order_by(ConstitutionSlot.slot_type.asc(), ConstitutionSlot.slot_index.asc()),
         )
         slots_rows = slots_result.scalars().all()
         slots = []
@@ -241,14 +318,18 @@ class ConstitutionService:
         item_by_id = {item.id: item for item in items}
         for slot in slots_rows:
             equipped_item = item_by_id.get(slot.item_instance_id) if slot.item_instance_id else None
+            item_def = cfg.items.get(equipped_item.def_id) if equipped_item is not None else None
+            active = item_def.effects_for_slot(slot.slot_type) if item_def else {}
             slot_info = {
                 "slot_type": slot.slot_type,
                 "slot_index": slot.slot_index,
                 "item_id": slot.item_instance_id,
+                "label_zh": CONSTITUTION_SLOT_LABELS_ZH.get(slot.slot_type, slot.slot_type),
+                "active_effects": dict(active),
+                "active_effects_zh": self._format_effects_zh(active) if equipped_item else "",
             }
             slots.append(slot_info)
             if equipped_item is not None:
-                item_def = cfg.items.get(equipped_item.def_id)
                 equipped_summary.append(
                     {
                         "slot_type": slot.slot_type,
@@ -259,9 +340,14 @@ class ConstitutionService:
                 )
 
         return {
-            "backpack": backpack,
+            "collection": collection,
+            "backpack": collection,
             "slots": slots,
             "equipped_summary": equipped_summary,
+            "help_zh": CONSTITUTION_SLOT_HELP_ZH,
+            "soft_cap": soft_cap,
+            "slot_count": len(slots),
+            "labels_zh": dict(CONSTITUTION_SLOT_LABELS_ZH),
         }
 
     @staticmethod
@@ -300,7 +386,7 @@ class ConstitutionService:
         Raises:
             AppError: ``40034`` / ``40035`` validation failures.
         """
-        if slot_type not in {"main", "sub"}:
+        if slot_type not in {CONSTITUTION_SLOT_MAIN, CONSTITUTION_SLOT_SUB}:
             raise AppError(code=40000, message="无效槽类型", http_status=400)
 
         item_result = await self._session.execute(
@@ -318,20 +404,7 @@ class ConstitutionService:
         if item_def is None:
             raise AppError(code=40035, message="体质物品配置缺失", http_status=400)
 
-        # 本体类（凡体）仅占位，不可装入主/副词条格
-        if item_def.kind == "body":
-            raise AppError(
-                code=40034,
-                message="本体类体质暂不支持镶嵌主副格（骨架预留）",
-                http_status=400,
-            )
-
-        if slot_type == "main" and item_def.kind != "main":
-            raise AppError(code=40034, message="主格仅可镶嵌主词条", http_status=400)
-        if slot_type == "sub" and item_def.kind != "sub":
-            raise AppError(code=40034, message="副格仅可镶嵌副词条", http_status=400)
-
-        # 同 def_id 不可重复镶嵌（创角可发多件同名副词条样本）
+        # 同 def_id 不可重复镶嵌
         dup = await self._session.execute(
             select(ConstitutionItem.id).where(
                 ConstitutionItem.character_id == character.id,

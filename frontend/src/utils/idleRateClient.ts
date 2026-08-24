@@ -248,9 +248,18 @@ export function formatTickGainLabel(
     weather,
     dir,
   )
-  if (dir === 'spirit') return `修为 +${rate}`
-  if (dir === 'body') return `淬体度 +${rate}`
-  if (dir === 'crafting') return `制造业经验 +${rate}`
-  if (dir === 'sect_mining') return `个人灵石 +${rate}`
-  return ''
+  let label = ''
+  if (dir === 'spirit') label = `修为 +${rate}`
+  else if (dir === 'body') label = `淬体度 +${rate}`
+  else if (dir === 'crafting') label = `制造业经验 +${rate}`
+  else if (dir === 'sect_mining') label = `个人灵石 +${rate}`
+  else return ''
+  const stones = Number(character.idle_stones_per_tick || 0)
+  if (
+    stones > 0 &&
+    (dir === 'spirit' || dir === 'body' || dir === 'crafting')
+  ) {
+    return `${label}，灵石 -${stones}`
+  }
+  return label
 }

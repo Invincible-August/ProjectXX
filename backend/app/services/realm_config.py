@@ -15,6 +15,16 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from app.core.config import get_settings
+from app.constants.avatar import (
+    AVATAR_DEFAULT_LEAD_MAJORS,
+    AVATAR_DEFAULT_MAX_MAJOR_REALM,
+    AVATAR_FORBIDDEN_IDENTITY_REALMS,
+)
+from app.constants.inventory import (
+    INSPECT_REALM_NONE_ZH,
+    USE_EFFECT_KIND_LABEL_ZH,
+    normalize_inspect_element,
+)
 
 if TYPE_CHECKING:
     from app.domain.formation_blueprint import (
@@ -44,7 +54,7 @@ STAGE_LABEL_NAMES: dict[str, str] = {
 }
 
 IDLE_DIRECTION_NAMES: dict[str, str] = {
-    "none": "未修炼",
+    "none": "空闲",
     "spirit": "修炼",
     "body": "淬体",
     "crafting": "制造业修炼",
@@ -53,6 +63,12 @@ IDLE_DIRECTION_NAMES: dict[str, str] = {
 
 STATUS_NAMES: dict[str, str] = {
     "normal": "正常",
+    "epiphany": "顿悟",
+    "weak": "虚弱",
+    "poisoned": "中毒",
+    "demonic": "入魔",
+    "confused": "混乱",
+    "fatigued": "疲劳",
     "breaking_through": "进阶中",
     "tribulation": "渡劫中",
     "awaiting_ferry": "待引渡",
@@ -448,6 +464,15 @@ class OfflineConfig:
 
 
 @dataclass(frozen=True)
+class TechniqueSkillConfig:
+    """功法技能占位（展示用，引擎未接）。"""
+
+    skill_id: str
+    label_zh: str
+    effect_zh: str
+
+
+@dataclass(frozen=True)
 class TechniqueConfig:
     """单本功法配置。"""
 
@@ -463,6 +488,41 @@ class TechniqueConfig:
     dice_mods: tuple[dict[str, int], ...] = ()
     # 功法特性（如 reincarnatable=可轮回带入）
     traits: tuple[str, ...] = ()
+    elements: tuple[str, ...] = ()
+    help_zh: str = ""
+    learn_requires: dict[str, Any] = field(default_factory=dict)
+    skills_main: tuple[TechniqueSkillConfig, ...] = ()
+    skills_art: tuple[TechniqueSkillConfig, ...] = ()
+
+
+@dataclass(frozen=True)
+class TechniqueLoadoutConfig:
+    """主功法 / 技法装备槽配置。"""
+
+    main_slots: int
+    default_art_slots: int
+    help_zh: str
+    art_slots_by_major: dict[str, int]
+
+
+@dataclass(frozen=True)
+class DivineAbilityConfig:
+    """单条神通配置。"""
+
+    ability_id: str
+    name: str
+    help_zh: str = ""
+    effect_zh: str = ""
+    elements: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class DivineAbilityLoadoutConfig:
+    """神通装备槽：修为基数 + 品阶加成。"""
+
+    help_zh: str
+    default_slots: int
+    slots_by_major: dict[str, int]
 
 
 @dataclass(frozen=True)
@@ -544,8 +604,31 @@ class ConstitutionItemDef:
     kind: str
     grade: str
     base_attrs: dict[str, int]
-    # 数值效应；含占位 idle_mult（float）等挂机钩子
-    effects: dict[str, float]
+    # 本源槽生效；含占位 idle_mult（float）等挂机钩子
+    main_effects: dict[str, float]
+    # 旁支槽生效
+    sub_effects: dict[str, float]
+
+    @property
+    def effects(self) -> dict[str, float]:
+        """兼容旧读取：默认视作本源效果。"""
+        return self.main_effects
+
+    def effects_for_slot(self, slot_type: str) -> dict[str, float]:
+        """
+        Effects that apply when this physique occupies ``slot_type``.
+
+        Args:
+            slot_type: ``main`` (本源) or ``sub`` (旁支).
+
+        Returns:
+            dict[str, float]: Active numeric effects.
+        """
+        if slot_type == "main":
+            return self.main_effects
+        if slot_type == "sub":
+            return self.sub_effects
+        return {}
 
 
 @dataclass(frozen=True)
@@ -554,6 +637,7 @@ class ConstitutionConfig:
 
     main_slots: int
     sub_slots: int
+    soft_cap: int
     items: dict[str, ConstitutionItemDef]
 
 
@@ -834,9 +918,15 @@ class AvatarConfig:
 
     unlock_major_realm: str
     max_avatars: int
+    max_major_realm: str
+    avatar_lead_majors: int
     initial_stat_ratio: float
     material_mod_placeholder: float
     condense_spirit_stone_cost: int
+    condense_cultivation_cost: int
+    condense_technique_ids: tuple[str, ...]
+    condense_medium_item_ids: tuple[str, ...]
+    condense_medium_quantity: int
     spirit_rates: AvatarIdleRates
     body_rates: AvatarIdleRates
     crafting_rates: AvatarIdleRates
@@ -879,6 +969,8 @@ class DivineSenseConfig:
     per_realm_bonus: dict[str, int]
     cost_avatar: int
     cost_pet: int
+    cost_puppet: int
+    puppet_loadout_max: int
     soft_ratio: float
     hard_ratio: float
     overload_stat_mult: float
@@ -895,6 +987,7 @@ class CraftRecipeOutput:
     item_id: str | None
     quantity: int
     grant_array_craft_level: int
+    grant_craft_level: int
 
 
 @dataclass(frozen=True)
@@ -918,6 +1011,9 @@ class CraftRecipe:
     stamina_cost: int
     materials: tuple[CraftMaterial, ...]
     outputs: tuple[CraftRecipeOutput, ...]
+    required_craft_level: int
+    recipe_tier: int
+    grant_craft_level: int
 
 
 @dataclass(frozen=True)
@@ -927,6 +1023,7 @@ class CraftRecipesConfig:
     main_crafting_bonus: float
     max_jobs_per_actor: int
     recipes: dict[str, CraftRecipe]
+    quality_by_level_delta: tuple[dict[str, Any], ...]
 
 
 @dataclass(frozen=True)
@@ -1216,6 +1313,16 @@ class InventoryStackRules:
 
 
 @dataclass(frozen=True)
+class ItemInspectDef:
+    """工坊成品悬停：单一属性、功效、境界门槛、说明。"""
+
+    realm_req_zh: str
+    help_zh: str
+    effects: tuple[str, ...]
+    element: str | None = None
+
+
+@dataclass(frozen=True)
 class InventoryItemDef:
     """背包物品定义。"""
 
@@ -1231,6 +1338,19 @@ class InventoryItemDef:
     bound: bool = False
     # M7 机缘/交易：唯一物不可拆分发放
     unique: bool = False
+    # S1-4：傀儡等可部署物指向战斗体模板 id；缺省等于 item_id
+    actor_def_id: str | None = None
+    # M8 R5：manual 细类 / 解锁配方（学习玩法后延，本字段仅管线）
+    manual_kind: str | None = None
+    unlock_recipe_id: str | None = None
+    inspect: ItemInspectDef = field(
+        default_factory=lambda: ItemInspectDef(
+            realm_req_zh=INSPECT_REALM_NONE_ZH,
+            help_zh="",
+            effects=(),
+            element=None,
+        ),
+    )
 
 
 @dataclass(frozen=True)
@@ -1240,6 +1360,124 @@ class InventoryConfig:
     stack_rules: InventoryStackRules
     item_types: tuple[str, ...]
     items: dict[str, InventoryItemDef]
+
+
+@dataclass(frozen=True)
+class EquipmentItemDef:
+    """equipment.yaml 单条装备定义。"""
+
+    item_id: str
+    label_zh: str
+    help_zh: str
+    slot: str
+    stats: dict[str, float]
+    dice_mods: dict[str, int]
+    idle_mods: dict[str, float]
+    grants: tuple[str, ...]
+    required_major_realm: str | None = None
+
+
+@dataclass(frozen=True)
+class EquipmentConfig:
+    """equipment.yaml 聚合。"""
+
+    items: dict[str, EquipmentItemDef]
+
+
+@dataclass(frozen=True)
+class ResearchAffixDef:
+    """Single research affix (whitelist)."""
+
+    affix_id: str
+    label_zh: str
+    help_zh: str
+    stats: dict[str, float]
+
+
+@dataclass(frozen=True)
+class ResearchTechniqueConfig:
+    """Technique research branch settings."""
+
+    label_zh: str
+    help_zh: str
+    allowed_materials: tuple[str, ...]
+    min_materials: int
+    spend: dict[str, int]
+    max_rerolls: int
+    reroll_materials: tuple[dict[str, Any], ...]
+    affix_slots: int
+    extra_affix_roll: int
+    session_ttl_seconds: int
+    track: str
+    max_level: int
+    cost_per_level: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class ResearchFormationConfig:
+    """research.yaml formation branch (M8 R3)."""
+
+    label_zh: str
+    help_zh: str
+    allowed_materials: tuple[str, ...]
+    min_materials: int
+    spend: dict[str, int]
+    required_array_level: int
+    session_ttl_seconds: int
+    default_deploy_mode: str
+    terrain_layout: dict[str, Any]
+    allowed_deploy_modes: tuple[str, ...]
+    allowed_environment_ids: tuple[str, ...]
+    allowed_weather_ids: tuple[str, ...]
+    allowed_effect_ids: tuple[str, ...]
+    max_force_shifts: int
+
+
+@dataclass(frozen=True)
+class ResearchTalismanConfig:
+    """research.yaml talisman branch (M8 R4)."""
+
+    label_zh: str
+    help_zh: str
+    allowed_materials: tuple[str, ...]
+    min_materials: int
+    spend: dict[str, int]
+    session_ttl_seconds: int
+    paper_item_id: str
+    paper_per_copy: int
+    max_batch: int
+    preload_slots: int
+    battle_enabled: bool
+
+
+@dataclass(frozen=True)
+class TalismanEffectDef:
+    """talisman_effects.yaml whitelist entry."""
+
+    effect_id: str
+    label_zh: str
+    help_zh: str
+    trigger: str
+    kind: str
+    stack_group: str
+    magnitude: float
+    duration_kind: str
+    duration: int
+    attr: str
+    use_chance: float
+    hit_chance: float
+
+
+@dataclass(frozen=True)
+class ResearchConfig:
+    """research.yaml aggregate."""
+
+    schema_version: int
+    reincarnation_carry: bool
+    technique: ResearchTechniqueConfig
+    formation: ResearchFormationConfig
+    talisman: ResearchTalismanConfig
+    affixes: dict[str, ResearchAffixDef]
 
 
 @dataclass(frozen=True)
@@ -1657,6 +1895,9 @@ class GameConfigBundle:
     monsters: dict[str, MonsterConfig]
     offline: OfflineConfig
     techniques: dict[str, TechniqueConfig]
+    technique_loadout: TechniqueLoadoutConfig
+    divine_abilities: dict[str, DivineAbilityConfig]
+    divine_ability_loadout: DivineAbilityLoadoutConfig
     constitution: ConstitutionConfig
     grades: GradesConfig
     # M3 战斗成型
@@ -1679,6 +1920,9 @@ class GameConfigBundle:
     pet_encounter: PetEncounterConfig
     pet_capture: PetCaptureConfig
     inventory: InventoryConfig
+    equipment: EquipmentConfig
+    research: ResearchConfig
+    talisman_effects: dict[str, TalismanEffectDef]
     # M5 环境与轮回
     calendar: CalendarConfig
     weather: WeatherConfig
@@ -1712,7 +1956,11 @@ class GameConfigBundle:
 
 def _load_yaml(filename: str) -> dict[str, Any]:
     """
-    经 ConfigSource 读取 YAML 底表，并 deep_merge 已发布覆盖层（M2-D01 / ADM-2）。
+    经 ContentStore 读取玩法配置（受 ``CONTENT_STORE_MODE`` 控制）。
+
+    - yaml_authority：仅 YAML
+    - yaml_base_db_overlay：YAML ∪ DB 已发布 overlay（默认）
+    - db_authority：优先已发布；无则 YAML 种子
 
     Args:
         filename: 文件名（如 ``pets.yaml``）。
@@ -1720,35 +1968,14 @@ def _load_yaml(filename: str) -> dict[str, Any]:
     Returns:
         dict: 合并后的根对象（供各 ``_parse_*`` 消费）。
     """
-    from copy import deepcopy
+    from app.game.content_store import ContentStore
 
-    from app.config_source.merge import deep_merge
-    from app.config_source.overlay_store import OverlayStore
-    from app.config_source.registry import domain_id_for_filename
-    from app.config_source.yaml_source import get_shared_yaml_source
-
-    # 共享 YAML 源（mtime 缓存）；copy=False：仅在随后 deep_merge 时安全
     try:
-        data = get_shared_yaml_source().load_raw(filename, copy=False)
+        return ContentStore.load_filename(filename, copy=True)
     except FileNotFoundError as exc:
         raise FileNotFoundError(f"玩法配置缺失: {_CONFIG_DIR / filename}") from exc
     except ValueError as exc:
         raise ValueError(f"玩法配置根节点须为 mapping: {_CONFIG_DIR / filename}") from exc
-
-    domain_id = domain_id_for_filename(filename)
-    if domain_id:
-        overlay = OverlayStore.get_ref(domain_id)
-        if overlay:
-            data = deep_merge(data, overlay)
-            logger.debug(
-                "config overlay applied domain=%s file=%s version=%s",
-                domain_id,
-                filename,
-                OverlayStore.get_version(domain_id),
-            )
-            return data
-    # 无覆盖：必须拷贝，避免 _parse_* 原地改坏 YAML 缓存
-    return deepcopy(data)
 
 
 def _parse_realms(raw: dict[str, Any]) -> dict[str, MajorRealmConfig]:
@@ -2224,6 +2451,81 @@ def _parse_offline(raw: dict[str, Any], settings: Any) -> OfflineConfig:
     )
 
 
+def _parse_technique_skills(raw: Any) -> tuple[TechniqueSkillConfig, ...]:
+    """Parse skill placeholder list from YAML."""
+    if not isinstance(raw, list):
+        return ()
+    items: list[TechniqueSkillConfig] = []
+    for row in raw:
+        if not isinstance(row, dict):
+            continue
+        skill_id = str(row.get("id") or "").strip()
+        if not skill_id:
+            continue
+        items.append(
+            TechniqueSkillConfig(
+                skill_id=skill_id,
+                label_zh=str(row.get("label_zh") or skill_id),
+                effect_zh=str(row.get("effect_zh") or ""),
+            ),
+        )
+    return tuple(items)
+
+
+def _parse_divine_ability_loadout(raw: dict[str, Any]) -> DivineAbilityLoadoutConfig:
+    """Parse divine_abilities.yaml loadout block."""
+    body = raw.get("loadout") or {}
+    if not isinstance(body, dict):
+        body = {}
+    by_major_raw = body.get("slots_by_major") or {}
+    by_major: dict[str, int] = {}
+    if isinstance(by_major_raw, dict):
+        for key, value in by_major_raw.items():
+            by_major[str(key)] = max(0, int(value))
+    return DivineAbilityLoadoutConfig(
+        help_zh=str(body.get("help_zh") or ""),
+        default_slots=max(0, int(body.get("default_slots") or 1)),
+        slots_by_major=by_major,
+    )
+
+
+def _parse_divine_abilities(raw: dict[str, Any]) -> dict[str, DivineAbilityConfig]:
+    """解析 divine_abilities.yaml。"""
+    table = raw.get("divine_abilities") or {}
+    result: dict[str, DivineAbilityConfig] = {}
+    for ability_id, body in dict(table).items():
+        if not isinstance(body, dict):
+            continue
+        elements_raw = body.get("elements") or []
+        result[str(ability_id)] = DivineAbilityConfig(
+            ability_id=str(ability_id),
+            name=str(body.get("name") or ability_id),
+            help_zh=str(body.get("help_zh") or ""),
+            effect_zh=str(body.get("effect_zh") or ""),
+            elements=tuple(str(x) for x in list(elements_raw) if str(x).strip()),
+        )
+    return result
+
+
+def _parse_technique_loadout(raw: dict[str, Any]) -> TechniqueLoadoutConfig:
+    """Parse techniques.yaml loadout block."""
+    body = raw.get("loadout") or {}
+    if not isinstance(body, dict):
+        body = {}
+    by_major_raw = body.get("art_slots_by_major") or {}
+    by_major = {
+        str(k): max(0, int(v))
+        for k, v in dict(by_major_raw).items()
+        if str(k).strip()
+    }
+    return TechniqueLoadoutConfig(
+        main_slots=max(1, int(body.get("main_slots") or 1)),
+        default_art_slots=max(0, int(body.get("default_art_slots") or 1)),
+        help_zh=str(body.get("help_zh") or ""),
+        art_slots_by_major=by_major,
+    )
+
+
 def _parse_techniques(raw: dict[str, Any]) -> dict[str, TechniqueConfig]:
     """解析 techniques.yaml。"""
     techniques_raw = raw.get("techniques") or {}
@@ -2241,6 +2543,11 @@ def _parse_techniques(raw: dict[str, Any]) -> dict[str, TechniqueConfig]:
                     "max_bonus": int(row.get("max_bonus", 0)),
                 },
             )
+        skills_raw = body.get("skills") or {}
+        if not isinstance(skills_raw, dict):
+            skills_raw = {}
+        elements_raw = body.get("elements") or []
+        learn_raw = body.get("learn_requires") or {}
         result[str(tech_id)] = TechniqueConfig(
             technique_id=str(tech_id),
             name=str(body["name"]),
@@ -2251,6 +2558,11 @@ def _parse_techniques(raw: dict[str, Any]) -> dict[str, TechniqueConfig]:
             env_tags=tuple(str(t) for t in env_tags_raw),
             dice_mods=tuple(dice_mods),
             traits=tuple(str(t) for t in (body.get("traits") or [])),
+            elements=tuple(str(e) for e in elements_raw if str(e).strip()),
+            help_zh=str(body.get("help_zh") or ""),
+            learn_requires=dict(learn_raw) if isinstance(learn_raw, dict) else {},
+            skills_main=_parse_technique_skills(skills_raw.get("as_main")),
+            skills_art=_parse_technique_skills(skills_raw.get("as_art")),
         )
     return result
 
@@ -2373,25 +2685,33 @@ def _parse_dice(raw: dict[str, Any]) -> DiceConfig:
 
 def _parse_constitution(raw: dict[str, Any]) -> ConstitutionConfig:
     """解析 constitution.yaml。"""
+    from app.constants.constitution import CONSTITUTION_SOFT_CAP
+
     slot_defaults = raw.get("slot_defaults") or {}
     items_raw = raw.get("items") or {}
     items: dict[str, ConstitutionItemDef] = {}
     for def_id, body in items_raw.items():
         base_attrs = dict(body.get("base_attrs") or {})
-        effects = dict(body.get("effects") or {})
+        legacy_effects = {str(k): float(v) for k, v in dict(body.get("effects") or {}).items()}
+        main_raw = dict(body.get("main_effects") or {})
+        main_effects = (
+            {str(k): float(v) for k, v in main_raw.items()} if main_raw else legacy_effects
+        )
+        sub_effects = {str(k): float(v) for k, v in dict(body.get("sub_effects") or {}).items()}
         items[str(def_id)] = ConstitutionItemDef(
             def_id=str(def_id),
             name=str(body["name"]),
             quality=str(body.get("quality", "mortal")),
-            kind=str(body.get("kind", "body")),
+            kind=str(body.get("kind", "physique")),
             grade=str(body.get("grade", body.get("quality", "mortal"))),
             base_attrs={str(k): int(v) for k, v in base_attrs.items()},
-            # float：兼容 atk_bonus 等整数与 idle_mult 小数钩子
-            effects={str(k): float(v) for k, v in effects.items()},
+            main_effects=main_effects,
+            sub_effects=sub_effects,
         )
     return ConstitutionConfig(
         main_slots=int(slot_defaults.get("main", 1)),
         sub_slots=int(slot_defaults.get("sub", 2)),
+        soft_cap=int(slot_defaults.get("soft_cap", CONSTITUTION_SOFT_CAP)),
         items=items,
     )
 
@@ -2763,9 +3083,24 @@ def _parse_avatar(raw: dict[str, Any]) -> AvatarConfig:
     return AvatarConfig(
         unlock_major_realm=str(raw.get("unlock_major_realm", "jindan")),
         max_avatars=max_avatars,
+        max_major_realm=str(raw.get("max_major_realm") or AVATAR_DEFAULT_MAX_MAJOR_REALM).strip()
+        or AVATAR_DEFAULT_MAX_MAJOR_REALM,
+        avatar_lead_majors=max(0, int(raw.get("avatar_lead_majors", AVATAR_DEFAULT_LEAD_MAJORS) or 0)),
         initial_stat_ratio=float(raw.get("initial_stat_ratio", 0.5)),
         material_mod_placeholder=float(raw.get("material_mod_placeholder", 1.0)),
         condense_spirit_stone_cost=int(raw.get("condense_spirit_stone_cost", 1000)),
+        condense_cultivation_cost=max(0, int(raw.get("condense_cultivation_cost", 0) or 0)),
+        condense_technique_ids=tuple(
+            str(x).strip()
+            for x in (raw.get("condense_technique_ids") or [])
+            if str(x).strip()
+        ),
+        condense_medium_item_ids=tuple(
+            str(x).strip()
+            for x in (raw.get("condense_medium_item_ids") or [])
+            if str(x).strip()
+        ),
+        condense_medium_quantity=max(1, int(raw.get("condense_medium_quantity", 1) or 1)),
         spirit_rates=AvatarIdleRates(
             enabled=True,
             gain_per_tick=int(spirit_raw.get("cultivation_per_tick", 6)),
@@ -2828,6 +3163,8 @@ def _parse_divine_sense(raw: dict[str, Any]) -> DivineSenseConfig:
         per_realm_bonus={str(k): int(v) for k, v in bonus_raw.items()},
         cost_avatar=int(costs.get("avatar", 5)),
         cost_pet=int(costs.get("pet", 3)),
+        cost_puppet=int(costs.get("puppet", 2)),
+        puppet_loadout_max=int(raw.get("puppet_loadout_max", 3)),
         soft_ratio=float(raw.get("soft_ratio", 1.0)),
         hard_ratio=float(raw.get("hard_ratio", 1.5)),
         overload_stat_mult=float(raw.get("overload_stat_mult", 0.7)),
@@ -2848,6 +3185,7 @@ def _parse_craft_recipes(raw: dict[str, Any]) -> CraftRecipesConfig:
         )
         outputs: list[CraftRecipeOutput] = []
         for out in body.get("outputs") or []:
+            grant_lv = int(out.get("grant_craft_level") or 0)
             if out.get("grant_array_craft_level"):
                 outputs.append(
                     CraftRecipeOutput(
@@ -2855,6 +3193,7 @@ def _parse_craft_recipes(raw: dict[str, Any]) -> CraftRecipesConfig:
                         item_id=None,
                         quantity=0,
                         grant_array_craft_level=int(out["grant_array_craft_level"]),
+                        grant_craft_level=grant_lv,
                     ),
                 )
             else:
@@ -2864,6 +3203,7 @@ def _parse_craft_recipes(raw: dict[str, Any]) -> CraftRecipesConfig:
                         item_id=str(out["item_id"]),
                         quantity=int(out.get("quantity", 1)),
                         grant_array_craft_level=0,
+                        grant_craft_level=grant_lv,
                     ),
                 )
         recipes[str(recipe_id)] = CraftRecipe(
@@ -2876,11 +3216,25 @@ def _parse_craft_recipes(raw: dict[str, Any]) -> CraftRecipesConfig:
             stamina_cost=int(body.get("stamina_cost", 0)),
             materials=mats,
             outputs=tuple(outputs),
+            required_craft_level=int(body.get("required_craft_level") or 0),
+            recipe_tier=int(body.get("recipe_tier") or 1),
+            grant_craft_level=int(body.get("grant_craft_level") or 0),
         )
+    quality_bands: list[dict[str, Any]] = []
+    for band in raw.get("quality_by_level_delta") or []:
+        weights = band.get("weights") or {}
+        quality_bands.append(
+            {
+                "min_delta": int(band.get("min_delta") or 0),
+                "weights": {str(k): int(v) for k, v in dict(weights).items()},
+            },
+        )
+    quality_bands.sort(key=lambda row: int(row.get("min_delta") or 0))
     return CraftRecipesConfig(
         main_crafting_bonus=float(raw.get("main_crafting_bonus", 1.25)),
         max_jobs_per_actor=int(raw.get("max_jobs_per_actor", 1)),
         recipes=recipes,
+        quality_by_level_delta=tuple(quality_bands),
     )
 
 
@@ -3446,6 +3800,29 @@ def _parse_pet_capture(raw: dict[str, Any]) -> PetCaptureConfig:
     )
 
 
+def _parse_item_inspect(body: dict[str, Any]) -> ItemInspectDef:
+    """Parse optional inspect block; missing keys stay 0 / 无 so hover layout is stable."""
+    raw = body.get("inspect")
+    inspect_raw = raw if isinstance(raw, dict) else {}
+    use_eff = body.get("use_effect")
+    effects_raw = inspect_raw.get("effects")
+    effects: tuple[str, ...] = ()
+    if isinstance(effects_raw, list):
+        effects = tuple(str(x).strip() for x in effects_raw if str(x).strip())
+    if not effects and isinstance(use_eff, dict):
+        kind_zh = USE_EFFECT_KIND_LABEL_ZH.get(str(use_eff.get("kind") or ""), "")
+        if kind_zh:
+            effects = (kind_zh,)
+    help_zh = str(inspect_raw.get("help_zh") or body.get("description") or "").strip()
+    realm_req = str(inspect_raw.get("realm_req_zh") or INSPECT_REALM_NONE_ZH).strip()
+    return ItemInspectDef(
+        realm_req_zh=realm_req or INSPECT_REALM_NONE_ZH,
+        help_zh=help_zh,
+        effects=effects,
+        element=normalize_inspect_element(inspect_raw.get("element")),
+    )
+
+
 def _parse_inventory(raw: dict[str, Any]) -> InventoryConfig:
     """解析 inventory.yaml。"""
     stack_raw = raw.get("stack_rules") or {}
@@ -3468,6 +3845,14 @@ def _parse_inventory(raw: dict[str, Any]) -> InventoryConfig:
             tradable=bool(body.get("tradable", True)),
             bound=bool(body.get("bound", False)),
             unique=bool(body.get("unique", False)),
+            actor_def_id=(
+                str(body["actor_def_id"]) if body.get("actor_def_id") else None
+            ),
+            manual_kind=(str(body["manual_kind"]) if body.get("manual_kind") else None),
+            unlock_recipe_id=(
+                str(body["unlock_recipe_id"]) if body.get("unlock_recipe_id") else None
+            ),
+            inspect=_parse_item_inspect(body if isinstance(body, dict) else {}),
         )
     by_type = {
         str(k): int(v) for k, v in (stack_raw.get("by_item_type") or {}).items()
@@ -3479,6 +3864,172 @@ def _parse_inventory(raw: dict[str, Any]) -> InventoryConfig:
         ),
         item_types=tuple(str(x) for x in (raw.get("item_types") or [])),
         items=items,
+    )
+
+
+def _parse_equipment(raw: dict[str, Any], *, combat_attrs: CombatAttrsConfig) -> EquipmentConfig:
+    """解析 equipment.yaml；stats 键须 ∈ combat_attrs.attrs。"""
+    items_raw = raw.get("items") or {}
+    items: dict[str, EquipmentItemDef] = {}
+    allowed_keys = set(combat_attrs.attrs.keys())
+    for item_id, body in items_raw.items():
+        stats_raw = body.get("stats") or {}
+        stats: dict[str, float] = {}
+        for key, val in stats_raw.items():
+            sk = str(key)
+            if sk not in allowed_keys:
+                raise ValueError(f"equipment.{item_id}.stats.{sk}: unknown combat attr key")
+            stats[sk] = float(val)
+        dice_raw = body.get("dice_mods") or {}
+        dice_mods = {
+            "min_bonus": int(dice_raw.get("min_bonus", 0) or 0),
+            "max_bonus": int(dice_raw.get("max_bonus", 0) or 0),
+        }
+        idle_raw = body.get("idle_mods") or {}
+        idle_mods = {
+            "idle_mult": float(idle_raw.get("idle_mult", 1.0) or 1.0),
+        }
+        grants = tuple(str(x) for x in (body.get("grants") or []))
+        req = body.get("required_major_realm")
+        # equip_kind falls back when slot omitted (道具专文 §5)
+        slot_raw = body.get("equip_kind") or body.get("slot") or ""
+        items[str(item_id)] = EquipmentItemDef(
+            item_id=str(item_id),
+            label_zh=str(body.get("label_zh", item_id)),
+            help_zh=str(body.get("help_zh", "")),
+            slot=str(slot_raw),
+            stats=stats,
+            dice_mods=dice_mods,
+            idle_mods=idle_mods,
+            grants=grants,
+            required_major_realm=str(req) if req else None,
+        )
+    return EquipmentConfig(items=items)
+
+
+def _parse_talisman_effects(raw: dict[str, Any]) -> dict[str, TalismanEffectDef]:
+    """Parse talisman_effects.yaml whitelist; require label_zh and known trigger."""
+    from app.config_source.validate_content import validate_talisman_effects_raw
+
+    validate_talisman_effects_raw(raw)
+    effects: dict[str, TalismanEffectDef] = {}
+    for effect_id, body in (raw or {}).items():
+        effects[str(effect_id)] = TalismanEffectDef(
+            effect_id=str(effect_id),
+            label_zh=str(body["label_zh"]).strip(),
+            help_zh=str(body.get("help_zh") or ""),
+            trigger=str(body.get("trigger") or "").strip(),
+            kind=str(body.get("kind") or "buff"),
+            stack_group=str(body.get("stack_group") or effect_id),
+            magnitude=float(body.get("magnitude") or 0.0),
+            duration_kind=str(body.get("duration_kind") or "global"),
+            duration=int(body.get("duration") or 0),
+            attr=str(body.get("attr") or "phys_atk"),
+            use_chance=float(body.get("use_chance") or 0.0),
+            hit_chance=float(body.get("hit_chance") or 1.0),
+        )
+    return effects
+
+
+def _parse_research(raw: dict[str, Any], *, combat_attrs: CombatAttrsConfig) -> ResearchConfig:
+    """Parse research.yaml; affix stats must be registered ATTR keys."""
+    tech_raw = raw.get("technique") or {}
+    reroll_raw = tech_raw.get("reroll") or {}
+    extra_mats = []
+    for mat in reroll_raw.get("extra_materials") or []:
+        extra_mats.append(
+            {
+                "item_id": str(mat.get("item_id") or ""),
+                "quantity": int(mat.get("quantity") or 0),
+            },
+        )
+    spend_raw = tech_raw.get("spend") or {}
+    technique = ResearchTechniqueConfig(
+        label_zh=str(tech_raw.get("label_zh") or "自研功法"),
+        help_zh=str(tech_raw.get("help_zh") or ""),
+        allowed_materials=tuple(str(x) for x in (tech_raw.get("allowed_materials") or [])),
+        min_materials=int(tech_raw.get("min_materials") or 1),
+        spend={
+            "cultivation_points": int(spend_raw.get("cultivation_points") or 0),
+            "body_tempering_points": int(spend_raw.get("body_tempering_points") or 0),
+        },
+        max_rerolls=int(reroll_raw.get("max_rerolls") or 0),
+        reroll_materials=tuple(extra_mats),
+        affix_slots=int(tech_raw.get("affix_slots") or 1),
+        extra_affix_roll=int(tech_raw.get("extra_affix_roll") or 12),
+        session_ttl_seconds=int(tech_raw.get("session_ttl_seconds") or 86400),
+        track=str(tech_raw.get("track") or "spirit"),
+        max_level=int(tech_raw.get("max_level") or 5),
+        cost_per_level=tuple(int(x) for x in (tech_raw.get("cost_per_level") or [])),
+    )
+    allowed_keys = set(combat_attrs.attrs.keys())
+    affixes: dict[str, ResearchAffixDef] = {}
+    for affix_id, body in (raw.get("affixes") or {}).items():
+        stats_raw = body.get("stats") or {}
+        stats: dict[str, float] = {}
+        for key, val in stats_raw.items():
+            sk = str(key)
+            if sk not in allowed_keys:
+                raise ValueError(f"research.affixes.{affix_id}.stats.{sk}: unknown combat attr key")
+            stats[sk] = float(val)
+        affixes[str(affix_id)] = ResearchAffixDef(
+            affix_id=str(affix_id),
+            label_zh=str(body.get("label_zh", affix_id)),
+            help_zh=str(body.get("help_zh", "")),
+            stats=stats,
+        )
+    form_raw = raw.get("formation") or {}
+    form_spend = form_raw.get("spend") or {}
+    formation = ResearchFormationConfig(
+        label_zh=str(form_raw.get("label_zh") or "自研阵法"),
+        help_zh=str(form_raw.get("help_zh") or ""),
+        allowed_materials=tuple(str(x) for x in (form_raw.get("allowed_materials") or [])),
+        min_materials=int(form_raw.get("min_materials") or 1),
+        spend={
+            "cultivation_points": int(form_spend.get("cultivation_points") or 0),
+            "body_tempering_points": int(form_spend.get("body_tempering_points") or 0),
+        },
+        required_array_level=int(form_raw.get("required_array_level") or 0),
+        session_ttl_seconds=int(form_raw.get("session_ttl_seconds") or 86400),
+        default_deploy_mode=str(form_raw.get("default_deploy_mode") or "free_own"),
+        terrain_layout=dict(form_raw.get("terrain_layout") or {}),
+        allowed_deploy_modes=tuple(
+            str(x) for x in (form_raw.get("allowed_deploy_modes") or ("free_own",))
+        ),
+        allowed_environment_ids=tuple(
+            str(x) for x in (form_raw.get("allowed_environment_ids") or [])
+        ),
+        allowed_weather_ids=tuple(str(x) for x in (form_raw.get("allowed_weather_ids") or [])),
+        allowed_effect_ids=tuple(str(x) for x in (form_raw.get("allowed_effect_ids") or [])),
+        max_force_shifts=int(form_raw.get("max_force_shifts") or 0),
+    )
+    tal_raw = raw.get("talisman") or {}
+    tal_spend = tal_raw.get("spend") or {}
+    scribe_raw = tal_raw.get("scribe") or {}
+    battle_raw = tal_raw.get("battle") or {}
+    talisman = ResearchTalismanConfig(
+        label_zh=str(tal_raw.get("label_zh") or "自研符箓"),
+        help_zh=str(tal_raw.get("help_zh") or ""),
+        allowed_materials=tuple(str(x) for x in (tal_raw.get("allowed_materials") or [])),
+        min_materials=int(tal_raw.get("min_materials") or 1),
+        spend={
+            "cultivation_points": int(tal_spend.get("cultivation_points") or 0),
+            "body_tempering_points": int(tal_spend.get("body_tempering_points") or 0),
+        },
+        session_ttl_seconds=int(tal_raw.get("session_ttl_seconds") or 86400),
+        paper_item_id=str(scribe_raw.get("paper_item_id") or "talisman_paper"),
+        paper_per_copy=int(scribe_raw.get("paper_per_copy") or 1),
+        max_batch=int(scribe_raw.get("max_batch") or 20),
+        preload_slots=int(tal_raw.get("preload_slots") or 1),
+        battle_enabled=bool((battle_raw.get("enabled", True))),
+    )
+    return ResearchConfig(
+        schema_version=int(raw.get("schema_version") or 1),
+        reincarnation_carry=bool(raw.get("reincarnation_carry", False)),
+        technique=technique,
+        formation=formation,
+        talisman=talisman,
+        affixes=affixes,
     )
 
 
@@ -4227,7 +4778,12 @@ def load_game_config() -> GameConfigBundle:
                     f"unknown taunt_aura_id '{u.taunt_aura_id}'",
                 )
     offline = _parse_offline(_load_yaml("offline.yaml"), settings)
-    techniques = _parse_techniques(_load_yaml("techniques.yaml"))
+    tech_raw = _load_yaml("techniques.yaml")
+    techniques = _parse_techniques(tech_raw)
+    technique_loadout = _parse_technique_loadout(tech_raw)
+    divine_raw = _load_yaml("divine_abilities.yaml")
+    divine_abilities = _parse_divine_abilities(divine_raw)
+    divine_ability_loadout = _parse_divine_ability_loadout(divine_raw)
     constitution = _parse_constitution(_load_yaml("constitution.yaml"))
     grades = _parse_grades(_load_yaml("grades.yaml"))
     board = _parse_board(_load_yaml("board.yaml"), settings)
@@ -4249,6 +4805,12 @@ def load_game_config() -> GameConfigBundle:
             raise ValueError(
                 f"avatar.feature_unlocks.{fid}.min_major={funlock.min_major!r} 不在 realms",
             )
+    if avatar.max_major_realm in AVATAR_FORBIDDEN_IDENTITY_REALMS:
+        raise ValueError("avatar.max_major_realm 不可配置为道主境/轮回境")
+    if avatar.max_major_realm not in realms:
+        raise ValueError(
+            f"avatar.max_major_realm={avatar.max_major_realm!r} 不在 realms",
+        )
     avatar = dc_replace(
         avatar,
         capability=AvatarCapabilityIndex.from_config(avatar, realms),
@@ -4303,6 +4865,26 @@ def load_game_config() -> GameConfigBundle:
                 )
     pet_feed = _parse_pet_feed(_load_yaml("pet_feed.yaml"))
     inventory = _parse_inventory(_load_yaml("inventory.yaml"))
+    combat_attrs = _parse_combat_attrs(_load_yaml("combat_attrs.yaml"))
+    equipment = _parse_equipment(_load_yaml("equipment.yaml"), combat_attrs=combat_attrs)
+    for eq_id, eq_def in equipment.items.items():
+        if eq_id not in inventory.items:
+            raise ValueError(f"equipment.{eq_id}: missing inventory item")
+        if inventory.items[eq_id].item_type != "equipment":
+            raise ValueError(f"inventory.{eq_id}: item_type must be equipment")
+    research = _parse_research(_load_yaml("research.yaml"), combat_attrs=combat_attrs)
+    for mat_id in research.technique.allowed_materials:
+        if mat_id not in inventory.items:
+            raise ValueError(f"research.technique.allowed_materials missing inventory: {mat_id}")
+    for mat_id in research.formation.allowed_materials:
+        if mat_id not in inventory.items:
+            raise ValueError(f"research.formation.allowed_materials missing inventory: {mat_id}")
+    for mat_id in research.talisman.allowed_materials:
+        if mat_id not in inventory.items:
+            raise ValueError(f"research.talisman.allowed_materials missing inventory: {mat_id}")
+    if research.talisman.paper_item_id not in inventory.items:
+        raise ValueError("research.talisman.scribe.paper_item_id missing inventory")
+    talisman_effects = _parse_talisman_effects(_load_yaml("talisman_effects.yaml"))
     for feed_id in pet_feed.items:
         if feed_id not in inventory.items:
             raise ValueError(f"pet_feed.items.{feed_id}: missing inventory item")
@@ -4340,7 +4922,6 @@ def load_game_config() -> GameConfigBundle:
     tribulation = _parse_tribulation(_load_yaml("tribulation.yaml"))
     reincarnation = _parse_reincarnation(_load_yaml("reincarnation.yaml"), settings)
     dice = _parse_dice(_load_yaml("dice.yaml"))
-    combat_attrs = _parse_combat_attrs(_load_yaml("combat_attrs.yaml"))
     sects = _parse_sects(_load_yaml("sects.yaml"))
     friends = _parse_friends(_load_yaml("friends.yaml"))
     trade = _parse_trade(_load_yaml("trade.yaml"))
@@ -4383,7 +4964,7 @@ def load_game_config() -> GameConfigBundle:
         list(map_cfg.regions.keys()),
         list(dao.entries.keys()),
     )
-    return GameConfigBundle(
+    bundle = GameConfigBundle(
         realms=realms,
         body_temper=body_temper,
         idle=idle,
@@ -4391,6 +4972,9 @@ def load_game_config() -> GameConfigBundle:
         monsters=monsters,
         offline=offline,
         techniques=techniques,
+        technique_loadout=technique_loadout,
+        divine_abilities=divine_abilities,
+        divine_ability_loadout=divine_ability_loadout,
         constitution=constitution,
         grades=grades,
         board=board,
@@ -4411,6 +4995,9 @@ def load_game_config() -> GameConfigBundle:
         pet_encounter=pet_encounter,
         pet_capture=pet_capture,
         inventory=inventory,
+        equipment=equipment,
+        research=research,
+        talisman_effects=talisman_effects,
         calendar=calendar,
         weather=weather,
         tribulation=tribulation,
@@ -4436,6 +5023,10 @@ def load_game_config() -> GameConfigBundle:
         world_events=world_events,
         presence=presence,
     )
+    from app.config_source.validate_content import validate_loaded_bundle
+
+    validate_loaded_bundle(bundle)
+    return bundle
 
 
 @lru_cache

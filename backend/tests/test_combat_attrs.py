@@ -68,7 +68,13 @@ def test_combat_attrs_config_loads() -> None:
     assert cfg.attrs["phys_atk"].label_zh == "物理攻击"
     assert cfg.aliases.get("atk") == "phys_atk"
     assert "equipment" in cfg.channels
-    assert cfg.channels["equipment"]["enabled"] is False
+    assert cfg.channels["equipment"]["enabled"] is True
+    assert "resist_ailment" in cfg.attrs
+    assert cfg.attrs["resist_ailment"].label_zh == "异常抗性"
+    assert cfg.attrs["resist_ailment"].formula_enabled is False
+    assert "resist_dark" in cfg.attrs
+    assert cfg.attrs["resist_dark"].label_zh == "暗抗"
+    assert cfg.attrs["resist_dark"].formula_enabled is False
 
 
 def test_assemble_block_matches_legacy_calculator() -> None:
@@ -201,7 +207,25 @@ def test_build_combat_attrs_on_character(tmp_path: Path) -> None:
                 assert public.life is not None
                 assert public.combat["final"]["phys_atk"] == public.base_atk
                 assert public.combat["final"]["hp"] == public.base_hp
+                assert public.hp_max == public.base_hp
+                assert public.hp_current == public.hp_max
+                assert public.mp_current == public.mp_max
+                assert public.mp_max == int(public.combat["final"].get("mp") or 0)
+                assert len(public.craft_levels) == 5
+                assert {row["branch"] for row in public.craft_levels} == {
+                    "alchemy",
+                    "smithing",
+                    "talisman",
+                    "array",
+                    "puppet",
+                }
+                assert public.craft_levels[3]["branch"] == "array"
+                assert public.craft_levels[3]["level"] == public.array_craft_level
                 assert "phys_atk" in public.combat["final"]
+                assert "resist_ailment" in public.combat["final"]
+                assert "resist_dark" in public.combat["final"]
+                assert public.combat["labels"].get("resist_ailment") == "异常抗性"
+                assert public.combat["labels"].get("resist_dark") == "暗抗"
                 assert "stamina" in public.life["final"]
                 assert any(
                     row.get("source") == "realm"

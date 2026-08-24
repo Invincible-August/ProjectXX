@@ -11,8 +11,9 @@ from app.db.models.avatar import Avatar
 from app.db.models.avatar_assist import AvatarAssistSession
 from app.db.models.breakthrough_grade import BreakthroughGradeHistory
 from app.db.models.breakthrough_session import BreakthroughSession
-from app.db.models.character import Character
+from app.db.models.character import Character, CharacterRow
 from app.db.models.character_dao import CharacterDao
+from app.db.models.avatar_dao import AvatarDao, AvatarDaoPoolEntry
 from app.db.models.dao_challenge_session import DaoChallengeSession
 from app.db.models.dao_contest import DaoContest, DaoContestEntry, DaoContestMatch
 from app.db.models.dao_lordship import DaoLordship
@@ -22,6 +23,20 @@ from app.db.models.inventory_item import InventoryItem
 from app.db.models.pet import Pet
 from app.db.models.pet_dex import PetDexEntry
 from app.db.models.pet_hatch import PetHatchJob
+from app.db.models.puppet_actor import PuppetActor
+from app.db.models.character_equipment import CharacterEquipmentSlot
+from app.db.models.avatar_loadout import (
+    AvatarDivineAbilitySlot,
+    AvatarEquipmentSlot,
+    AvatarTechniqueSlot,
+)
+from app.db.models.research import (
+    CharacterTalismanLoadout,
+    PrivateFormation,
+    PrivateTalisman,
+    PrivateTechnique,
+    ResearchSession,
+)
 from app.db.models.constitution import ConstitutionItem, ConstitutionSlot
 from app.db.models.defense_snapshot import DefenseSnapshot
 from app.db.models.formation_preset import FormationPreset
@@ -72,11 +87,13 @@ from app.db.models.social_trade import (
     Friendship,
     TradeListing,
 )
-from app.db.models.technique import CharacterTechnique
+from app.db.models.technique import CharacterTechnique, CharacterTechniqueSlot
+from app.db.models.divine_ability import CharacterDivineAbility, CharacterDivineAbilitySlot
 from app.db.models.tribulation_session import TribulationSession
 from app.db.models.user import User
 from app.db.models.verification import VerificationChallenge
 from app.db.models.world_weather import WorldCloudOverlay, WorldWeatherState
+from app.db.models.player_ops import FateLuckGrantRecord, PlayerAdWatchRecord, PlayerTipRecord
 
 __all__ = [
     "AdminAuditLog",
@@ -86,7 +103,10 @@ __all__ = [
     "BreakthroughGradeHistory",
     "BreakthroughSession",
     "Character",
+    "CharacterRow",
     "CharacterDao",
+    "AvatarDao",
+    "AvatarDaoPoolEntry",
     "DaoChallengeSession",
     "DaoContest",
     "DaoContestEntry",
@@ -101,7 +121,20 @@ __all__ = [
     "Pet",
     "PetDexEntry",
     "PetHatchJob",
+    "PuppetActor",
     "CharacterTechnique",
+    "CharacterTechniqueSlot",
+    "CharacterDivineAbility",
+    "CharacterDivineAbilitySlot",
+    "CharacterEquipmentSlot",
+    "AvatarEquipmentSlot",
+    "AvatarTechniqueSlot",
+    "AvatarDivineAbilitySlot",
+    "ResearchSession",
+    "PrivateTechnique",
+    "PrivateFormation",
+    "PrivateTalisman",
+    "CharacterTalismanLoadout",
     "ConstitutionItem",
     "ConstitutionSlot",
     "DefenseSnapshot",
@@ -154,4 +187,7 @@ __all__ = [
     "VerificationChallenge",
     "WorldCloudOverlay",
     "WorldWeatherState",
+    "PlayerTipRecord",
+    "FateLuckGrantRecord",
+    "PlayerAdWatchRecord",
 ]

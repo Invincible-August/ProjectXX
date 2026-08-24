@@ -586,10 +586,19 @@ class DaoContestService:
                 defender_formation = None
                 formation_id = str(payload.get("formation_id") or "none")
                 if formation_id != "none":
-                    formations = get_game_config().formations.formations
-                    formation = formations.get(formation_id)
-                    if formation is not None:
-                        defender_formation = FormationService.formation_to_plain(formation)
+                    inline = payload.get("formation_blueprint")
+                    if isinstance(inline, dict):
+                        custom = FormationService.def_from_blueprint(
+                            formation_id=formation_id,
+                            name=str(payload.get("formation_name") or formation_id),
+                            blueprint=inline,
+                        )
+                        defender_formation = FormationService.formation_to_plain(custom)
+                    else:
+                        formations = get_game_config().formations.formations
+                        formation = formations.get(formation_id)
+                        if formation is not None:
+                            defender_formation = FormationService.formation_to_plain(formation)
                 defender_units = auto._snapshot_defender_units(payload, board)
                 side_b_audit = {
                     "character_id": defender_id,
@@ -864,13 +873,17 @@ class DaoContestService:
 
     async def _transfer_lordship(self, *, dao_id: str, new_lord_id: int) -> None:
         """赛会更替道主席位。"""
+        from app.game.law.privilege import normalize_privileges_payload
         from app.services.dao_lord_service import DaoLordService
 
         lord_svc = DaoLordService(self._session)
         lord = await lord_svc._lordship(dao_id)
         if lord is None:
             return
-        priv = dict(get_game_config().dao_lord.privileges_default)
+        priv = normalize_privileges_payload(
+            None,
+            defaults=dict(get_game_config().dao_lord.privileges_default),
+        )
         snap_id = await lord_svc._latest_snapshot_id(new_lord_id)
         lord.character_id = new_lord_id
         lord.snapshot_id = snap_id

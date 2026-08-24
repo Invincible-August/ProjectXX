@@ -10,6 +10,7 @@ import { useCharacterStore } from '../../stores/character'
 import { useChatStore } from '../../stores/chat'
 import type { PartyInviteItem, PartyMemberItem } from '../../types/chat'
 import { parseUtcMs } from '../../utils/parseUtc'
+import { alertIfIdleBlocked } from '../../utils/idleBlockDialog'
 
 type PickKind = 'friend' | 'sect' | 'mentor'
 
@@ -131,11 +132,19 @@ async function run(fn: () => Promise<string | null>, okHint: string): Promise<vo
   }
 }
 
-function onCreate(): Promise<void> {
+async function onCreate(): Promise<void> {
+  if (await alertIfIdleBlocked(characterStore.character, '组队')) {
+    emit('log', '修炼中无法组队，请先停止修炼', 'warning')
+    return
+  }
   return run(() => chatStore.createParty(), '队伍已创建')
 }
 
-function onInvite(): Promise<void> {
+async function onInvite(): Promise<void> {
+  if (await alertIfIdleBlocked(characterStore.character, '组队')) {
+    emit('log', '修炼中无法组队，请先停止修炼', 'warning')
+    return
+  }
   return run(() => chatStore.inviteToParty(inviteName.value), '邀请已发出')
 }
 
@@ -170,7 +179,11 @@ function onKick(m: PartyMemberItem): Promise<void> {
   )
 }
 
-function onAccept(id: number): Promise<void> {
+async function onAccept(id: number): Promise<void> {
+  if (await alertIfIdleBlocked(characterStore.character, '组队')) {
+    emit('log', '修炼中无法组队，请先停止修炼', 'warning')
+    return
+  }
   return run(() => chatStore.acceptPartyInvite(id), '已加入队伍')
 }
 
@@ -362,7 +375,7 @@ function mentorRoleLabel(role?: string): string {
             <el-input
               v-model="inviteName"
               size="small"
-              placeholder="输入道号，或右侧快捷选择"
+              placeholder="道号或 user_id，或右侧快捷选择"
               clearable
               @keyup.enter="onInvite"
             />

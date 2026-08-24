@@ -5,7 +5,13 @@ import { http } from './http'
 import { envelopeFromAxiosError } from './envelope'
 import type { ApiResponse } from '../types/api'
 import type { CharacterPublic } from '../types/character'
-import type { CraftActor, CraftClaimResult, CraftJob, CraftRecipe } from '../types/craft'
+import type {
+  CraftActor,
+  CraftClaimResult,
+  CraftJob,
+  CraftRecipe,
+  TalismanPreloadPayload,
+} from '../types/craft'
 
 export interface CraftStartPayload {
   character?: CharacterPublic
@@ -50,6 +56,45 @@ export async function startCraft(body: {
     return response.data
   } catch (error: unknown) {
     return envelopeFromAxiosError<CraftStartPayload | CraftJob>(error)
+  }
+}
+
+/** POST /craft/talisman/scribe */
+export async function scribeTalismanApi(body: {
+  template_id: string
+  quantity: number
+}): Promise<ApiResponse<{ template_id: string; quantity: number; label_zh: string }>> {
+  try {
+    const response = await http.post<
+      ApiResponse<{ template_id: string; quantity: number; label_zh: string }>
+    >('/craft/talisman/scribe', body)
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** GET /craft/talisman/preload */
+export async function fetchTalismanPreloadApi(): Promise<ApiResponse<TalismanPreloadPayload>> {
+  try {
+    const response = await http.get<ApiResponse<TalismanPreloadPayload>>('/craft/talisman/preload')
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<TalismanPreloadPayload>(error)
+  }
+}
+
+/** PUT /craft/talisman/preload */
+export async function putTalismanPreloadApi(
+  inventoryItemIds: number[],
+): Promise<ApiResponse<TalismanPreloadPayload>> {
+  try {
+    const response = await http.put<ApiResponse<TalismanPreloadPayload>>('/craft/talisman/preload', {
+      inventory_item_ids: inventoryItemIds,
+    })
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<TalismanPreloadPayload>(error)
   }
 }
 

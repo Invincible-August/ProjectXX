@@ -14,13 +14,31 @@ from app.core.time_utils import now_utc
 from app.db.models import User
 from app.schemas.auth import RegisterRequest
 from app.schemas.character import CreateCharacterRequest
+from app.schemas.common import AppError
 from app.services import auth_service, character_service
 from app.services.craft_service import CraftService
 from app.services.gm_service import GmService
 from app.services.inventory_service import InventoryService
 from app.services.realm_config import clear_game_config_cache
+from app.domain.craft_rules import serialize_craft_levels
 
 from tests.async_db import open_test_session_factory, run_async as _run
+
+
+def test_serialize_craft_levels_array_from_column() -> None:
+    """阵法等级走 array_craft_level；其余默认 0。"""
+    rows = serialize_craft_levels(
+        growth_attrs={"craft_levels": {"alchemy": 2, "puppet": 1}},
+        array_craft_level=4,
+    )
+    by_branch = {r["branch"]: r for r in rows}
+    assert by_branch["alchemy"]["level"] == 2
+    assert by_branch["alchemy"]["label_zh"] == "炼丹等级"
+    assert by_branch["puppet"]["label_zh"] == "傀儡制作等级"
+    assert by_branch["puppet"]["level"] == 1
+    assert by_branch["array"]["level"] == 4
+    assert by_branch["smithing"]["level"] == 0
+    assert by_branch["talisman"]["level"] == 0
 
 
 async def _user_with_character(session: AsyncSession, email: str) -> User:
@@ -148,5 +166,39 @@ def test_crafting_direction_faster_finish(tmp_path: Path) -> None:
                 job_a = await craft.start(user_a, recipe_id="pill_stamina_minor")
                 job_b = await craft.start(user_b, recipe_id="pill_stamina_minor")
                 assert job_a["finish_at"] < job_b["finish_at"]
+
+    _run(_body())
+
+
+def test_remove_materials_shortage_uses_zh_name(tmp_path: Path) -> None:
+    """材料不足提示用中文名和缺少数量，不甩 item_id。"""
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "craft_mat.db") as factory:
+            async with factory() as session:
+                user = await _user_with_character(session, "craftmat@example.com")
+                character = await character_service.get_character_by_user_id(session, user.id)
+                assert character is not None
+                inv = InventoryService(session)
+                with pytest.raises(AppError) as exc:
+                    await inv.remove_materials(
+                        character.id,
+                        [{"item_id": "herb_spirit_grass", "quantity": 2}],
+                    )
+                assert exc.value.code == 40055
+                assert "herb_spirit_grass" not in exc.value.message
+                assert exc.value.message == "材料不足：灵草 缺少 2"
+                await inv.add_item(
+                    character.id,
+                    item_type="material",
+                    item_id="herb_spirit_grass",
+                    quantity=1,
+                )
+                with pytest.raises(AppError) as exc2:
+                    await inv.remove_materials(
+                        character.id,
+                        [{"item_id": "herb_spirit_grass", "quantity": 2}],
+                    )
+                assert exc2.value.message == "材料不足：灵草 缺少 1"
 
     _run(_body())

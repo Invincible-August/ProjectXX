@@ -3,9 +3,22 @@
 > 依据：`开发计划.md` **§0.6.2** · `project修仙.md` §4 / §7 / §23（GDD **不写公式**，本文件写 **字段与叠层契约**）· 现行 `build_combat_stats` / 自走棋引擎 / 灵宠面板  
 > 目标：锁死 **统一属性 schema**（战斗 + 非战斗）、**承载实体清单**、**人物面板派生层**、**来源拆解与叠乘顺序**；数值用占位曲线即可跑通；**正式曲线与满表 → M13 填数，不再重设计字段**  
 > 对应延后项：**ATTR-D01**（本文消化设计）；喂入装备/傀儡 → **ATTR-D02（M8）**；野怪满模板 → **ATTR-D03（M9）**；满曲线 → **M13**  
-> 版本：v1.3 · 2026-08-13  
-> **不单开属性里程碑**：ATTR-D01 已作为 P2 竖切落地（大厅嵌入，无独立路由）；v1.3 强化 domain 叠层封装与对外摘要键统一
+> 版本：v1.4.3 · 2026-08-18  
+> **不单开属性里程碑**：ATTR-D01 已作为 P2 竖切落地（大厅嵌入，无独立路由）；v1.4 抗性并入战斗属性并开口异常抗/暗抗；v1.4.2 根基含悟性/耐力/神通，生成属性按工坊分支成对；v1.4.3 根基神通数字=可装备格数（修为+品阶）
 ---
+
+## ARCH 对齐（2026-08-14）
+
+> 工程重构指针：[`统一实体类层次与重构方案.md`](./统一实体类层次与重构方案.md) · [`双轨整改与配置兼容方案.md`](./双轨整改与配置兼容方案.md)  
+> **主线优先**：ARCH S1 已收口；**M8 设计已开篇**（[`M8自研与内容管线设计.md`](./M8自研与内容管线设计.md) **R1** = ATTR-D02）；玩法数值与 HTTP 路由默认不变，直到装备通道打开。
+
+| 项 | 对齐 |
+| --- | --- |
+| 属性契约 | 本文 `CombatAttrBlock` / `LifeAttrBlock` / **`AdditiveSource`** 为叠层真理；与 Ability **GrantSource**、**EquipmentItem** 对齐，**语义不变** |
+| 领域对象 | 各 `Character` 子类 / Item 经门面组装同一 schema；开战投影 → BattleUnitSeed |
+| 配置 | 经 ContentStore（`combat_attrs` 等）；测试可 `CONTENT_STORE_MODE=yaml_authority` |
+| 增量 | 新来源用 AdditiveSource / GrantSource；禁止按 id 写死属性分支 |
+
 
 ## 0. 与 M13 的边界（必读）
 
@@ -84,6 +97,7 @@
 | 速度 / 命中 / 闪避 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | △（阵速/锁定） |
 | 法力 `mp` | ✅ | ✅ | △ | △ | △ | △ | ✅ | △（阵灵） |
 | 元素抗性七维 | ✅ | ✅ | ✅ | ✅ | △ | ✅ | ✅ | ✅ |
+| 异常抗 / 暗抗 | ✅ | ✅ | ✅ | ✅ | △ | ✅ | ✅ | ✅ |
 | 主键（力敏智悟根） | ✅ | △ | △ | — | — | — | — | — |
 | 生活：体力/吐纳/心魔天劫 | ✅ | — | — | — | — | — | — | — |
 | 生活：耐力/灵巧/精密/心性 | ✅ | — | — | △ 精密 | — | — | — | — |
@@ -147,19 +161,24 @@
 
 > 旧代码 `base_atk`/`base_hp` 仅表示 **境界层贡献源**，不是最终键。最终一律 `phys_atk`/`hp`（及 `atk` 别名）。
 
-### 4.2 元素抗性（金木水火土风雷）
+### 4.2 抗性（元素七维 + 异常 + 暗）
+
+> 面板并入「战斗属性」，不再单独折叠。分类权威见 [`战斗系统完善设计.md`](./战斗系统完善设计.md) **v0.1**。公式未开：仅 schema / 面板占位。
 
 | 机读键 | 中文 | 默认 | 说明 |
 | --- | --- | --- | --- |
-| `resist_metal` | 金抗 | 0 | 可为整数抗性点或 0～1 比例；**单位在注册表锁死**，占位用 int 点 |
+| `resist_metal` | 金抗 | 0 | 元素抗性点；**单位在注册表锁死**，占位用 int 点 |
 | `resist_wood` | 木抗 | 0 | 同上 |
 | `resist_water` | 水抗 | 0 | 同上 |
 | `resist_fire` | 火抗 | 0 | 同上 |
 | `resist_earth` | 土抗 | 0 | 同上 |
 | `resist_wind` | 风抗 | 0 | 同上 |
 | `resist_thunder` | 雷抗 | 0 | 同上 |
+| `resist_ailment` | 异常抗性 | 0 | 中毒、灼烧、溺水、麻痹、睡眠、魅惑、眩晕、昏迷 |
+| `resist_dark` | 暗抗 | 0 | 诅咒：降低攻击、降低防御等 **降低战斗属性** 的效果 |
 
-公式未开：面板可展示，战报不结算。Boss/大阵优先填满；小怪可只填 0～2 维。
+Boss/大阵优先填满元素维；小怪可只填 0～2 维。异常抗/暗抗默认可为 0。  
+心魔抗 / 天劫抗在 §4.5 生活键，不进本表；**面板展示在根基栏**。
 
 ### 4.3 战斗主键（成长向 · 可映射进攻防）
 
@@ -185,7 +204,7 @@
 | `block_rate` | 格挡率 | 0.0 | 可选 |
 | `heal_power` | 治疗强度 | 0 | 治疗技能 |
 | `shield_power` | 护盾强度 | 0 | 护盾技能 |
-| `toughness` | 韧性 | 0 | 控制抗性占位 |
+| `toughness` | 韧性 | 0 | 旧控制抗性占位；**以 `resist_ailment` 为准**，本键保持关闭 |
 
 ### 4.5 非战斗 / 生活键（`LifeAttrBlock`）
 
@@ -402,7 +421,7 @@ primary_map:
 }
 ```
 
-兼容：保留顶层 `base_atk` / `base_hp` 为 **final.phys_atk / final.hp 别名**（标废弃），直到前端改读 `combat.final`。
+兼容：保留顶层 `base_atk` / `base_hp` 为 **final.phys_atk / final.hp 别名**（标废弃）。简示栏读 `hp_current`/`hp_max`、`mp_current`/`mp_max`（非战时当前=上限），标签为「生命值」「法力值」，数值 `当前/ 最大` + 灰色小字 `（百分比%）`（与体力 `（0.5/分）` 同级）。神识仅玩家/NPC：分子=已用（上阵分身+灵宠+傀儡消耗合计），分母=自身总神识，**不**附百分比。面板不展示「属性来源拆解」与「其它」栏。简介含轮回点、体力。折叠「根基」：力敏智悟根、神通（可装备格数=修为+品阶）、吐纳效率、耐力、天劫抗/心魔抗。折叠「生产属性」：心性/灵巧/精密与炼丹炼器制符等级成对，加阵法/傀儡制作等级。不再并列攻击力。
 
 ### 7.2 开战单位
 
@@ -508,6 +527,7 @@ channels:
   pill_buff:
     enabled: false
     label_zh: 丹药时效
+    # 时钟不在本文件：道具专文 §5.4（wall/battle/round）；本通道只吃仍生效的 AdditiveSource
   puppet:
     enabled: false
     label_zh: 傀儡养成
@@ -528,7 +548,7 @@ ADM 域：`combat_attrs`（或并入 `realms` 高危说明）；字段一律 `la
 | `CharacterService.build_combat_attrs` | 读 YAML + 贡献源 → domain 组装；`entity_profiles` 裁剪 labels |
 | `FriendService` 资料卡 | `combat_final` **必须**用 `magic_atk`/`magic_def`（禁止 `mag_atk` 分叉） |
 | `autochess` unit 构建 | 读 final 核心键；`atk`←`phys_atk`（可经 `engine_unit_core_from_final`） |
-| 前端 `CharacterPanel` / 道友卡 | 分栏：战斗 / 抗性 / 根基 / 生活；键名与 schema 一致 |
+| 前端 `CharacterPanel` / 道友卡 | 简介含轮回点/体力；折叠：战斗 / 根基（含悟性·耐力·神通） / 生产属性；键名与 schema 一致 |
 | 怪/Boss/大阵模板 | 同注册表校验（→ ATTR-D03） |
 | 单测 | `test_combat_attrs`：同源字段；别名；通道关闭；AdditiveSource；对外摘要 |
 
@@ -556,8 +576,8 @@ ADM 域：`combat_attrs`（或并入 `realms` 高危说明）；字段一律 `la
 
 | ID | 本文后状态 | 说明 |
 | --- | --- | --- |
-| **ATTR-D01** | **已消化** | `combat_attrs.yaml` + `build_combat_attrs` + 面板；契约以本文 **v1.3** 为准 |
-| **ATTR-D02** | 待做 · M8 | 打开 equipment/puppet 通道（`AdditiveSource` 已预留） |
+| **ATTR-D01** | **已消化** | `combat_attrs.yaml` + `build_combat_attrs` + 面板；契约以本文 **v1.4** 为准 |
+| **ATTR-D02** | **设计中** · M8 **R1** | 打开 equipment/puppet 通道（`AdditiveSource` 已预留）；见 [`M8自研与内容管线设计.md`](./M8自研与内容管线设计.md) §3 |
 | **ATTR-D03** | 待做 · M9 | 怪物/NPC/Boss 模板满字段 |
 | **M13 AO1** | 填正式曲线 | **禁止**改键名而无迁移说明 |
 
@@ -567,6 +587,13 @@ ADM 域：`combat_attrs`（或并入 `realms` 高危说明）；字段一律 `la
 
 | 日期 | 说明 |
 | --- | --- |
+| 2026-08-18 | **v1.4.3**：根基「神通」= 可装备格数（修为基数 + 跨境品阶） |
+| 2026-08-18 | **v1.4.2**：悟性/耐力/神通进根基；战斗/根基/生成属性按用途成对排序 |
+| 2026-08-18 | **v1.4.1**：面板简介含轮回点/体力；折叠「生活属性」改「生产属性」；天劫抗/心魔抗/吐纳进根基；根骨格不拉满 |
+| 2026-08-18 | **v1.4**：元素抗并入战斗属性栏；开口 `resist_ailment` / `resist_dark`；分类见 [`战斗系统完善设计.md`](./战斗系统完善设计.md) |
+| 2026-08-18 | 生活属性纳入轮回点/神通/五分支制作等级；取消「其它」栏 |
+| 2026-08-17 | `pill_buff` 通道指针道具专文 §5.4 多轨时钟；本文件仍只管 ATTR 键 |
+| 2026-08-14 | ARCH 对齐节 |
 | 2026-08-11 | **v1.0**：澄清 M13=填数非设计；锁 CombatAttrBlock、叠层、五类映射、面板 breakdown、ADM 注册表占位 |
 | 2026-08-12 | **v1.1**：实体扩至玩家/化身/灵宠/傀儡/NPC/怪/Boss/宗门大阵；战斗键拆物法攻防+命中闪避+七维抗性+力敏智悟根；新增 `LifeAttrBlock`（体力/心魔天劫抗/吐纳/耐力/灵巧/精密/心性）；`atk`/`defense` 别名锁定；适用面矩阵与 `primary_map` |
 | 2026-08-12 | **v1.2**：ATTR-D01 代码落地——`combat_attrs.yaml`、ADM 域、`build_combat_attrs`/`LifeAttrBlock`、`CharacterPublic.combat`+`life`、`GET /characters/me/combat`、大厅分栏与 breakdown；单测 `test_combat_attrs` |

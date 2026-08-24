@@ -409,7 +409,7 @@ function techLevel(row: Record<string, unknown>): string {
     <div class="apply-row">
       <el-input
         v-model="applyName"
-        placeholder="对方道号"
+        placeholder="对方道号或 user_id"
         clearable
         size="small"
         style="max-width: 220px"

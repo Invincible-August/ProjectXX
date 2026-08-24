@@ -26,6 +26,7 @@ import {
   gmStartTribulationApi,
 } from '../api/gm'
 import { useCharacterStore } from '../stores/character'
+import { useEquipmentStore } from '../stores/equipment'
 import { useWorldStore } from '../stores/world'
 import type { ShichenId, WorldWeatherId } from '../types/world'
 
@@ -35,6 +36,7 @@ const emit = defineEmits<{
 
 const isDev = import.meta.env.DEV
 const characterStore = useCharacterStore()
+const equipmentStore = useEquipmentStore()
 const worldStore = useWorldStore()
 const open = ref(false)
 const busy = ref(false)
@@ -159,6 +161,27 @@ async function grantMaterials(): Promise<void> {
   }
 }
 
+async function grantTestEquipment(): Promise<void> {
+  if (busy.value) return
+  busy.value = true
+  try {
+    const envelope = await gmSetCharacterApi({ grant_test_equipment: true })
+    if (envelope.code !== 0 || !envelope.data) {
+      throw new Error(envelope.message || 'GM 失败')
+    }
+    characterStore.applyCharacter(envelope.data.character)
+    await equipmentStore.refresh()
+    ElMessage.success('已发放测试装备')
+    emit('log', 'GM：发放测试装备', 'system')
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'GM 失败'
+    ElMessage.error(message)
+    emit('log', message, 'warning')
+  } finally {
+    busy.value = false
+  }
+}
+
 async function grantTestPet(): Promise<void> {
   if (busy.value) return
   busy.value = true
@@ -168,6 +191,7 @@ async function grantTestPet(): Promise<void> {
       throw new Error(envelope.message || 'GM 失败')
     }
     characterStore.applyCharacter(envelope.data.character)
+    await equipmentStore.refresh()
     ElMessage.success('已发放测试灵宠')
     emit('log', 'GM：发放测试灵宠', 'system')
   } catch (e: unknown) {
@@ -627,6 +651,7 @@ async function forceYuanyingPeak(): Promise<void> {
         <el-button :loading="busy" @click="forceJindan">一键金丹</el-button>
         <el-button :loading="busy" @click="forceYuanyingPeak">一元婴圆满</el-button>
         <el-button :loading="busy" @click="grantMaterials">发材料</el-button>
+        <el-button :loading="busy" @click="grantTestEquipment">发测试装备</el-button>
         <el-button :loading="busy" @click="grantTestPet">发测试宠</el-button>
         <el-button :loading="busy" @click="clearCraftJobs">清工坊队列</el-button>
         <el-divider content-position="left">M5</el-divider>

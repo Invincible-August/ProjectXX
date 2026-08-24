@@ -17,6 +17,7 @@ from app.db.session import get_db
 from app.schemas.common import AppError
 from app.services import auth_service
 from app.services.allocate_service import AllocateService
+from app.services.account_service import AccountService
 from app.services.auth_service import AuthService
 from app.services.autochess_service import AutochessService
 from app.services.avatar_service import AvatarService
@@ -25,6 +26,8 @@ from app.services.breakthrough_service import BreakthroughService
 from app.services.quench_service import QuenchService
 from app.services.character_service import CharacterService
 from app.services.constitution_service import ConstitutionService
+from app.services.equipment_service import EquipmentService
+from app.services.research_service import ResearchService
 from app.services.craft_service import CraftService
 from app.services.formation_service import FormationService
 from app.services.gm_service import GmService
@@ -38,6 +41,7 @@ from app.services.play_gate import PlayGate
 from app.services.reincarnation_service import ReincarnationService
 from app.services.snapshot_service import SnapshotService
 from app.services.stamina_service import StaminaService
+from app.services.divine_ability_service import DivineAbilityService
 from app.services.technique_service import TechniqueService
 from app.services.tribulation_service import TribulationService
 from app.services.verification.service import VerificationService
@@ -181,6 +185,32 @@ def get_constitution_service(session: AsyncSession = Depends(get_db)) -> Constit
     return ConstitutionService(session)
 
 
+def get_equipment_service(session: AsyncSession = Depends(get_db)) -> EquipmentService:
+    """
+    Provide request-scoped ``EquipmentService``.
+
+    Args:
+        session: Async DB session from ``get_db``.
+
+    Returns:
+        EquipmentService: Five-slot equipment wear/unequip service.
+    """
+    return EquipmentService(session)
+
+
+def get_research_service(session: AsyncSession = Depends(get_db)) -> ResearchService:
+    """
+    Provide request-scoped ``ResearchService``.
+
+    Args:
+        session: Async DB session from ``get_db``.
+
+    Returns:
+        ResearchService: Custom technique / formation research sessions.
+    """
+    return ResearchService(session)
+
+
 def get_technique_service(session: AsyncSession = Depends(get_db)) -> TechniqueService:
     """
     提供请求级 ``TechniqueService``。
@@ -192,6 +222,13 @@ def get_technique_service(session: AsyncSession = Depends(get_db)) -> TechniqueS
         TechniqueService: 功法列表与默认发放服务。
     """
     return TechniqueService(session)
+
+
+def get_divine_ability_service(
+    session: AsyncSession = Depends(get_db),
+) -> DivineAbilityService:
+    """Provide request-scoped ``DivineAbilityService``."""
+    return DivineAbilityService(session)
 
 
 def get_gm_service(session: AsyncSession = Depends(get_db)) -> GmService:
@@ -218,6 +255,11 @@ def get_auth_service(session: AsyncSession = Depends(get_db)) -> AuthService:
         AuthService: 注册、登录与令牌用例。
     """
     return AuthService(session)
+
+
+def get_account_service(session: AsyncSession = Depends(get_db)) -> AccountService:
+    """提供请求级 ``AccountService``（玩家账号摘要 / 打赏账单）。"""
+    return AccountService(session)
 
 
 def get_verification_service(session: AsyncSession = Depends(get_db)) -> VerificationService:
@@ -476,6 +518,7 @@ __all__ = [
     "get_allocate_service",
     "get_constitution_service",
     "get_technique_service",
+    "get_divine_ability_service",
     "get_gm_service",
     "get_auth_service",
     "get_verification_service",

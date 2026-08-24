@@ -354,7 +354,7 @@ async function onDeleteAll(): Promise<void> {
 async function onSend(broadcast: 'sect' | 'disciples' | null = null): Promise<void> {
   if (busy.value) return
   if (!broadcast && !toName.value.trim()) {
-    ElMessage.warning('请填写或选择收件人道号')
+    ElMessage.warning('请填写或选择收件人道号 / user_id')
     return
   }
   const stones = parseNonNegInt(spiritStones.value)
@@ -508,7 +508,7 @@ function bagCellDisabled(item: InventoryItem): boolean {
         <label class="field-label">收件人</label>
         <el-input
           v-model="toName"
-          placeholder="道号（或右侧快捷选择）"
+          placeholder="道号或 user_id（或右侧快捷选择）"
           size="small"
           clearable
         />

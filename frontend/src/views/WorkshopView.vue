@@ -1,21 +1,20 @@
 <script setup lang="ts">
 /**
- * 工坊页（M4 · /workshop）：配方 / 队列 / 领取 / 背包。
+ * 工坊页（M4 · /workshop）：外层四分支 / 配方 / 队列 / 领取。
  */
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AuthSessionBar from '../components/AuthSessionBar.vue'
 import StaminaBar from '../components/battle/StaminaBar.vue'
 import CraftClaimBar from '../components/workshop/CraftClaimBar.vue'
-import CraftEnvHint from '../components/workshop/CraftEnvHint.vue'
-import CraftDaoUsageLine from '../components/workshop/CraftDaoUsageLine.vue'
 import CraftJobQueue from '../components/workshop/CraftJobQueue.vue'
-import InventoryPanel from '../components/workshop/InventoryPanel.vue'
 import RecipeList from '../components/workshop/RecipeList.vue'
+import { usePlayWriteGate } from '../composables/usePlayWriteGate'
 import { useCraftStore } from '../stores/craft'
 import { useCharacterStore } from '../stores/character'
 import { useInventoryStore } from '../stores/inventory'
-import type { CraftActor } from '../types/craft'
+import type { CraftActor, CraftBranch } from '../types/craft'
+import { CRAFT_BRANCH_TABS } from '../types/craft'
 import { createLogEntry, type GameLogEntry } from '../types/gameLog'
 
 const route = useRoute()
@@ -23,10 +22,32 @@ const router = useRouter()
 const craftStore = useCraftStore()
 const characterStore = useCharacterStore()
 const inventoryStore = useInventoryStore()
+const { writeBlocked, writeBlockReason } = usePlayWriteGate()
 
 const loadError = ref('')
 const logEntries = ref<GameLogEntry[]>([])
-const initialBranch = ref(typeof route.query.branch === 'string' ? route.query.branch : '')
+
+const BRANCH_KEYS = new Set<string>(CRAFT_BRANCH_TABS.map((tab) => tab.key))
+
+function normalizeBranch(raw: unknown): CraftBranch {
+  return typeof raw === 'string' && BRANCH_KEYS.has(raw) ? (raw as CraftBranch) : 'alchemy'
+}
+
+const workshopBranch = ref<CraftBranch>(normalizeBranch(route.query.branch))
+
+function onBranchChange(next: CraftBranch): void {
+  if (next === workshopBranch.value) return
+  workshopBranch.value = next
+  const query = { ...route.query, branch: next }
+  void router.replace({ path: '/workshop', query })
+}
+
+watch(
+  () => route.query.branch,
+  (b) => {
+    workshopBranch.value = normalizeBranch(b)
+  },
+)
 
 function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
   logEntries.value = [...logEntries.value.slice(-49), createLogEntry(message, level)]
@@ -73,11 +94,20 @@ onUnmounted(() => {
     <div class="page-title">
       <el-button size="small" @click="router.push('/hall')">← 回大厅</el-button>
       <el-text tag="b" size="large">工坊</el-text>
-      <el-text type="info" size="small">M4 · 配方队列 · M5 天气锁</el-text>
+      <el-text type="info" size="small">配方</el-text>
     </div>
 
-    <CraftEnvHint />
-    <CraftDaoUsageLine v-model="craftStore.useDao" />
+    <div class="mode-nav">
+      <el-button
+        v-for="tab in CRAFT_BRANCH_TABS"
+        :key="tab.key"
+        size="small"
+        :type="workshopBranch === tab.key ? 'primary' : 'default'"
+        @click="onBranchChange(tab.key)"
+      >
+        {{ tab.label }}
+      </el-button>
+    </div>
 
     <div class="toolbar">
       <el-radio-group v-model="craftStore.actor" size="small">
@@ -86,6 +116,15 @@ onUnmounted(() => {
       </el-radio-group>
       <StaminaBar class="stamina" />
     </div>
+
+    <el-alert
+      v-if="writeBlocked"
+      :title="writeBlockReason"
+      type="warning"
+      show-icon
+      :closable="false"
+      class="page-alert"
+    />
 
     <el-alert
       v-if="loadError"
@@ -99,13 +138,8 @@ onUnmounted(() => {
     <CraftClaimBar @log="pushLog" @claimed="refreshAll" />
 
     <div class="workshop-grid">
-      <RecipeList
-        :initial-branch="initialBranch"
-        @log="pushLog"
-        @started="refreshAll"
-      />
+      <RecipeList :branch="workshopBranch" @log="pushLog" @started="refreshAll" />
       <CraftJobQueue />
-      <InventoryPanel />
     </div>
   </div>
 </template>
@@ -121,8 +155,15 @@ onUnmounted(() => {
   display: flex;
   align-items: baseline;
   gap: 0.75rem;
-  margin: 0.75rem 0 1rem;
+  margin: 0.75rem 0 0.5rem;
   flex-wrap: wrap;
+}
+
+.mode-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
 }
 
 .toolbar {
@@ -144,7 +185,7 @@ onUnmounted(() => {
 
 .workshop-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr minmax(200px, 260px);
+  grid-template-columns: 1fr 1fr;
   gap: 1rem;
   align-items: start;
 }

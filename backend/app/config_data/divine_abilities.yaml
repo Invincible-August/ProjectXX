@@ -1,0 +1,34 @@
+# =====================================================================
+# 用途：神通目录（名称、说明、装备槽帮助）；完整名录仍挂 M13
+# 加载时机：角色页神通栏；格数 = 修为基数 + 跨境品阶 divine_slots
+# 专栏：神通系统设计.md
+# =====================================================================
+
+loadout:
+  help_zh: 神通装备数量与修为和品阶相关
+  default_slots: 1
+  slots_by_major:
+    body_tempering: 1
+    qi_refining: 1
+    foundation: 2
+    jindan: 2
+    yuanying: 3
+    huashen: 3
+    true_immortal: 4
+
+divine_abilities:
+  thunder_finger:
+    name: 雷指
+    help_zh: 以雷劲点穴，可作已学神通装备。
+    effect_zh: 占位：对单体附加微弱雷击（公式未开）
+    elements: [thunder]
+  iron_body_seal:
+    name: 铁体印
+    help_zh: 炼体余韵凝成护体印。
+    effect_zh: 占位：短时抬物理防御（公式未开）
+    elements: [earth, metal]
+  qi_veil:
+    name: 气幕
+    help_zh: 吐纳余气化幕。
+    effect_zh: 占位：略减一次法术伤害（公式未开）
+    elements: [wood, water]

@@ -13,6 +13,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
+from app.constants.combat_attrs import (
+    COMBAT_FINAL_KEYS,
+    DEFAULT_ALIASES,
+    ENGINE_CORE_KEYS,
+    FLOOR_MINS,
+    LIFE_KEYS,
+    PRIMARY_KEYS,
+    PUBLIC_COMBAT_SUMMARY_KEYS,
+)
+
 
 @dataclass(frozen=True)
 class CombatStats:
@@ -34,72 +44,6 @@ class AttrDef:
     panel: bool = True
     formula_enabled: bool = True
     default: float = 0.0
-
-
-# 战斗 final 核心键（含抗性）；别名另附
-COMBAT_FINAL_KEYS: tuple[str, ...] = (
-    "hp",
-    "phys_atk",
-    "phys_def",
-    "magic_atk",
-    "magic_def",
-    "speed",
-    "mp",
-    "hit",
-    "dodge",
-    "resist_metal",
-    "resist_wood",
-    "resist_water",
-    "resist_fire",
-    "resist_earth",
-    "resist_wind",
-    "resist_thunder",
-)
-
-# 对外摘要（道友卡/列表）子集；键名与 schema 一致，禁止 mag_atk 等缩写分叉
-PUBLIC_COMBAT_SUMMARY_KEYS: tuple[str, ...] = (
-    "phys_atk",
-    "magic_atk",
-    "hp",
-    "phys_def",
-    "magic_def",
-    "speed",
-)
-
-# 引擎当前消费的核心键（物法公式未拆前 atk←phys_atk）
-ENGINE_CORE_KEYS: tuple[str, ...] = ("hp", "phys_atk", "speed", "mp")
-
-PRIMARY_KEYS: tuple[str, ...] = (
-    "strength",
-    "agility",
-    "intelligence",
-    "comprehension",
-    "bone_root",
-)
-
-LIFE_KEYS: tuple[str, ...] = (
-    "comprehension",
-    "stamina",
-    "resist_heart_demon",
-    "resist_tribulation",
-    "breath_efficiency",
-    "endurance",
-    "craft_dexterity",
-    "precision",
-    "temperament",
-)
-
-# 叠层后下限（hp/speed 至少 1；攻防等 ≥ 0）
-FLOOR_MINS: dict[str, int] = {
-    "hp": 1,
-    "speed": 1,
-}
-
-# 默认迁移期别名（可被 YAML aliases 覆盖）
-DEFAULT_ALIASES: dict[str, str] = {
-    "atk": "phys_atk",
-    "defense": "phys_def",
-}
 
 
 @dataclass(frozen=True)
@@ -386,8 +330,11 @@ def _legacy_additive_sources(inp: CombatAttrAssembleInput) -> tuple[AdditiveSour
                 },
             ),
         )
-    # 关闭的装备等通道：仅展示，不计入数值
+    # 关闭的装备等通道：仅展示，不计入数值（additive_sources 已含则跳过，防双行）
+    existing_ids = {layer.source_id for layer in layers}
     for ch_id, ch_body in inp.channels.items():
+        if str(ch_id) in existing_ids:
+            continue
         enabled = bool(ch_body.get("enabled", False))
         amounts_raw = ch_body.get("amounts") or {}
         amounts = {

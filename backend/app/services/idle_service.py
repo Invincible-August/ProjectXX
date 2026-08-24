@@ -726,12 +726,12 @@ class IdleService:
 
         direction = avatar.idle_direction
         if avatar.status == "disabled" or direction not in PRODUCTIVE_DIRECTIONS:
-            avatar.last_settled_at = last + timedelta(seconds=calc_max * tick)
+            # 空闲线程冻结锚点。若按整 tick 空推进，会与本体锁在同一周天相位，
+            # 化身点修炼就会从本体当前百分比接着走。开工由 set_idle 重置为 now。
             return AvatarSettleResult(stalled=False, ticks=0)
 
         gain_per_tick, enabled = self._avatar_direction_rates(direction)
         if not enabled or gain_per_tick is None:
-            avatar.last_settled_at = last + timedelta(seconds=calc_max * tick)
             return AvatarSettleResult(stalled=False, ticks=0)
 
         breakdown = self._avatar_gain_breakdown(
@@ -962,7 +962,14 @@ class IdleService:
                     env_tags=env_tags,
                     channel_mult=channel_mult,
                 )
-                return dual.main
+                main = dual.main
+                if dual.avatar is not None:
+                    main.avatar_ticks = int(dual.avatar.ticks)
+                    main.avatar_gained_cultivation = int(dual.avatar.gained_cultivation)
+                    main.avatar_gained_body = int(dual.avatar.gained_body)
+                    main.avatar_gained_crafting = int(dual.avatar.gained_crafting)
+                    main.avatar_spent_spirit_stones = int(dual.avatar.spent_spirit_stones)
+                return main
             return self.settle(
                 character,
                 now=now_aware,
@@ -1132,16 +1139,7 @@ class IdleService:
             )
             if isinstance(result, SettleResult):
                 av_ticks = int(av_mining.get("ticks") or 0)
-                result.ticks = int(result.ticks) + av_ticks
-                result.gained_mining_stones = int(result.gained_mining_stones or 0) + int(
-                    av_mining.get("personal_stones") or 0,
-                )
-                result.spent_stamina = int(result.spent_stamina or 0) + int(
-                    av_mining.get("spent_stamina") or 0,
-                )
-                result.mining_pool_stones = int(result.mining_pool_stones or 0) + int(
-                    av_mining.get("pool_stones") or 0,
-                )
+                result.avatar_ticks = int(result.avatar_ticks or 0) + av_ticks
                 if av_ticks > 0:
                     result.advanced_only = False
         return result
@@ -1347,6 +1345,13 @@ class IdleService:
             "gained_mining_stones": settle.gained_mining_stones,
             "spent_stamina": settle.spent_stamina,
             "mining_pool_stones": settle.mining_pool_stones,
+            "avatar_gains": {
+                "settled_ticks": int(settle.avatar_ticks or 0),
+                "gained_cultivation": int(settle.avatar_gained_cultivation or 0),
+                "gained_body": int(settle.avatar_gained_body or 0),
+                "gained_crafting": int(settle.avatar_gained_crafting or 0),
+                "spent_spirit_stones": int(settle.avatar_spent_spirit_stones or 0),
+            },
             "next_tick_at": self.compute_next_tick_at(character),
         }
         if pending is not None:
@@ -1378,6 +1383,13 @@ class IdleService:
             "gained_mining_stones": settle.gained_mining_stones if settle else 0,
             "spent_stamina": settle.spent_stamina if settle else 0,
             "mining_pool_stones": settle.mining_pool_stones if settle else 0,
+            "avatar_gains": {
+                "settled_ticks": int(settle.avatar_ticks or 0) if settle else 0,
+                "gained_cultivation": int(settle.avatar_gained_cultivation or 0) if settle else 0,
+                "gained_body": int(settle.avatar_gained_body or 0) if settle else 0,
+                "gained_crafting": int(settle.avatar_gained_crafting or 0) if settle else 0,
+                "spent_spirit_stones": int(settle.avatar_spent_spirit_stones or 0) if settle else 0,
+            },
             "next_tick_at": None,
             "offline_pending": pending,
         }

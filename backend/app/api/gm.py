@@ -53,6 +53,7 @@ async def gm_set_character(
         force_jindan=payload.force_jindan,
         grant_craft_materials=payload.grant_craft_materials,
         grant_test_pet=payload.grant_test_pet,
+        grant_test_equipment=payload.grant_test_equipment,
         clear_craft_jobs=payload.clear_craft_jobs,
         clear_divine_sense_backlash=payload.clear_divine_sense_backlash,
         force_shichen=payload.force_shichen,

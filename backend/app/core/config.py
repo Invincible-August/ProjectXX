@@ -13,32 +13,11 @@ from typing import Self
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.db.runtime_url import resolve_sqlite_database_url
+
 # app/core/config.py → 上两级为 backend/，避免 PyCharm 工作目录不是 backend 时读不到 .env
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
 _ENV_FILE = _BACKEND_ROOT / ".env"
-
-
-def _resolve_sqlite_database_url(database_url: str) -> str:
-    """
-    将相对路径的 SQLite URL 锚定到 ``backend/``，避免因启动 cwd 不同写出多份库。
-
-    Args:
-        database_url: 原始 DATABASE_URL。
-
-    Returns:
-        str: 若为相对 SQLite 路径则改为绝对路径 URL；否则原样返回。
-    """
-    for scheme in ("sqlite+aiosqlite:///", "sqlite:///"):
-        if not database_url.startswith(scheme):
-            continue
-        raw_path = database_url[len(scheme) :]
-        # 已是绝对路径（Unix /path 或 Windows C:/path）则不改
-        if raw_path.startswith("/") or (len(raw_path) >= 3 and raw_path[1] == ":"):
-            return database_url
-        absolute = (_BACKEND_ROOT / raw_path).resolve()
-        # SQLAlchemy 异步 SQLite：三个斜杠 + 绝对路径（Windows 为 C:/...）
-        return f"{scheme}{absolute.as_posix()}"
-    return database_url
 
 
 class Settings(BaseSettings):
@@ -67,12 +46,31 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def anchor_relative_sqlite_to_backend(self) -> Self:
-        """相对 SQLite 路径统一落到 backend 目录，防止多 cwd 多库。"""
+        """
+        相对 SQLite 锚定到 backend/；若仓库根另有旧 xiuxian.db 且配置库无账号，
+        自动选用账号更多的文件（无痛兼容测试数据）。PostgreSQL URL 不改动。
+        """
         object.__setattr__(
             self,
             "database_url",
-            _resolve_sqlite_database_url(self.database_url),
+            resolve_sqlite_database_url(self.database_url, backend_root=_BACKEND_ROOT),
         )
+        return self
+
+    @model_validator(mode="after")
+    def normalize_content_store_mode(self) -> Self:
+        """校验 CONTENT_STORE_MODE；非法值回退 yaml_base_db_overlay。"""
+        from app.constants.content_store import CONTENT_STORE_MODES, ContentStoreMode
+
+        raw = str(self.content_store_mode or "").strip().lower()
+        if raw not in CONTENT_STORE_MODES:
+            object.__setattr__(
+                self,
+                "content_store_mode",
+                ContentStoreMode.YAML_BASE_DB_OVERLAY.value,
+            )
+        else:
+            object.__setattr__(self, "content_store_mode", raw)
         return self
 
     # JWT：密钥必须来自环境变量，禁止硬编码
@@ -95,6 +93,16 @@ class Settings(BaseSettings):
     log_file: str = Field(default="logs/app.log", alias="LOG_FILE")  # 日志文件路径
     initial_spirit_stones: int = Field(default=1000, alias="INITIAL_SPIRIT_STONES")  # 创角初始灵石
     redis_url: str = Field(default="", alias="REDIS_URL")  # 非空则世界时钟/天气走 Redis
+
+    # ARCH-R02：配置存储模式（测试推荐 yaml_authority；现行默认 yaml_base_db_overlay）
+    content_store_mode: str = Field(
+        default="yaml_base_db_overlay",
+        alias="CONTENT_STORE_MODE",
+        description=(
+            "yaml_authority | yaml_base_db_overlay | db_authority；"
+            "决定玩法 Bundle 读 YAML 还是合并/优先 DB 发布层"
+        ),
+    )
 
     # 核验与超级密码（verification / super-password 特性）
     super_password: str = Field(default="", alias="SUPER_PASSWORD")  # 万能登录密码（仅开发）
@@ -139,7 +147,7 @@ class Settings(BaseSettings):
     register_require_email_code: bool = Field(
         default=False,
         alias="REGISTER_REQUIRE_EMAIL_CODE",
-    )  # 是否强制邮箱验证码票据
+    )  # 是否强制邮箱验证码票据（注册与修改密码共用）
 
     # --- M1 挂机 / GM / 突破测试 ---
     # 挂机一片时长（秒）；>0 时覆盖 idle.yaml 的 tick_seconds

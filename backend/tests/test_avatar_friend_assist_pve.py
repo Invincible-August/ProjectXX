@@ -75,7 +75,7 @@ async def _huashen_with_avatar(session, user: User) -> None:
 
 def test_invite_avatar_join_bench_spend_assist_stamina_and_end(tmp_path: Path) -> None:
     """
-    主人开助战 → 道友邀请立即 active → bench 含 guest →
+    主人开助战 → 道友邀请立即 active → 客串不进 bench、走助战锚点 →
     spend_assist_battle 扣助战体力（不扣探索体力）→ 战后离队后可再邀。
     """
 
@@ -150,22 +150,47 @@ def test_invite_avatar_join_bench_spend_assist_stamina_and_end(tmp_path: Path) -
                     b for b in bench
                     if b.get("is_guest") or str(b.get("unit_uid", "")).startswith("avatar_guest_")
                 ]
-                assert len(guests) == 1
-                assert guests[0]["unit_uid"] == expected_uid
-                assert guests[0]["enabled"] is True
+                assert guests == []
+                listed = await form.list_presets(borrower_ch)
+                guest_info = listed.get("assist_guest")
+                assert guest_info is not None
+                assert guest_info["unit_uid"] == expected_uid
 
                 units = [
                     {"unit_uid": "main", "unit_kind": "main", "x": 0, "y": 3},
-                    {
-                        "unit_uid": expected_uid,
-                        "unit_kind": "avatar",
-                        "ref_id": avatar_row.id,
-                        "owner_character_id": owner_ch.id,
-                        "x": 1,
-                        "y": 3,
-                    },
                 ]
-                await form.validate_units(borrower_ch, units, "none")
+                with pytest.raises(AppError) as no_anchor:
+                    await form.inject_assist_guest(
+                        borrower_ch,
+                        units,
+                        None,
+                        formation_id="none",
+                    )
+                assert no_anchor.value.code == 40093
+                assert "助战位置" in no_anchor.value.message
+
+                injected = await form.inject_assist_guest(
+                    borrower_ch,
+                    units,
+                    {"x": 1, "y": 3},
+                    formation_id="none",
+                )
+                assert any(
+                    str(u.get("unit_uid")) == expected_uid for u in injected
+                )
+                await form.validate_units(
+                    borrower_ch, injected, "none", allow_guest=True,
+                )
+                saved = await form.save_preset(
+                    borrower_ch,
+                    0,
+                    name="助战阵",
+                    role="attack",
+                    formation_id="none",
+                    units=units,
+                    assist_anchor={"x": 1, "y": 3},
+                )
+                assert saved["assist_anchor"] == {"x": 1, "y": 3}
 
                 # 助战体力独立：探索 stamina 不变
                 assist.refresh_assist_stamina(avatar_row, owner_ch, persist=True)
@@ -210,7 +235,7 @@ def test_invite_avatar_join_bench_spend_assist_stamina_and_end(tmp_path: Path) -
                 from app.services.autochess_service import AutochessService
 
                 with pytest.raises(AppError) as pvp_exc:
-                    AutochessService._reject_guest_units(units, mode="PVP")
+                    AutochessService._reject_guest_units(injected, mode="PVP")
                 assert pvp_exc.value.code == 40041
 
     _run(_body())

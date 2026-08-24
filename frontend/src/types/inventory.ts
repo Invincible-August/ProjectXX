@@ -5,6 +5,12 @@
 /** 储物袋类型 */
 export type BagKind = 'normal' | 'reincarnation'
 
+/** 背包四页 */
+export type BagTab = 'gear' | 'elixir' | 'material' | 'manual'
+
+/** 占位不迁格 */
+export type Occupancy = 'none' | 'equipped' | 'deployed'
+
 /** GET /inventory 单项 */
 export interface InventoryItem {
   id: number
@@ -22,6 +28,11 @@ export interface InventoryItem {
   /** 唯一物（不可发机缘） */
   unique?: boolean
   max_stack?: number
+  bag_tab?: BagTab | string
+  bag_tab_label_zh?: string
+  occupancy?: Occupancy | string
+  occupancy_label_zh?: string
+  occupancy_slot?: string | null
 }
 
 /** GET /inventory 分袋摘要 */

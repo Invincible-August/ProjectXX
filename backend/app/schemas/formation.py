@@ -16,6 +16,13 @@ class UnitPlacement(BaseModel):
     ref_id: int | None = Field(default=None, description="持有物主键（pet.id / avatar.id / inventory.id）")
 
 
+class AssistAnchor(BaseModel):
+    """助战虚位坐标（进攻方视角）。"""
+
+    x: int = Field(ge=0, le=6, description="横坐标")
+    y: int = Field(ge=0, le=6, description="纵坐标")
+
+
 class SavePresetRequest(BaseModel):
     """``PUT /formation/presets/{slot}`` 请求体。"""
 
@@ -23,6 +30,10 @@ class SavePresetRequest(BaseModel):
     role: str = Field(default="attack", description="定位：attack / defense / temp")
     formation_id: str = Field(default="none", description="阵法 id（none 表示无阵法）")
     units: list[UnitPlacement] = Field(description="占位列表（必须含唯一本体）")
+    assist_anchor: AssistAnchor | None = Field(
+        default=None,
+        description="助战锚点；有道友化身会话时开战注入该格",
+    )
 
 
 class ValidatePlacementRequest(BaseModel):

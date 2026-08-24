@@ -24,7 +24,7 @@ from app.domain.avatar_assist_stamina import (
     assist_stamina_cap,
     tick_assist_stamina,
 )
-from app.domain.m4_constants import AvatarFeature
+from app.constants.m4 import AvatarFeature
 from app.schemas.common import AppError
 from app.services.avatar_service import AvatarService
 from app.services.friend_service import FriendService, require_friends_enabled

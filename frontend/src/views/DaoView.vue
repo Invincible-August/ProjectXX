@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 大道页（M6 · /dao）：开道 / 道池 / 道资源。
+ * 悟道页（/dao）：开道 / 道池。仅真仙可进；actor=main|avatar 各走独立道。
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -10,17 +10,25 @@ import DaoPoolGallery from '../components/dao/DaoPoolGallery.vue'
 import DaoRestraintHint from '../components/dao/DaoRestraintHint.vue'
 import DaoStatusPanel from '../components/dao/DaoStatusPanel.vue'
 import DaoUsageToggle from '../components/dao/DaoUsageToggle.vue'
+import type { DaoActor } from '../api/dao'
+import { useAvatarStore } from '../stores/avatar'
 import { useCharacterStore } from '../stores/character'
 import { useDaoStore } from '../stores/dao'
 import { createLogEntry, type GameLogEntry } from '../types/gameLog'
+import { canEnterWudao } from '../utils/realm'
 
 const route = useRoute()
 const router = useRouter()
 const characterStore = useCharacterStore()
+const avatarStore = useAvatarStore()
 const daoStore = useDaoStore()
 
 const loadError = ref('')
 const logEntries = ref<GameLogEntry[]>([])
+
+const actor = computed<DaoActor>(() =>
+  route.query.actor === 'avatar' ? 'avatar' : 'main',
+)
 
 const mode = computed(() => {
   const m = route.query.mode
@@ -31,6 +39,8 @@ const focusId = computed(() =>
   typeof route.query.focus === 'string' ? route.query.focus : null,
 )
 
+const backPath = computed(() => (actor.value === 'avatar' ? '/avatar' : '/character'))
+
 function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
   logEntries.value = [...logEntries.value.slice(-49), createLogEntry(message, level)]
 }
@@ -39,36 +49,65 @@ function setMode(next: 'open' | 'pool'): void {
   void router.replace({ query: { ...route.query, mode: next } })
 }
 
-onMounted(async () => {
-  loadError.value = ''
+async function ensureRealmOrLeave(): Promise<boolean> {
   if (!characterStore.character) {
     const ok = await characterStore.fetchMe()
     if (!ok) {
       await router.replace('/create-character')
-      return
+      return false
     }
   }
-  daoStore.applyMeFromCharacter()
+  if (actor.value === 'avatar') {
+    if (!avatarStore.avatar) {
+      await avatarStore.load()
+    }
+    if (!canEnterWudao(avatarStore.avatar?.major_realm)) {
+      await router.replace('/avatar')
+      return false
+    }
+    return true
+  }
+  if (!canEnterWudao(characterStore.character?.major_realm)) {
+    await router.replace('/character')
+    return false
+  }
+  return true
+}
+
+onMounted(async () => {
+  loadError.value = ''
+  const ok = await ensureRealmOrLeave()
+  if (!ok) return
+  daoStore.setPageActor(actor.value)
+  if (actor.value === 'main') {
+    daoStore.applyMeFromCharacter()
+  }
   const err = await daoStore.refresh()
   if (err) {
     loadError.value = err
     pushLog(err, 'warning')
   } else {
-    pushLog('大道页已就绪：开道权威在服务端。', 'info')
+    pushLog(
+      actor.value === 'avatar' ? '化身悟道页已就绪。' : '本体悟道页已就绪。',
+      'info',
+    )
   }
   daoStore.startPoll()
 })
 
 onUnmounted(() => {
   daoStore.stopPoll()
+  daoStore.setPageActor('main')
+  daoStore.clearOpening()
 })
 
-watch(
-  () => characterStore.character?.dao,
-  () => {
-    daoStore.applyMeFromCharacter()
-  },
-)
+watch(actor, async (next) => {
+  daoStore.setPageActor(next)
+  const ok = await ensureRealmOrLeave()
+  if (!ok) return
+  const err = await daoStore.refresh()
+  if (err) loadError.value = err
+})
 </script>
 
 <template>
@@ -76,9 +115,13 @@ watch(
     <AuthSessionBar />
 
     <div class="page-title">
-      <el-button size="small" @click="router.push('/hall')">← 回大厅</el-button>
-      <el-text tag="b" size="large">大道</el-text>
-      <el-text type="info" size="small">M6 · 开道 / 道池 / 运用偏好</el-text>
+      <el-button size="small" @click="router.push(backPath)">
+        ← {{ actor === 'avatar' ? '化身' : '角色' }}
+      </el-button>
+      <el-text tag="b" size="large">悟道</el-text>
+      <el-text type="info" size="small">
+        {{ actor === 'avatar' ? '化身独立本命道' : '本体本命道' }}
+      </el-text>
       <div class="mode-nav">
         <el-button
           size="small"
@@ -94,7 +137,13 @@ watch(
         >
           道池图鉴
         </el-button>
-        <el-button size="small" @click="router.push('/dao-lord')">道主</el-button>
+        <el-button
+          v-if="actor === 'main'"
+          size="small"
+          @click="router.push('/dao-lord')"
+        >
+          道主
+        </el-button>
       </div>
     </div>
 
@@ -124,7 +173,7 @@ watch(
       </div>
       <aside class="main-side">
         <DaoRestraintHint />
-        <DaoUsageToggle />
+        <DaoUsageToggle v-if="actor === 'main'" />
         <el-card v-if="logEntries.length" shadow="never">
           <template #header>
             <el-text tag="b" size="small">本页日志</el-text>

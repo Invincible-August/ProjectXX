@@ -34,6 +34,8 @@ export interface GmSetCharacterPayload {
   force_jindan?: boolean
   /** 发放工坊材料样本 */
   grant_craft_materials?: boolean
+  /** 发放测试装备（玄铁剑） */
+  grant_test_equipment?: boolean
   /** 发放测试灵宠 */
   grant_test_pet?: boolean
   /** 清空工坊队列 */

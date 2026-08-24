@@ -34,15 +34,19 @@ class DivineSenseService:
         avatar_deploy_count: int = 0,
         pet_deploy_count: int = 0,
         pet_costs: list[int] | None = None,
+        puppet_deploy_count: int = 0,
+        puppet_costs: list[int] | None = None,
     ) -> dict[str, Any]:
         """
-        计算角色神识读数（不上阵时 load=0）。
+        计算角色神识读数（分子=上阵化身+灵宠+傀儡消耗合计）。
 
         参数:
             character: 角色 ORM。
             avatar_deploy_count: 当前编成的化身数。
             pet_deploy_count: 当前编成的灵宠数（无 pet_costs 时）。
             pet_costs: 可选各宠占用（含物种覆盖）。
+            puppet_deploy_count: 当前编成的傀儡数（无 puppet_costs 时）。
+            puppet_costs: 可选各傀占用。
 
         返回:
             capacity / load / soft_cap / hard_cap / backlash / overload_mult /
@@ -61,6 +65,9 @@ class DivineSenseService:
             cost_avatar=cfg.cost_avatar,
             cost_pet=cfg.cost_pet,
             pet_costs=pet_costs,
+            puppet_count=puppet_deploy_count,
+            cost_puppet=cfg.cost_puppet,
+            puppet_costs=puppet_costs,
         )
         soft, hard = soft_hard_caps(
             capacity,
@@ -129,32 +136,41 @@ class DivineSenseService:
     @staticmethod
     def count_deployed_from_units(
         units: list[dict[str, Any]],
-    ) -> tuple[int, int, list[int]]:
+    ) -> tuple[int, int, list[int], int, list[int]]:
         """
-        从编成统计上阵化身数、灵宠数与各宠神识占用。
+        从编成统计上阵化身、灵宠、傀儡的神识占用。
 
         Returns:
-            (avatar_count, pet_count, pet_costs)。
+            (avatar_count, pet_count, pet_costs, puppet_count, puppet_costs)。
         """
+        from app.constants.battle import (
+            PIECE_KIND_AVATAR,
+            PIECE_KIND_PET,
+            PIECE_KIND_PUPPET,
+            TRIAL_PUPPET_UID_PREFIX,
+        )
+
         cfg = get_game_config()
         ds = cfg.divine_sense
         pets_cfg = cfg.pets
         avatars = 0
         pet_costs: list[int] = []
+        puppet_costs: list[int] = []
         for u in units:
             kind = str(u.get("unit_kind") or "")
-            if kind == "avatar":
+            if kind == PIECE_KIND_AVATAR:
                 avatars += 1
-            elif kind == "pet":
+            elif kind == PIECE_KIND_PET:
                 cost = ds.cost_pet
-                ref_id = u.get("ref_id")
                 species_id = u.get("species_id")
                 if species_id and species_id in pets_cfg.species:
                     override = pets_cfg.species[str(species_id)].divine_sense_cost
                     if override is not None:
                         cost = int(override)
-                elif ref_id is not None:
-                    # 开战/快照单元可能只有 ref_id；成本覆盖在有 species 时生效
-                    pass
                 pet_costs.append(cost)
-        return avatars, len(pet_costs), pet_costs
+            elif kind == PIECE_KIND_PUPPET:
+                uid = str(u.get("unit_uid") or "")
+                if uid.startswith(TRIAL_PUPPET_UID_PREFIX) or bool(u.get("ephemeral")):
+                    continue
+                puppet_costs.append(int(ds.cost_puppet))
+        return avatars, len(pet_costs), pet_costs, len(puppet_costs), puppet_costs

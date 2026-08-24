@@ -94,6 +94,58 @@ def test_dual_idle_both_threads_gain(tmp_path: Path) -> None:
     _run(_body())
 
 
+def test_avatar_idle_anchor_independent_of_main(tmp_path: Path) -> None:
+    """本体修炼半周天时化身开工：化身锚点重置为点击时刻，不得与本体同相位。"""
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "dual_phase.db") as factory:
+            async with factory() as session:
+                user = await _user_with_character(session, "dualphase@example.com")
+                await GmService(session).gm_set_character(
+                    user,
+                    force_jindan=True,
+                    spirit_stones=5000,
+                    idle_direction="spirit",
+                )
+                await session.commit()
+                av_svc = AvatarService(session)
+                await av_svc.condense(user)
+                await session.commit()
+
+                character = await character_service.get_character_by_user_id(session, user.id)
+                assert character is not None
+                avatar = await av_svc.get_avatar_row(character.id)
+                assert avatar is not None
+
+                start = datetime(2026, 8, 19, 12, 0, 0, tzinfo=timezone.utc)
+                half = start + timedelta(seconds=30)
+                character.last_settled_at = start
+                character.idle_direction = "spirit"
+                avatar.idle_direction = "none"
+                avatar.last_settled_at = start
+                await session.commit()
+
+                idle = IdleService(session)
+                await idle.settle_dual_async(character, now=half)
+                assert character.last_settled_at == start
+                assert avatar.last_settled_at == start
+
+                payload = await av_svc.set_idle(user, "spirit", now=half)
+                av_panel = payload["avatar"]
+                ch_pub = payload["character"]
+                av_iso = str(av_panel["last_settled_at"]).replace("Z", "+00:00")
+                main_iso = str(ch_pub["last_settled_at"]).replace("Z", "+00:00")
+                preview_iso = str(
+                    ch_pub["dual_idle_preview"]["avatar_last_settled_at"],
+                ).replace("Z", "+00:00")
+                assert datetime.fromisoformat(av_iso) == half
+                assert datetime.fromisoformat(main_iso) == start
+                assert datetime.fromisoformat(preview_iso) == half
+                assert ch_pub["dual_idle_preview"]["avatar_idle_direction"] == "spirit"
+
+    _run(_body())
+
+
 def test_offline_pending_splits_avatar_gains(tmp_path: Path) -> None:
     """D10：长离线 pending 分列 avatar_gains，领取后化身池与锚点更新。"""
 

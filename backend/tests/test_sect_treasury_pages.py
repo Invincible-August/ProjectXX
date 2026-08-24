@@ -63,6 +63,8 @@ def test_treasury_rules_unit() -> None:
     assert not treasury_page_allowed(rank="outer_elder", page=2, disciple_ranks=ranks)
     assert treasury_page_allowed(rank="founder", page=6, disciple_ranks=ranks)
     assert deposit_type_forbidden("forge_blueprint", forbidden)
+    assert deposit_type_forbidden("manual", forbidden, manual_kind="forge_blueprint")
+    assert not deposit_type_forbidden("manual", forbidden, manual_kind="technique")
     assert not deposit_type_forbidden("material", forbidden)
 
 
@@ -96,6 +98,17 @@ def test_treasury_deposit_forbid_blueprint(tmp_path: Path) -> None:
                         label_zh="剑图纸",
                     )
                 assert "图纸" in (exc.value.message or "")
+
+                with pytest.raises(AppError) as exc2:
+                    await fac.treasury_deposit(
+                        user,
+                        page=1,
+                        item_type="manual",
+                        item_id="bp_ore_plate_t1",
+                        quantity=1,
+                        label_zh="一级矿板图纸",
+                    )
+                assert "图纸" in (exc2.value.message or "")
 
                 ok = await fac.treasury_deposit(
                     user,

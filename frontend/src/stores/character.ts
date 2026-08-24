@@ -13,9 +13,12 @@ import { setIdleDirectionApi, syncIdleApi, claimOfflineApi } from '../api/idle'
 import type { CharacterPublic } from '../types/character'
 import type { IdleDirection, IdleSyncData, OfflineClaimData } from '../types/idle'
 import { validateCharacterName } from '../utils/characterName'
+import type { AvatarPublic } from '../types/avatar'
 import {
   isIdleBusyDirection,
+  isEitherThreadBusy,
   isProductiveDirection,
+  parseUtcMs,
   predictAvatarIdleDisplay,
   predictIdleDisplay,
   resolveNextDueMs,
@@ -114,6 +117,87 @@ export const useCharacterStore = defineStore('character', () => {
   }
 
   /**
+   * 丢弃在途 idle sync 带回的旧化身锚点，避免刚开工的周天被拉回本体相位。
+   *
+   * @param incoming - 即将写入的角色
+   */
+  function mergeStaleAvatarIdle(incoming: CharacterPublic): CharacterPublic {
+    const current = character.value
+    if (!current?.has_avatar) return incoming
+    const curDir = String(
+      current.dual_idle_preview?.avatar_idle_direction ??
+        current.avatar_summary?.idle_direction ??
+        '',
+    )
+    if (!isProductiveDirection(curDir)) return incoming
+    const curLast =
+      current.dual_idle_preview?.avatar_last_settled_at ??
+      current.avatar_summary?.last_settled_at ??
+      ''
+    const nextLast =
+      incoming.dual_idle_preview?.avatar_last_settled_at ??
+      incoming.avatar_summary?.last_settled_at ??
+      ''
+    const curMs = parseUtcMs(curLast)
+    const nextMs = parseUtcMs(nextLast)
+    if (!Number.isFinite(curMs)) return incoming
+    if (Number.isFinite(nextMs) && nextMs >= curMs) return incoming
+    return {
+      ...incoming,
+      avatar_summary: {
+        ...(incoming.avatar_summary || {}),
+        ...(current.avatar_summary || {}),
+        idle_direction: curDir,
+        last_settled_at: curLast,
+      },
+      dual_idle_preview: {
+        ...(incoming.dual_idle_preview || {}),
+        ...(current.dual_idle_preview || {}),
+        avatar_idle_direction: curDir,
+        avatar_last_settled_at: curLast,
+      },
+    }
+  }
+
+  /**
+   * 化身切方向后立刻写入独立锚点（不等 GET /me）。
+   *
+   * @param avatar - 刚返回的化身面板
+   */
+  function patchAvatarIdleThread(
+    avatar: Pick<
+      AvatarPublic,
+      | 'idle_direction'
+      | 'last_settled_at'
+      | 'cultivation_points'
+      | 'body_tempering_points'
+      | 'crafting_exp'
+    >,
+  ): void {
+    const ch = character.value
+    if (!ch) return
+    const dir = String(avatar.idle_direction ?? 'none')
+    const last = avatar.last_settled_at
+    character.value = {
+      ...ch,
+      avatar_summary: {
+        ...(ch.avatar_summary || {}),
+        idle_direction: dir,
+        last_settled_at: last,
+        cultivation_points: avatar.cultivation_points,
+        body_tempering_points: avatar.body_tempering_points,
+        crafting_exp: avatar.crafting_exp,
+      },
+      dual_idle_preview: {
+        ...(ch.dual_idle_preview || {}),
+        avatar_idle_direction: dir,
+        avatar_last_settled_at: last,
+      },
+    }
+    bumpDisplay()
+  }
+
+  /**
    * 各玩法 API 返回的 character 统一写入权威态。
    *
    * @param ch - 最新角色
@@ -123,19 +207,15 @@ export const useCharacterStore = defineStore('character', () => {
     ch: CharacterPublic,
     serverNextTickAt?: string | null,
   ): void {
-    character.value = ch
+    character.value = mergeStaleAvatarIdle(ch)
     useAuthStore().setHasCharacter(true)
-    if (serverNextTickAt !== undefined) {
-      nextTickAt.value = serverNextTickAt
-    } else if (
-      !isIdleBusyDirection(ch.idle_direction) ||
-      (isProductiveDirection(ch.idle_direction) && ch.is_stalled) ||
-      ch.offline_pending
-    ) {
+    if (ch.offline_pending || !isEitherThreadBusy(ch)) {
       nextTickAt.value = null
     } else {
-      // 无服务端提示时由本地推算
-      const due = resolveNextDueMs(ch, null)
+      const hint = isIdleBusyDirection(ch.idle_direction)
+        ? (serverNextTickAt !== undefined ? serverNextTickAt : nextTickAt.value)
+        : null
+      const due = resolveNextDueMs(ch, hint)
       nextTickAt.value = due ? new Date(due).toISOString() : null
     }
     bumpDisplay()
@@ -401,8 +481,7 @@ export const useCharacterStore = defineStore('character', () => {
     const ch = character.value
     if (
       !ch ||
-      !isIdleBusyDirection(ch.idle_direction) ||
-      (isProductiveDirection(ch.idle_direction) && ch.is_stalled) ||
+      !isEitherThreadBusy(ch) ||
       ch.offline_pending
     ) {
       scheduleSyncAligned()
@@ -414,7 +493,12 @@ export const useCharacterStore = defineStore('character', () => {
         Number(data.gained_mining_stones || 0) > 0 ||
         Number(data.spent_stamina || 0) > 0 ||
         Number(data.mining_pool_stones || 0) > 0
-      if ((data.settled_ticks > 0 || hasMining) && onSettledCb) {
+      if (
+        (data.settled_ticks > 0 ||
+          hasMining ||
+          Number(data.avatar_gains?.settled_ticks || 0) > 0) &&
+        onSettledCb
+      ) {
         onSettledCb(data)
       }
     } catch {
@@ -440,8 +524,7 @@ export const useCharacterStore = defineStore('character', () => {
     const ch = character.value
     if (
       !ch ||
-      !isIdleBusyDirection(ch.idle_direction) ||
-      (isProductiveDirection(ch.idle_direction) && ch.is_stalled) ||
+      !isEitherThreadBusy(ch) ||
       ch.offline_pending
     ) {
       return
@@ -553,6 +636,7 @@ export const useCharacterStore = defineStore('character', () => {
     pollingInFlight,
     hasOfflinePending,
     applyCharacter,
+    patchAvatarIdleThread,
     fetchMe,
     create,
     syncNow,

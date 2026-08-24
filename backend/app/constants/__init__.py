@@ -1,0 +1,150 @@
+"""
+工程与协议常量统一包（开发计划 §0.6.3 法律级）。
+
+玩法曲线数字仍在 YAML；本包只放协议枚举、映射表、不变量与命名后的魔数。
+每个公开名必须有中文注释。
+"""
+
+from __future__ import annotations
+
+from app.constants.ability import (
+    ABILITY_DOMAINS,
+    ABILITY_KINDS,
+    AbilityDomain,
+    AbilityKind,
+)
+from app.constants.battle import (
+    ATTACKER_UID_PREFIX,
+    BATTLE_SIDE_ATTACKER,
+    BATTLE_SIDE_DEFENDER,
+    DEFENDER_UID_PREFIX,
+    MIN_COMBAT_STAT,
+    PIECE_KIND_AVATAR,
+    PIECE_KIND_MAIN,
+    PIECE_KIND_MONSTER,
+    PIECE_KIND_PET,
+    PIECE_KIND_PUPPET,
+    PieceKind,
+    TRIAL_PUPPET_UID_PREFIX,
+)
+from app.constants.combat_attrs import (
+    COMBAT_FINAL_KEYS,
+    ENGINE_CORE_KEYS,
+    LIFE_KEYS,
+    PRIMARY_KEYS,
+    PUBLIC_COMBAT_SUMMARY_KEYS,
+)
+from app.constants.content_store import (
+    CONTENT_STORE_MODE_DB_AUTHORITY,
+    CONTENT_STORE_MODE_YAML_AUTHORITY,
+    CONTENT_STORE_MODE_YAML_BASE_DB_OVERLAY,
+    ContentStoreMode,
+)
+from app.constants.constitution import (
+    CONSTITUTION_EFFECT_LABELS_ZH,
+    CONSTITUTION_SLOT_HELP_ZH,
+    CONSTITUTION_SLOT_LABELS_ZH,
+    CONSTITUTION_SLOT_MAIN,
+    CONSTITUTION_SLOT_SUB,
+    CONSTITUTION_SOFT_CAP,
+)
+from app.constants.divine_sense import (
+    DIVINE_SENSE_ZONE_LABELS_ZH,
+    PUPPET_LOADOUT_MAX,
+    PUPPET_LOADOUT_MAX_ZH,
+    PUPPET_SENSE_HELP_ZH,
+)
+from app.constants.inventory import (
+    ITEM_TYPE_PUPPET,
+    ItemType,
+)
+from app.constants.avatar import (
+    AVATAR_CONDENSE_MAJOR_REALM,
+    AVATAR_DEFAULT_LEAD_MAJORS,
+    AVATAR_DEFAULT_MAX_MAJOR_REALM,
+    AVATAR_FORBIDDEN_IDENTITY_REALMS,
+    ERR_AVATAR_BUSY,
+    ERR_AVATAR_EXISTS_OR_MISSING,
+    ERR_AVATAR_REALM_CAP,
+    ERR_CONDENSE_CULTIVATION,
+    ERR_CONDENSE_REALM,
+    ERR_CONDENSE_TECHNIQUE,
+    LOADOUT_ACTOR_AVATAR,
+    LOADOUT_ACTOR_MAIN,
+    normalize_loadout_actor,
+)
+from app.constants.m4 import (
+    CRAFT_ACTIVE_STATUSES,
+    IDLE_DIRECTION_FEATURE,
+    PRODUCTIVE_IDLE_DIRECTIONS,
+    AvatarFeature,
+    AvatarStatus,
+    CraftActor,
+    CraftJobStatus,
+    IdleDirection,
+)
+from app.constants.character import (
+    CHARACTER_STATUS_DEAD,
+    CHARACTER_STATUS_IDLE,
+    CHARACTER_STATUS_PENDING_FERRY,
+)
+
+__all__ = [
+    "ABILITY_DOMAINS",
+    "ABILITY_KINDS",
+    "AbilityDomain",
+    "AbilityKind",
+    "ATTACKER_UID_PREFIX",
+    "BATTLE_SIDE_ATTACKER",
+    "BATTLE_SIDE_DEFENDER",
+    "DEFENDER_UID_PREFIX",
+    "MIN_COMBAT_STAT",
+    "PIECE_KIND_AVATAR",
+    "PIECE_KIND_MAIN",
+    "PIECE_KIND_MONSTER",
+    "PIECE_KIND_PET",
+    "PIECE_KIND_PUPPET",
+    "PieceKind",
+    "TRIAL_PUPPET_UID_PREFIX",
+    "COMBAT_FINAL_KEYS",
+    "ENGINE_CORE_KEYS",
+    "LIFE_KEYS",
+    "PRIMARY_KEYS",
+    "PUBLIC_COMBAT_SUMMARY_KEYS",
+    "CONTENT_STORE_MODE_DB_AUTHORITY",
+    "CONTENT_STORE_MODE_YAML_AUTHORITY",
+    "CONTENT_STORE_MODE_YAML_BASE_DB_OVERLAY",
+    "ContentStoreMode",
+    "CONSTITUTION_EFFECT_LABELS_ZH",
+    "CONSTITUTION_SLOT_HELP_ZH",
+    "CONSTITUTION_SLOT_LABELS_ZH",
+    "CONSTITUTION_SLOT_MAIN",
+    "CONSTITUTION_SLOT_SUB",
+    "CONSTITUTION_SOFT_CAP",
+    "ERR_AVATAR_BUSY",
+    "ERR_AVATAR_EXISTS_OR_MISSING",
+    "ERR_AVATAR_REALM_CAP",
+    "ERR_CONDENSE_CULTIVATION",
+    "ERR_CONDENSE_REALM",
+    "ERR_CONDENSE_TECHNIQUE",
+    "AVATAR_DEFAULT_LEAD_MAJORS",
+    "AVATAR_DEFAULT_MAX_MAJOR_REALM",
+    "AVATAR_FORBIDDEN_IDENTITY_REALMS",
+    "DIVINE_SENSE_ZONE_LABELS_ZH",
+    "PUPPET_LOADOUT_MAX",
+    "PUPPET_LOADOUT_MAX_ZH",
+    "PUPPET_SENSE_HELP_ZH",
+    "ITEM_TYPE_PUPPET",
+    "ItemType",
+    "CRAFT_ACTIVE_STATUSES",
+    "IDLE_DIRECTION_FEATURE",
+    "PRODUCTIVE_IDLE_DIRECTIONS",
+    "AvatarFeature",
+    "AvatarStatus",
+    "CraftActor",
+    "CraftJobStatus",
+    "IdleDirection",
+    "CHARACTER_STATUS_DEAD",
+    "CHARACTER_STATUS_IDLE",
+    "CHARACTER_STATUS_PENDING_FERRY",
+]

@@ -21,7 +21,7 @@ export async function fetchBoardMetaApi(): Promise<ApiResponse<BoardMeta>> {
   }
 }
 
-/** 拉取预设三槽 + 阵法 + Bench + 上阵上限。 */
+/** 拉取预设五槽 + 阵法 + Bench + 上阵上限。 */
 export async function fetchPresetsApi(): Promise<ApiResponse<PresetsPayload>> {
   try {
     const response = await http.get<ApiResponse<PresetsPayload>>('/formation/presets')
@@ -34,7 +34,7 @@ export async function fetchPresetsApi(): Promise<ApiResponse<PresetsPayload>> {
 /**
  * 保存一个预设槽。
  *
- * @param slot - 槽位（0/1/2）
+ * @param slot - 槽位（0～4）
  * @param body - 名称 / 定位 / 阵法 / 占位
  */
 export async function savePresetApi(
@@ -44,6 +44,7 @@ export async function savePresetApi(
     role: string
     formation_id: string
     units: UnitPlacement[]
+    assist_anchor?: { x: number; y: number } | null
   },
 ): Promise<ApiResponse<FormationPreset>> {
   try {

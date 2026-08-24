@@ -15,10 +15,20 @@ import type {
 } from '../types/dao'
 import type { CharacterPublic } from '../types/character'
 
+export type DaoActor = 'main' | 'avatar'
+
+function actorParams(actor: DaoActor = 'main'): { actor: DaoActor } {
+  return { actor }
+}
+
 /** GET /dao/catalog */
-export async function fetchDaoCatalog(): Promise<ApiResponse<DaoCatalogPayload>> {
+export async function fetchDaoCatalog(
+  actor: DaoActor = 'main',
+): Promise<ApiResponse<DaoCatalogPayload>> {
   try {
-    const response = await http.get<ApiResponse<DaoCatalogPayload>>('/dao/catalog')
+    const response = await http.get<ApiResponse<DaoCatalogPayload>>('/dao/catalog', {
+      params: actorParams(actor),
+    })
     return response.data
   } catch (error: unknown) {
     return envelopeFromAxiosError<DaoCatalogPayload>(error)
@@ -26,9 +36,13 @@ export async function fetchDaoCatalog(): Promise<ApiResponse<DaoCatalogPayload>>
 }
 
 /** GET /dao/me */
-export async function fetchDaoMe(): Promise<ApiResponse<DaoPublic>> {
+export async function fetchDaoMe(
+  actor: DaoActor = 'main',
+): Promise<ApiResponse<DaoPublic>> {
   try {
-    const response = await http.get<ApiResponse<DaoPublic>>('/dao/me')
+    const response = await http.get<ApiResponse<DaoPublic>>('/dao/me', {
+      params: actorParams(actor),
+    })
     return response.data
   } catch (error: unknown) {
     return envelopeFromAxiosError<DaoPublic>(error)
@@ -36,9 +50,13 @@ export async function fetchDaoMe(): Promise<ApiResponse<DaoPublic>> {
 }
 
 /** GET /dao/pool */
-export async function fetchDaoPool(): Promise<ApiResponse<DaoPoolPayload>> {
+export async function fetchDaoPool(
+  actor: DaoActor = 'main',
+): Promise<ApiResponse<DaoPoolPayload>> {
   try {
-    const response = await http.get<ApiResponse<DaoPoolPayload>>('/dao/pool')
+    const response = await http.get<ApiResponse<DaoPoolPayload>>('/dao/pool', {
+      params: actorParams(actor),
+    })
     return response.data
   } catch (error: unknown) {
     return envelopeFromAxiosError<DaoPoolPayload>(error)
@@ -46,13 +64,15 @@ export async function fetchDaoPool(): Promise<ApiResponse<DaoPoolPayload>> {
 }
 
 /** POST /dao/open/roll — 冻结三选项；重复 roll 由服务端拒绝（40096） */
-export async function rollDaoOpen(): Promise<
+export async function rollDaoOpen(
+  actor: DaoActor = 'main',
+): Promise<
   ApiResponse<DaoOpenOffer & { character?: CharacterPublic; message?: string }>
 > {
   try {
     const response = await http.post<
       ApiResponse<DaoOpenOffer & { character?: CharacterPublic; message?: string }>
-    >('/dao/open/roll', {})
+    >('/dao/open/roll', { actor })
     return response.data
   } catch (error: unknown) {
     return envelopeFromAxiosError<
@@ -69,11 +89,12 @@ export async function rollDaoOpen(): Promise<
 export async function chooseDaoOpen(body: {
   session_id: string
   dao_id: string
+  actor?: DaoActor
 }): Promise<ApiResponse<DaoChooseResult>> {
   try {
     const response = await http.post<ApiResponse<DaoChooseResult>>(
       '/dao/open/choose',
-      body,
+      { actor: 'main', ...body },
     )
     return response.data
   } catch (error: unknown) {
@@ -88,11 +109,12 @@ export async function chooseDaoOpen(body: {
  */
 export async function previewDaoUsage(body: {
   context: DaoUsageContext
+  actor?: DaoActor
 }): Promise<ApiResponse<DaoUsagePreview>> {
   try {
     const response = await http.post<ApiResponse<DaoUsagePreview>>(
       '/dao/usage/preview',
-      body,
+      { kind: body.context, actor: body.actor ?? 'main' },
     )
     return response.data
   } catch (error: unknown) {

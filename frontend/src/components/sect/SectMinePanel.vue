@@ -77,7 +77,7 @@ onMounted(() => {
         {{ data.personal_stones_per_tick }} 灵石、耗 {{ data.stamina_per_tick }} 体力
       </el-text>
         <el-text size="small" type="info" style="display: block; margin-bottom: 0.5rem">
-          {{ data.note_zh }} · 消耗战斗体力条（与生活属性体力同源）；开始后修炼区可见「结束采矿」
+          {{ data.note_zh }} · 消耗体力条；开始后修炼区可见「结束采矿」
         </el-text>
       <el-tag v-if="data.mining" type="success" size="small">采矿挂机中</el-tag>
       <div class="row">

@@ -310,6 +310,9 @@ def render_detailed(events: list[dict[str, Any]]) -> list[str]:
             lines.append(f"【受阻】{_n(ev['uid'])}：{reason_cn}")
         elif ev_type == "death":
             lines.append(f"【阵亡】{_n(ev['uid'])}")
+        elif ev_type == "item_trigger":
+            label = str(ev.get("label_zh") or "符箓")
+            lines.append(f"符箓：{label}")
         elif ev_type == "battle_end":
             winner_cn = "进攻方胜" if ev["winner"] == "attacker" else "防守方胜"
             lines.append(f"—— 战斗结束：{winner_cn}（共 {ev['rounds']} 回合） ——")

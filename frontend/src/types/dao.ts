@@ -6,6 +6,8 @@
 
 /** 角色嵌入的大道资源摘要 */
 export interface DaoPublic {
+  /** main 本体 / avatar 化身 */
+  actor?: 'main' | 'avatar' | string
   /** 本命道 id；未开道为 null */
   fate_dao_id: string | null
   /** 本命道中文名（优先展示） */
@@ -75,6 +77,8 @@ export interface DaoPoolPayload {
 export interface DaoChooseResult {
   dao?: DaoPublic
   character?: import('./character').CharacterPublic
+  avatar?: import('./avatar').AvatarPublic
+  actor?: string
   message?: string
   /** 选定的本命道 id */
   fate_dao_id?: string

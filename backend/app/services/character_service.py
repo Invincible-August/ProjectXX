@@ -6,12 +6,15 @@ M2：进度读 realm_progress；含品阶/离线/功法/体质衍生字段。
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants.technique import DEFAULT_SPIRIT_ROOT
 from app.core.config import get_settings
 from app.core.time_utils import now_utc, to_utc_iso
 from app.db.models.character import Character
@@ -30,8 +33,20 @@ from app.services.realm_config import (
     offline_cap_hours_for_tier,
     stones_per_tick_for,
 )
+from app.services.divine_ability_service import compute_divine_ability_slot_cap
 
 logger = logging.getLogger(__name__)
+
+
+def _spirit_root_views(tags: list[str]) -> list[dict[str, str]]:
+    """Resolve spirit-root ids to player-visible labels."""
+    catalog = get_game_config().reincarnation.spirit_roots or {}
+    views: list[dict[str, str]] = []
+    for tag in tags:
+        body = catalog.get(tag) or {}
+        label = str(body.get("label") or body.get("label_zh") or tag)
+        views.append({"id": str(tag), "label_zh": label})
+    return views
 
 
 class CharacterService:
@@ -68,6 +83,10 @@ class CharacterService:
         character: Character,
         *,
         entity_kind: str = "player",
+        apply_reincarnation_attr_bonus: bool | None = None,
+        realm_major: str | None = None,
+        realm_stage: int | None = None,
+        loadout_actor: str | None = None,
     ) -> dict:
         """
         组装统一 CombatAttrBlock + LifeAttrBlock（ATTR 权威入口）。
@@ -75,9 +94,11 @@ class CharacterService:
         Args:
             character: 角色 ORM。
             entity_kind: 实体类型（默认 player）。
-
-        Returns:
-            dict: combat / life / technique_summary / constitution_summary。
+            apply_reincarnation_attr_bonus: 是否套用本体轮回初始/成长乘区。
+                缺省：player 套用，avatar 不套用。
+            realm_major: 覆盖大境界（化身自有境界）。
+            realm_stage: 覆盖小境。
+            loadout_actor: 装备槽主体 main/avatar；缺省随 entity_kind。
         """
         from sqlalchemy import select
 
@@ -89,6 +110,7 @@ class CharacterService:
             assemble_life_attr_block,
             CombatAttrAssembleInput,
         )
+        from app.constants.avatar import LOADOUT_ACTOR_AVATAR, normalize_loadout_actor
         from app.services.constitution_service import ConstitutionService
         from app.services.grade_service import GradeService
         from app.services.technique_service import TechniqueService
@@ -96,8 +118,15 @@ class CharacterService:
         techniques_svc = TechniqueService(self._session)
         constitution_svc = ConstitutionService(self._session)
         cfg = get_game_config().combat_attrs
+        if apply_reincarnation_attr_bonus is None:
+            apply_reincarnation_attr_bonus = entity_kind != "avatar"
+        wearer = normalize_loadout_actor(
+            loadout_actor or ("avatar" if entity_kind == "avatar" else "main"),
+        )
+        use_major = str(realm_major or character.major_realm)
+        use_stage = int(realm_stage if realm_stage is not None else character.realm_stage)
 
-        stage = get_current_stage(character.major_realm, character.realm_stage)
+        stage = get_current_stage(use_major, use_stage)
         realm_atk = stage.base_atk if stage else 0
         realm_hp = stage.base_hp if stage else 0
         # 人物境界无 base_speed：回退 combat_attrs.defaults 或棋盘 main 默认
@@ -106,13 +135,15 @@ class CharacterService:
         if main_defaults is not None:
             realm_speed = int(main_defaults.speed)
 
-        bonus_row = (
-            await self._session.execute(
-                select(CharacterReincarnationBonus).where(
-                    CharacterReincarnationBonus.character_id == character.id,
-                ),
-            )
-        ).scalar_one_or_none()
+        bonus_row = None
+        if apply_reincarnation_attr_bonus:
+            bonus_row = (
+                await self._session.execute(
+                    select(CharacterReincarnationBonus).where(
+                        CharacterReincarnationBonus.character_id == character.id,
+                    ),
+                )
+            ).scalar_one_or_none()
         rein_mult = combat_attr_multiplier(
             float(bonus_row.initial_attr_bonus) if bonus_row else 0.0,
             float(bonus_row.lifetime_applied_growth) if bonus_row else 0.0,
@@ -122,12 +153,51 @@ class CharacterService:
         grade_atk_mul = grade_cfg.atk_mul if grade_cfg is not None else 1.0
         grade_hp_mul = grade_cfg.hp_mul if grade_cfg is not None else 1.0
 
-        techniques = await techniques_svc.list_my_techniques(character)
-        tech_atk, tech_hp = TechniqueService.compute_technique_combat_bonuses(techniques)
-        cons_atk, cons_hp = await constitution_svc.compute_constitution_combat_bonuses(
-            character.id,
+        techniques = await techniques_svc.list_equipped_technique_items(
+            character,
+            actor=wearer,
         )
+        tech_amounts = TechniqueService.compute_technique_combat_amounts(techniques)
+        if wearer == LOADOUT_ACTOR_AVATAR:
+            cons_atk, cons_hp = 0, 0
+        else:
+            cons_atk, cons_hp = await constitution_svc.compute_constitution_combat_bonuses(
+                character.id,
+            )
         cons_state = await constitution_svc.get_constitution_state(character)
+
+        from app.services.equipment_service import EquipmentService
+
+        eq_stats, _, _, _ = await EquipmentService(self._session).aggregate_equipped_modifiers(
+            character.id,
+            actor=wearer,
+        )
+        eq_amounts = {k: float(v) for k, v in eq_stats.items() if v}
+        additive_sources_list: list[AdditiveSource] = [
+            AdditiveSource(
+                source_id="technique",
+                label_zh="功法",
+                amounts=tech_amounts,
+            ),
+            AdditiveSource(
+                source_id="constitution",
+                label_zh="体质",
+                amounts={"phys_atk": float(cons_atk), "hp": float(cons_hp)},
+            ),
+        ]
+        if eq_amounts or cfg.channels.get("equipment"):
+            combat_eq = cfg.channels.get("equipment") or {}
+            additive_sources_list.append(
+                AdditiveSource(
+                    source_id="equipment",
+                    label_zh=str(combat_eq.get("label_zh") or "装备"),
+                    amounts=eq_amounts,
+                    enabled=bool(combat_eq.get("enabled", False)),
+                    note_zh=None
+                    if bool(combat_eq.get("enabled", False))
+                    else "装备属性通道未启用，穿戴仅作外观/预留",
+                ),
+            )
 
         growth_attrs = parse_growth_attrs(getattr(character, "growth_attrs_json", None))
         primary: dict[str, int] = {}
@@ -155,18 +225,7 @@ class CharacterService:
                 rein_mult=rein_mult,
                 grade_atk_mul=grade_atk_mul,
                 grade_hp_mul=grade_hp_mul,
-                additive_sources=(
-                    AdditiveSource(
-                        source_id="technique",
-                        label_zh="功法",
-                        amounts={"phys_atk": float(tech_atk), "hp": float(tech_hp)},
-                    ),
-                    AdditiveSource(
-                        source_id="constitution",
-                        label_zh="体质",
-                        amounts={"phys_atk": float(cons_atk), "hp": float(cons_hp)},
-                    ),
-                ),
+                additive_sources=tuple(additive_sources_list),
                 primary=primary,
                 primary_map=dict(cfg.primary_map),
                 defaults=defaults,
@@ -227,6 +286,126 @@ class CharacterService:
                 cons_state,
             ),
         }
+
+    async def build_puppet_combat_preview(
+        self,
+        *,
+        base_phys_atk: float,
+        base_hp: float,
+        base_speed: float,
+        actor_meta_json: str | None,
+    ) -> dict[str, Any]:
+        """
+        Build combat block for a puppet actor (puppet channel, not player panel).
+
+        Args:
+            base_phys_atk: Scaled base attack from owner.
+            base_hp: Scaled base hp.
+            base_speed: Speed stat.
+            actor_meta_json: PuppetActor.meta_json cultivation payload.
+
+        Returns:
+            dict: combat block with puppet breakdown row.
+        """
+        from app.domain.combat import AdditiveSource, assemble_combat_attr_block, CombatAttrAssembleInput
+        from app.services.equipment_service import parse_puppet_combat_stats
+
+        cfg = get_game_config().combat_attrs
+        puppet_stats = parse_puppet_combat_stats(actor_meta_json)
+        puppet_ch = cfg.channels.get("puppet") or {}
+        labels = {k: a.label_zh for k, a in cfg.attrs.items()}
+        attr_categories = {k: a.category for k, a in cfg.attrs.items()}
+        defaults: dict[str, float] = dict(cfg.defaults)
+        for key, adef in cfg.attrs.items():
+            defaults.setdefault(key, float(adef.default))
+        allowed = tuple(cfg.entity_profiles.get("puppet") or ())
+        additive = AdditiveSource(
+            source_id="puppet",
+            label_zh=str(puppet_ch.get("label_zh") or "傀儡养成"),
+            amounts={k: float(v) for k, v in puppet_stats.items()},
+            enabled=bool(puppet_ch.get("enabled", False)),
+            note_zh=None
+            if bool(puppet_ch.get("enabled", False))
+            else "傀儡养成通道未开启",
+        )
+        combat = assemble_combat_attr_block(
+            CombatAttrAssembleInput(
+                realm_phys_atk=int(base_phys_atk),
+                realm_hp=int(base_hp),
+                realm_speed=int(base_speed),
+                rein_mult=1.0,
+                grade_atk_mul=1.0,
+                grade_hp_mul=1.0,
+                additive_sources=(additive,),
+                primary={},
+                primary_map=dict(cfg.primary_map),
+                defaults=defaults,
+                labels=labels,
+                aliases=dict(cfg.aliases),
+                channels=dict(cfg.channels),
+                schema_version=cfg.schema_version,
+                entity_kind="puppet",
+                allowed_categories=allowed,
+                attr_categories=attr_categories,
+                growth={},
+            ),
+        )
+        return combat
+
+    async def build_player_character(self, character: Character) -> "PlayerCharacter":
+        """
+        构建 ARCH 领域门面 ``PlayerCharacter``（注入最新 ATTR 块 + GrantSource）。
+
+        Args:
+            character: 角色 ORM 行。
+
+        Returns:
+            PlayerCharacter: 无 Session 的养成行动体门面。
+        """
+        from app.game.character import PlayerCharacter
+        from app.game.character.components.grants import (
+            ConstitutionGrantSource,
+            TechniqueGrantSource,
+        )
+        from app.services.constitution_service import ConstitutionService
+        from app.services.technique_service import TechniqueService
+
+        attr_block = await self.build_combat_attrs(character)
+        techniques = await TechniqueService(self._session).list_my_techniques(character)
+        cons_state = await ConstitutionService(self._session).get_constitution_state(
+            character,
+        )
+        grants: list = []
+        for tech in techniques:
+            # CharacterTechnique 行：technique_id + 等级；一期 ability 空列表
+            tid = str(getattr(tech, "technique_id", "") or getattr(tech, "id", ""))
+            grants.append(
+                TechniqueGrantSource(
+                    source_id=tid or "technique",
+                    ability_ids=[],
+                    label_zh=str(getattr(tech, "name", "") or tid),
+                ),
+            )
+        equipped = cons_state.get("equipped_summary") or []
+        if isinstance(equipped, list):
+            for item in equipped:
+                if not isinstance(item, dict):
+                    continue
+                cid = str(item.get("def_id") or item.get("item_id") or item.get("id") or "")
+                if not cid:
+                    continue
+                grants.append(
+                    ConstitutionGrantSource(
+                        source_id=cid,
+                        ability_ids=[],
+                        label_zh=str(item.get("name") or item.get("label_zh") or cid),
+                    ),
+                )
+        return PlayerCharacter.from_orm(
+            character,
+            attr_block=attr_block,
+            grant_sources=grants,
+        )
 
     async def build_combat_stats(
         self,
@@ -369,6 +548,7 @@ class CharacterService:
         spirit_root_tags = parse_spirit_root_tags_json(
             getattr(character, "spirit_root_tags_json", None),
         )
+        spirit_roots = _spirit_root_views(spirit_root_tags)
 
         jobs_summary = craft_jobs_summary or {"running": 0, "ready": 0}
         activity_payload = activity
@@ -379,6 +559,18 @@ class CharacterService:
                 craft_running=int(jobs_summary.get("running") or 0),
                 in_secret_realm=False,
             )
+
+        combat_final = (combat or {}).get("final") if isinstance(combat, dict) else None
+        if not isinstance(combat_final, dict):
+            combat_final = {}
+        hp_max_val = int(final_hp if final_hp is not None else (combat_final.get("hp") or base_hp or 0))
+        mp_max_val = int(combat_final.get("mp") or 0)
+
+        array_level = int(
+            array_craft_level if array_craft_level is not None else character.array_craft_level
+        )
+        growth_attrs = parse_growth_attrs(getattr(character, "growth_attrs_json", None))
+        from app.domain.craft_rules import serialize_craft_levels
 
         return CharacterPublic(
             id=character.id,
@@ -442,13 +634,17 @@ class CharacterService:
             idle_tick_seconds=idle_cfg.tick_seconds,
             base_atk=final_atk if final_atk is not None else base_atk,
             base_hp=final_hp if final_hp is not None else base_hp,
+            hp_max=hp_max_val,
+            hp_current=hp_max_val,
+            mp_max=mp_max_val,
+            mp_current=mp_max_val,
             combat=combat,
             life=life,
             battle_stamina=battle_stamina,
             realm_progress=int(character.realm_progress),
             breakthrough_grade=grade_id,
             breakthrough_grade_name=grade_name,
-            divine_ability_slots=int(character.divine_ability_slots),
+            divine_ability_slots=compute_divine_ability_slot_cap(character),
             membership_tier=character.membership_tier,
             membership_expires_at=(
                 to_utc_iso(character.membership_expires_at)
@@ -473,7 +669,11 @@ class CharacterService:
             has_avatar=has_avatar,
             avatar_summary=avatar_summary,
             divine_sense=divine_sense,
-            array_craft_level=int(array_craft_level if array_craft_level is not None else character.array_craft_level),
+            array_craft_level=array_level,
+            craft_levels=serialize_craft_levels(
+                growth_attrs=growth_attrs,
+                array_craft_level=array_level,
+            ),
             craft_jobs_summary=craft_jobs_summary or {"running": 0, "ready": 0},
             inventory_count=inventory_count,
             pets_count=pets_count,
@@ -483,7 +683,7 @@ class CharacterService:
             peak_major_realm=str(
                 getattr(character, "peak_major_realm", None) or character.major_realm,
             ),
-            growth_attrs=parse_growth_attrs(getattr(character, "growth_attrs_json", None)),
+            growth_attrs=growth_attrs,
             permanent_bonus=dict(getattr(character, "_permanent_bonus_public", None) or {}),
             story_flags=parse_story_flags(getattr(character, "story_flags_json", None)),
             ferry=ferry_payload,
@@ -493,6 +693,7 @@ class CharacterService:
             demonic_nature=int(getattr(character, "demonic_nature", 0) or 0),
             idle_env=idle_env,
             spirit_root_tags=spirit_root_tags,
+            spirit_roots=spirit_roots,
             activity=activity_payload,
             dao=dao,
             dao_lord=dao_lord,
@@ -571,10 +772,13 @@ class CharacterService:
             # 双线程摘要：各方向速率 + 化身耗石（供大厅修炼区进度条预测）
             av_dir = str(avatar_panel.get("idle_direction") or "none")
             main_stones = stones_per_tick_for(character)
-            avatar_stones = max(
-                1,
-                int(main_stones * avatar_cfg.spirit_stone_cost_per_tick_ratio),
-            )
+            if main_stones <= 0:
+                avatar_stones = 0
+            else:
+                avatar_stones = max(
+                    1,
+                    int(main_stones * avatar_cfg.spirit_stone_cost_per_tick_ratio),
+                )
             dual_preview = {
                 "main_idle_direction": character.idle_direction,
                 "main_cultivation_per_tick": (
@@ -714,7 +918,7 @@ class CharacterService:
             final_life = dict(life_block.get("final") or {})
             final_life["stamina"] = int(battle_stamina.get("left") or 0)
             labels = dict(life_block.get("labels") or {})
-            labels["stamina"] = labels.get("stamina") or "战斗体力"
+            labels["stamina"] = labels.get("stamina") or "体力"
             life_block = {**life_block, "final": final_life, "labels": labels}
         await self._session.flush()
         await self._session.refresh(character)
@@ -814,6 +1018,7 @@ class CharacterService:
             last_settled_at=created_at,
             created_at=created_at,
             updated_at=created_at,
+            spirit_root_tags_json=json.dumps([DEFAULT_SPIRIT_ROOT], ensure_ascii=False),
         )
         self._session.add(character)
         await self._session.flush()
@@ -825,6 +1030,9 @@ class CharacterService:
         await self._session.flush()
 
         await TechniqueService(self._session).ensure_default_techniques(character.id)
+        from app.services.divine_ability_service import DivineAbilityService
+
+        await DivineAbilityService(self._session).ensure_default_abilities(character.id)
         await ConstitutionService(self._session).grant_starter_constitution_kit(
             character.id,
         )

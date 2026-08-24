@@ -21,6 +21,7 @@ import {
 import { startPrep } from '../api/tribulation'
 import { useActivityGate } from '../composables/useActivityGate'
 import { useCharacterStore } from '../stores/character'
+import { alertIfIdleBlocked } from '../utils/idleBlockDialog'
 import type {
   BreakthroughAttemptResult,
   BreakthroughPreview,
@@ -253,8 +254,12 @@ async function handleTribulationDivert(data: BreakthroughAttemptResult): Promise
  */
 async function onBreakthroughAttempt(): Promise<void> {
   if (attempting.value) return
+  if (await alertIfIdleBlocked(characterStore.character, '突破')) {
+    emit('log', '修炼中无法突破，请先停止修炼', 'warning')
+    return
+  }
   if (!canBreakthrough.value) {
-    const msg = blockReason('breakthrough') || '修炼中不可突破，请先停止修炼'
+    const msg = blockReason('breakthrough') || '当前不可突破'
     ElMessage.warning(msg)
     emit('log', msg, 'warning')
     return
@@ -287,8 +292,12 @@ async function onBreakthroughAttempt(): Promise<void> {
  */
 async function onQuenchAttempt(): Promise<void> {
   if (attempting.value) return
+  if (await alertIfIdleBlocked(characterStore.character, '淬体')) {
+    emit('log', '修炼中无法淬体，请先停止修炼', 'warning')
+    return
+  }
   if (!canQuench.value) {
-    const msg = blockReason('quench') || '修炼中不可淬体，请先停止修炼'
+    const msg = blockReason('quench') || '当前不可淬体'
     ElMessage.warning(msg)
     emit('log', msg, 'warning')
     return
@@ -318,6 +327,10 @@ async function onQuenchAttempt(): Promise<void> {
 }
 
 async function goTribulation(): Promise<void> {
+  if (await alertIfIdleBlocked(characterStore.character, '渡劫')) {
+    emit('log', '修炼中无法渡劫，请先停止修炼', 'warning')
+    return
+  }
   startingPrep.value = true
   try {
     const prep = await startPrep()
@@ -393,7 +406,7 @@ async function goTribulation(): Promise<void> {
         <el-button
           class="bt-btn"
           type="warning"
-          :disabled="!preview.can_attempt || attempting || !canBreakthrough"
+          :disabled="!preview.can_attempt || attempting"
           :loading="attempting"
           @click="onBreakthroughAttempt"
         >
@@ -498,7 +511,7 @@ async function goTribulation(): Promise<void> {
         <el-button
           class="bt-btn"
           type="success"
-          :disabled="!quenchPreview.can_quench || attempting || !canQuench"
+          :disabled="!quenchPreview.can_quench || attempting"
           :loading="attempting"
           @click="onQuenchAttempt"
         >

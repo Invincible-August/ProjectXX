@@ -16,6 +16,7 @@ import { useDaoLordStore } from '../stores/daoLord'
 import { useWorldEventsStore } from '../stores/worldEvents'
 import { useWsStore } from '../stores/ws'
 import { createLogEntry, type GameLogEntry } from '../types/gameLog'
+import { canEnterWudao } from '../utils/realm'
 
 const route = useRoute()
 const router = useRouter()
@@ -26,6 +27,7 @@ const wsStore = useWsStore()
 
 const loadError = ref('')
 const logEntries = ref<GameLogEntry[]>([])
+const canWudao = computed(() => canEnterWudao(characterStore.character?.major_realm))
 let unsubWs: (() => void) | null = null
 
 const mode = computed(() => {
@@ -165,7 +167,13 @@ watch(mode, async (m) => {
         >
           事件骨架
         </el-button>
-        <el-button size="small" @click="router.push('/dao')">大道</el-button>
+        <el-button
+          v-if="canWudao"
+          size="small"
+          @click="router.push('/dao?actor=main')"
+        >
+          悟道
+        </el-button>
       </div>
     </div>
 

@@ -133,11 +133,16 @@ class FriendService:
         *,
         target_character_id: int | None,
         target_name: str | None,
+        target_user_id: int | None = None,
     ) -> dict[str, Any]:
         """发起道友申请。"""
         require_friends_enabled()
         character, _ = await self._gate.prepare_for_play(user, settle=True)
-        target = await self._resolve_target(target_character_id, target_name)
+        target = await self._resolve_target(
+            target_character_id,
+            target_name,
+            target_user_id,
+        )
         if target.id == character.id:
             raise AppError(code=40000, message="不可加自己为道友", http_status=400)
         await self._expire_stale_requests()
@@ -594,21 +599,17 @@ class FriendService:
         self,
         target_character_id: int | None,
         target_name: str | None,
+        target_user_id: int | None = None,
     ) -> Character:
-        if target_character_id is not None:
-            ch = await self._session.get(Character, int(target_character_id))
-            if ch is None:
-                raise AppError(code=40000, message="目标角色不存在", http_status=404)
-            return ch
-        name = (target_name or "").strip()
-        if not name:
-            raise AppError(code=40000, message="请提供目标角色 id 或道号", http_status=400)
-        ch = (
-            await self._session.execute(select(Character).where(Character.name == name))
-        ).scalar_one_or_none()
-        if ch is None:
-            raise AppError(code=40000, message=f"找不到道号「{name}」", http_status=404)
-        return ch
+        from app.services.character_resolve import resolve_character_ref
+
+        return await resolve_character_ref(
+            self._session,
+            character_id=target_character_id,
+            name=target_name,
+            user_id=target_user_id,
+            not_found_zh="目标",
+        )
 
     async def _expire_stale_requests(self) -> None:
         expire_sec = int(self._cfg().request_expire_sec or 0)

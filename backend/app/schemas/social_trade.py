@@ -13,14 +13,22 @@ class FriendApplyRequest(BaseModel):
     """申请道友。"""
 
     target_character_id: int | None = Field(default=None, description="目标角色 id")
-    target_name: str | None = Field(default=None, description="目标道号（与 id 二选一）")
+    target_name: str | None = Field(
+        default=None,
+        description="目标道号；也可填纯数字 user_id（账号 id）",
+    )
+    target_user_id: int | None = Field(default=None, description="目标账号 user_id")
 
 
 class CompanionApplyRequest(BaseModel):
     """申请道侣。"""
 
     target_character_id: int | None = Field(default=None, description="目标角色 id")
-    target_name: str | None = Field(default=None, description="目标道号（与 id 二选一）")
+    target_name: str | None = Field(
+        default=None,
+        description="目标道号；也可填纯数字 user_id（账号 id）",
+    )
+    target_user_id: int | None = Field(default=None, description="目标账号 user_id")
 
 
 class FriendPrivacyUpdateRequest(BaseModel):
@@ -84,7 +92,11 @@ class FaceTradeInviteRequest(BaseModel):
     """发起面交。"""
 
     peer_character_id: int | None = None
-    peer_name: str | None = None
+    peer_name: str | None = Field(
+        default=None,
+        description="对方道号；也可填纯数字 user_id",
+    )
+    peer_user_id: int | None = Field(default=None, description="对方账号 user_id")
 
 
 class FaceTradeVesselOffer(BaseModel):

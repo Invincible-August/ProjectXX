@@ -33,8 +33,11 @@ purposes:
   - combat_initiative
   - combat_damage
   - formation
-  - dual_cultivation
-  - generic
+    - dual_cultivation
+    - generic
+    - research_technique
+    - research_formation
+    - research_talisman
 
 # 修正通道（无实例则修正为 0）
 bonus_channels:
@@ -45,7 +48,7 @@ bonus_channels:
   item:
     enabled: false                # 延后 DICE-R02
   equipment:
-    enabled: false                # 延后 DICE-R01
+    enabled: true                 # DICE-R01：读已穿戴 dice_mods
   fate_luck:
     enabled: true                 # 气运分档
 

@@ -62,7 +62,7 @@ onMounted(async () => {
       <el-button size="small" @click="router.push('/hall')">← 回大厅</el-button>
       <el-text tag="b" size="large">战斗</el-text>
       <el-button size="small" type="primary" plain @click="router.push('/formation')">
-        去布阵
+        去阵法
       </el-button>
     </div>
 

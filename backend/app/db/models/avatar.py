@@ -60,6 +60,13 @@ class Avatar(Base):
     )
     # 助战体力归零后锁定，须恢复到阈值才可再助战
     assist_stamina_locked: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # 装备栏「化身是否上阵」：开则占神识并进入阵法 Bench
+    is_deployed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # —— AVATAR-D08 化身自身境界（不复制 characters 行）——
+    major_realm: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+    realm_stage: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    realm_stage_label: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+    realm_progress: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     # 化身挂机 settle 锚点
     last_settled_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

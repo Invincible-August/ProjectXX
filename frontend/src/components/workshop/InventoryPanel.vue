@@ -35,7 +35,17 @@ async function onMove(item: InventoryItem, target: 'normal' | 'reincarnation'): 
     <div v-for="item in inventoryStore.normalItems" :key="item.item_uid" class="inv-row">
       <el-text size="small">{{ item.name }}</el-text>
       <el-tag size="small" type="info">×{{ item.quantity }}</el-tag>
-      <el-button link type="warning" size="small" @click="onMove(item, 'reincarnation')">
+      <el-tag v-if="item.bag_tab_label_zh" size="small">{{ item.bag_tab_label_zh }}</el-tag>
+      <el-tag v-if="item.occupancy_label_zh" size="small" type="warning">
+        {{ item.occupancy_label_zh }}
+      </el-tag>
+      <el-button
+        link
+        type="warning"
+        size="small"
+        :disabled="item.occupancy && item.occupancy !== 'none'"
+        @click="onMove(item, 'reincarnation')"
+      >
         → 轮回袋
       </el-button>
     </div>
@@ -55,7 +65,16 @@ async function onMove(item: InventoryItem, target: 'normal' | 'reincarnation'): 
     <div v-for="item in inventoryStore.reincarnationItems" :key="item.item_uid" class="inv-row">
       <el-text size="small">{{ item.name }}</el-text>
       <el-tag size="small" type="warning">×{{ item.quantity }}</el-tag>
-      <el-button link type="info" size="small" @click="onMove(item, 'normal')">
+      <el-tag v-if="item.occupancy_label_zh" size="small" type="warning">
+        {{ item.occupancy_label_zh }}
+      </el-tag>
+      <el-button
+        link
+        type="info"
+        size="small"
+        :disabled="item.occupancy && item.occupancy !== 'none'"
+        @click="onMove(item, 'normal')"
+      >
         → 普通袋
       </el-button>
     </div>

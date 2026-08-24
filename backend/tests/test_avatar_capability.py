@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.domain.avatar_capability import AvatarCapabilityIndex
 from app.domain.avatar_stamina import AvatarStaminaLedger
-from app.domain.m4_constants import AvatarFeature
+from app.constants.m4 import AvatarFeature
 from app.services.realm_config import clear_game_config_cache, get_game_config
 
 

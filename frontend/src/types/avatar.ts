@@ -2,8 +2,8 @@
  * 化身 / 神识领域类型（对齐后端 AvatarPublic + 功能解锁 / 体力 / 互传折扣）。
  */
 
-/** 化身挂机方向（与本体 idle 方向子集一致） */
-export type AvatarIdleDirection = 'none' | 'spirit' | 'body' | 'crafting'
+/** 化身挂机方向（与本体 idle 方向一致，含宗门采矿） */
+export type AvatarIdleDirection = 'none' | 'spirit' | 'body' | 'crafting' | 'sect_mining'
 
 /** 化身功能解锁条目（GET /avatar/features · me.features） */
 export interface AvatarFeatureState {
@@ -47,11 +47,11 @@ export interface AvatarAssistStaminaPanel {
   can_assist: boolean
 }
 
-/** 出战模式提示 */
+/** 出战模式提示（独战已取消：编成必须含本体） */
 export interface AvatarBattleModes {
   with_main: boolean
-  solo_battle: boolean
-  solo_battle_hint: string | null
+  solo_battle?: boolean
+  solo_battle_hint?: string | null
 }
 
 /** 化身对外结构 GET /avatar/me */
@@ -63,6 +63,10 @@ export interface AvatarPublic {
   cultivation_points: number
   body_tempering_points: number
   crafting_exp: number
+  major_realm?: string
+  realm_stage?: number
+  realm_stage_label?: string
+  realm_progress?: number
   base_stats: Record<string, number>
   last_settled_at: string
   created_at: string
@@ -76,16 +80,58 @@ export interface AvatarPublic {
   transfer_retention_ratio?: number
   /** 是否允许道友借入化身助战 */
   assist_friends_enabled?: boolean
+  /** 与角色页同套 ATTR 块（化身自身境界 + 独立穿戴槽） */
+  combat?: import('./character').CombatAttrBlock | null
+  life?: import('./character').LifeAttrBlock | null
+  hp_current?: number
+  hp_max?: number
+  mp_current?: number
+  mp_max?: number
+  /** 切挂机方向时附带本段化身结算，供大厅日志 */
+  idle_gains?: {
+    settled_ticks: number
+    gained_cultivation: number
+    gained_body?: number
+    gained_crafting?: number
+    spent_spirit_stones: number
+  }
+  /** 化身独立大道摘要（与本体互不影响） */
+  dao?: import('./dao').DaoPublic | null
 }
 
 /** 凝练权威闸（GET /avatar/features.condense；与 POST /condense 同源） */
+export interface AvatarCondenseCandidateTechnique {
+  id: string
+  name: string
+  level: number
+  max_level: number
+}
+
+export interface AvatarCondenseCandidateMedium {
+  item_id: string
+  name: string
+  quantity: number
+}
+
 export interface AvatarCondenseGate {
   can_condense: boolean
   realm_ok: boolean
   has_avatar: boolean
   stones_ok: boolean
+  cultivation_ok?: boolean
+  technique_ok?: boolean
+  medium_ok?: boolean
   unlock_major_realm: string
   spirit_stone_cost: number
+  cultivation_cost?: number
+  current_spirit_stones?: number
+  current_cultivation?: number
+  technique_required?: boolean
+  technique_candidates?: AvatarCondenseCandidateTechnique[]
+  medium_required?: boolean
+  medium_item_ids?: string[]
+  medium_quantity?: number
+  medium_candidates?: AvatarCondenseCandidateMedium[]
   block_code: number | null
   block_message: string | null
 }

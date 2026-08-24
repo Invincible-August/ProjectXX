@@ -11,7 +11,7 @@ from typing import Mapping
 
 # 挂机方向 id → 中文
 IDLE_DIRECTION_LABEL_ZH: dict[str, str] = {
-    "none": "停止",
+    "none": "空闲",
     "spirit": "修炼",
     "body": "淬体",
     "crafting": "制造业修炼",

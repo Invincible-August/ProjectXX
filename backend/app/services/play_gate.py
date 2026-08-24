@@ -16,7 +16,8 @@ from app.db.models.character import Character
 from app.db.models.craft_job import CraftJob
 from app.db.models.user import User
 from app.domain.activity_mutex import Activity, assert_can_perform, build_activity_snapshot
-from app.domain.m4_constants import CraftJobStatus
+from app.constants.m4 import CraftJobStatus
+from app.constants.research import ERR_RESEARCH_MUTEX
 from app.schemas.common import AppError
 from app.services.character_service import CharacterService
 from app.services.idle_service import IdleService
@@ -57,7 +58,36 @@ class PlayGate:
         character = await self._characters.get_by_user_id(user.id)
         if character is None:
             raise AppError(code=40005, message="尚未创建角色", http_status=404)
+        # 运营软删角色不可玩
+        if not bool(getattr(character, "is_active", True)):
+            raise AppError(code=40005, message="角色已删除", http_status=403)
         return character
+
+    def assert_lifecycle_write(
+        self,
+        character: Character,
+        *,
+        write_zh: str,
+        code: int = ERR_RESEARCH_MUTEX,
+    ) -> None:
+        """
+        Block research / scribe / equip writes while ferrying or in tribulation.
+
+        Args:
+            character: Current character.
+            write_zh: Chinese verb for the error message.
+            code: AppError code (40211 for research/scribe; 40076 for equipment).
+
+        Raises:
+            AppError: Lifecycle status blocks the write.
+        """
+        status = str(character.status or "normal")
+        if status == "awaiting_ferry":
+            raise AppError(code, f"待引渡期间不可{write_zh}", http_status=409)
+        if status == "reincarnating":
+            raise AppError(code, f"轮回新生中不可{write_zh}", http_status=409)
+        if status == "tribulation":
+            raise AppError(code, f"渡劫中不可{write_zh}", http_status=409)
 
     async def resolve_pending_before_play(
         self,

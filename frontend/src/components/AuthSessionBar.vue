@@ -1,26 +1,22 @@
 <script setup lang="ts">
 /**
- * 登录后各玩法页顶栏：仅「账号」入口（资料 / 改密 / 退出在账号页）。
+ * 玩法页顶栏：玩法标签与账号同一组按钮。
  */
-import { useRouter } from 'vue-router'
-
-const router = useRouter()
+import PlayNav from './layout/PlayNav.vue'
 </script>
 
 <template>
   <div class="auth-bar">
-    <el-button size="small" type="primary" plain @click="router.push('/account')">
-      账号
-    </el-button>
+    <PlayNav />
   </div>
 </template>
 
 <style scoped>
 .auth-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
-  gap: 0.75rem;
+  gap: 0.35rem;
   padding: 0.5rem 1rem;
   margin-bottom: 0.5rem;
   border-bottom: 1px solid var(--el-border-color-lighter, #ebeef5);

@@ -12,9 +12,18 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants.inventory import (
+    BAG_TAB_LABELS_ZH,
+    ERR_ITEM_OCCUPIED,
+    OCCUPANCY_LABELS_ZH,
+    Occupancy,
+    bag_tab_for,
+)
 from app.db.models.character import Character
+from app.db.models.character_equipment import CharacterEquipmentSlot
 from app.db.models.inventory_item import InventoryItem
 from app.domain.inventory_rules import apply_remove, can_add_to_stack, max_stack_for
+from app.game.item import ConsumableItem, item_from_inventory_row
 from app.schemas.common import AppError
 from app.services.realm_config import get_game_config
 
@@ -36,8 +45,110 @@ class InventoryService:
         """
         self._session = session
 
+    @staticmethod
+    def _item_label_zh(item_id: str) -> str:
+        """Player-visible item name; fall back to id if unregistered."""
+        item = get_game_config().inventory.items.get(item_id)
+        return item.name if item is not None else item_id
+
+    async def _occupancy_index(
+        self,
+        character_id: int,
+    ) -> dict[int, tuple[str, str | None]]:
+        """Map inventory_item.id → (occupancy, slot) from wear pointers."""
+        result = await self._session.execute(
+            select(CharacterEquipmentSlot).where(
+                CharacterEquipmentSlot.character_id == character_id,
+            ),
+        )
+        index: dict[int, tuple[str, str | None]] = {}
+        for slot_row in result.scalars().all():
+            if slot_row.inventory_item_id is None:
+                continue
+            slot = str(slot_row.slot)
+            occupancy = Occupancy.DEPLOYED if slot == "pet" else Occupancy.EQUIPPED
+            index[int(slot_row.inventory_item_id)] = (occupancy, slot)
+        from app.services.avatar_repo import fetch_avatar_row
+
+        avatar = await fetch_avatar_row(self._session, character_id)
+        if avatar is not None:
+            from app.db.models.avatar_loadout import AvatarEquipmentSlot
+
+            av_result = await self._session.execute(
+                select(AvatarEquipmentSlot).where(
+                    AvatarEquipmentSlot.avatar_id == avatar.id,
+                ),
+            )
+            for slot_row in av_result.scalars().all():
+                if slot_row.inventory_item_id is None:
+                    continue
+                index[int(slot_row.inventory_item_id)] = (
+                    Occupancy.EQUIPPED,
+                    str(slot_row.slot),
+                )
+        return index
+
+    def _occupancy_of_row(
+        self,
+        row: InventoryItem,
+        index: dict[int, tuple[str, str | None]],
+    ) -> tuple[str, str | None]:
+        """Resolve occupancy from wear pointers, then meta_json."""
+        found = index.get(int(row.id))
+        if found is not None:
+            return found
+        if row.meta_json:
+            try:
+                meta = json.loads(row.meta_json)
+            except json.JSONDecodeError:
+                meta = {}
+            occ = str((meta or {}).get("occupancy") or Occupancy.NONE)
+            if occ in (Occupancy.EQUIPPED, Occupancy.DEPLOYED):
+                return occ, None
+        return Occupancy.NONE, None
+
+    def read_meta_occupancy(self, row: InventoryItem) -> str:
+        """Read occupancy from meta_json only (wear pointers ignored)."""
+        if not row.meta_json:
+            return Occupancy.NONE
+        try:
+            meta = json.loads(row.meta_json)
+        except json.JSONDecodeError:
+            return Occupancy.NONE
+        occ = str((meta or {}).get("occupancy") or Occupancy.NONE)
+        if occ in (Occupancy.EQUIPPED, Occupancy.DEPLOYED, Occupancy.NONE):
+            return occ
+        return Occupancy.NONE
+
+    async def set_occupancy(self, row: InventoryItem, occupancy: str) -> None:
+        """
+        Write occupancy onto inventory meta_json (puppet loadout board).
+
+        Args:
+            row: Inventory row to update.
+            occupancy: ``none`` / ``equipped`` / ``deployed``.
+        """
+        allowed = {Occupancy.NONE, Occupancy.EQUIPPED, Occupancy.DEPLOYED}
+        target = str(occupancy or Occupancy.NONE)
+        if target not in allowed:
+            raise AppError(code=40000, message="非法占用态", http_status=400)
+        meta: dict[str, Any] = {}
+        if row.meta_json:
+            try:
+                parsed = json.loads(row.meta_json)
+                if isinstance(parsed, dict):
+                    meta = parsed
+            except json.JSONDecodeError:
+                meta = {}
+        if target == Occupancy.NONE:
+            meta.pop("occupancy", None)
+        else:
+            meta["occupancy"] = target
+        row.meta_json = json.dumps(meta, ensure_ascii=False) if meta else None
+        await self._session.flush()
+
     async def list_items(self, character_id: int) -> list[dict[str, Any]]:
-        """列出角色全部背包行（含 bag_kind）。"""
+        """列出角色全部背包行（含 bag_kind / bag_tab / occupancy）。"""
         result = await self._session.execute(
             select(InventoryItem)
             .where(InventoryItem.character_id == character_id)
@@ -45,23 +156,44 @@ class InventoryService:
         )
         items = []
         inv_cfg = get_game_config().inventory
+        occ_index = await self._occupancy_index(character_id)
         for row in result.scalars().all():
             defn = inv_cfg.items.get(row.item_id)
+            occupancy, occ_slot = self._occupancy_of_row(row, occ_index)
+            bag_tab = bag_tab_for(row.item_type)
+            meta = json.loads(row.meta_json) if row.meta_json else None
+            custom_name = ""
+            if isinstance(meta, dict):
+                custom_name = str(meta.get("label_zh") or "").strip()
+            display_name = defn.name if defn else (custom_name or row.item_id)
             items.append(
                 {
                     "id": row.id,
                     "item_uid": row.item_uid,
                     "item_type": row.item_type,
                     "item_id": row.item_id,
-                    "name": defn.name if defn else row.item_id,
+                    "name": display_name,
                     "quantity": int(row.quantity),
                     "bag_kind": str(getattr(row, "bag_kind", None) or "normal"),
-                    "meta": json.loads(row.meta_json) if row.meta_json else None,
+                    "meta": meta,
                     # 机缘/交易筛选用（目录权威）
                     "tradable": bool(defn.tradable) if defn is not None else False,
                     "bound": bool(defn.bound) if defn is not None else True,
                     "unique": bool(getattr(defn, "unique", False)) if defn is not None else True,
-                    "max_stack": int(defn.max_stack) if defn is not None else 1,
+                    "max_stack": max_stack_for(row.item_id, row.item_type, inv_cfg),
+                    "bag_tab": bag_tab,
+                    "bag_tab_label_zh": BAG_TAB_LABELS_ZH.get(bag_tab, bag_tab),
+                    "occupancy": occupancy,
+                    "occupancy_label_zh": OCCUPANCY_LABELS_ZH.get(occupancy, ""),
+                    "occupancy_slot": occ_slot,
+                    "manual_kind": (
+                        (meta.get("manual_kind") if isinstance(meta, dict) else None)
+                        or (defn.manual_kind if defn is not None else None)
+                    ),
+                    "unlock_recipe_id": (
+                        (meta.get("unlock_recipe_id") if isinstance(meta, dict) else None)
+                        or (defn.unlock_recipe_id if defn is not None else None)
+                    ),
                 },
             )
         return items
@@ -135,6 +267,11 @@ class InventoryService:
         row = result.scalar_one_or_none()
         if row is None:
             raise AppError(code=40000, message="背包物品不存在", http_status=404)
+
+        occ_index = await self._occupancy_index(character.id)
+        occupancy, _slot = self._occupancy_of_row(row, occ_index)
+        if occupancy != Occupancy.NONE:
+            raise AppError(code=ERR_ITEM_OCCUPIED, message="占用中的物品不可换袋", http_status=400)
 
         current = str(getattr(row, "bag_kind", None) or "normal")
         if current == target:
@@ -279,14 +416,23 @@ class InventoryService:
         扣减配方材料。
 
         异常:
-            AppError: 40055 材料不足。
+            AppError: 40055 材料不足（中文名 + 缺少数量）。
         """
         counts = await self.material_counts(character_id)
+        shortages: list[str] = []
         for mat in materials:
             item_id = str(mat["item_id"])
             need = int(mat["quantity"])
-            if counts.get(item_id, 0) < need:
-                raise AppError(code=40055, message=f"材料不足：{item_id}", http_status=400)
+            have = int(counts.get(item_id, 0) or 0)
+            if have < need:
+                missing = need - have
+                shortages.append(f"{self._item_label_zh(item_id)} 缺少 {missing}")
+        if shortages:
+            raise AppError(
+                code=40055,
+                message="材料不足：" + "、".join(shortages),
+                http_status=400,
+            )
         for mat in materials:
             await self._remove_item_id(character_id, str(mat["item_id"]), int(mat["quantity"]))
 
@@ -341,16 +487,30 @@ class InventoryService:
 
         inv_cfg = get_game_config().inventory
         defn = inv_cfg.items.get(row.item_id)
-        effect: dict[str, Any] | None = defn.use_effect if defn else None
+        occ_index = await self._occupancy_index(character.id)
+        occupancy, _slot = self._occupancy_of_row(row, occ_index)
+        item = item_from_inventory_row(row, defn, occupancy=occupancy)
         applied: dict[str, Any] = {"item_id": row.item_id, "quantity": quantity}
 
-        if effect and effect.get("kind") == "stamina":
-            from app.services.stamina_service import StaminaService
+        if isinstance(item, ConsumableItem):
+            plan = item.on_use({"quantity": quantity}) or {}
+            for effect in plan.get("effects") or []:
+                if str(effect.get("kind")) == "stamina":
+                    from app.services.stamina_service import StaminaService
 
-            stamina_svc = StaminaService(self._session)
-            amount = int(effect.get("amount", 0)) * quantity
-            stamina_svc.add_stamina(character, amount)
-            applied["stamina_gained"] = amount
+                    stamina_svc = StaminaService(self._session)
+                    amount = int(effect.get("amount", 0)) * quantity
+                    stamina_svc.add_stamina(character, amount)
+                    applied["stamina_gained"] = amount
+        else:
+            effect: dict[str, Any] | None = defn.use_effect if defn else None
+            if effect and effect.get("kind") == "stamina":
+                from app.services.stamina_service import StaminaService
+
+                stamina_svc = StaminaService(self._session)
+                amount = int(effect.get("amount", 0)) * quantity
+                stamina_svc.add_stamina(character, amount)
+                applied["stamina_gained"] = amount
 
         new_qty, _ = apply_remove(int(row.quantity), quantity)
         if new_qty <= 0:

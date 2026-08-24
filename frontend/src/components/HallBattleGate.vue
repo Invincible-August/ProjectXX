@@ -26,7 +26,7 @@ const latest = computed(() => battleStore.sessionReports[0] ?? null)
 
     <div class="gate-actions">
       <el-button type="primary" size="small" @click="router.push('/formation')">
-        布阵
+        阵法
       </el-button>
       <el-button type="danger" size="small" @click="router.push('/battle')">
         战斗

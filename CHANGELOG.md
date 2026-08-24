@@ -1,6 +1,130 @@
 # Changelog
 
-## [Unreleased]
+- **洞府 / 研究室**：自研不再是一级玩法页；顶栏改为「洞府」。研究室是洞府二级页 `/cave/lab`（功法/阵法/符箓）。权威接口 `/api/v1/cave` 与 `/api/v1/cave/lab/*`；旧 `/research` 页与 HTTP 仍兼容。来源标签仍为「自研」。（2026-08-20）
+
+- **工坊去掉阵法**：阵法不属于制造业；工坊外层只留炼丹 / 炼器 / 符箓 / 傀儡。配方表删除「阵法钻研·一」；开工拒绝 array 分支。角色面板阵法等级与自研门槛仍保留。（2026-08-20）
+
+- **材料不足提示**：开工缺料改为「材料不足：灵草 缺少 2」，用中文名和缺少数量，不再甩 `herb_spirit_grass` 这类 id。（2026-08-20）
+
+- **工坊配方收束**：成品属性改为金木水火土风雷暗之一（同灵根额外收益本版只挂字段）；去掉抗性与「条件」栏，使用条件仅境界。工坊页只留配方与队列。所需材料=材料+灵石，所需体力另栏。（2026-08-19）
+
+- **工坊工匠交互**：图纸改成可点选一列列表；选中后显示所需材料（对照背包持有量）；开工与「赋予道韵」只在列表最下方。悬停改为功法同款分栏卡片（名称 / 制作等级 / 条件栏五行与抗性 / 功效 / 境界 / 说明），数据来自物品 `inspect`，本版只保排版。（2026-08-19）
+
+- **工坊配方格收束**：配方只显示名称，悬停看材料、体力、基础效果与品级（对应制作等级）；开工与「赋予道韵」在框外同一行。（2026-08-19）
+
+- **工坊配方栏去说明**：卡片标题改为「配方」；删除制造业经验/制作等级/互斥/环境锁定长说明。（2026-08-19）
+
+- **工坊符箓页去掉画符/预载**：`/workshop?branch=talisman` 与其它分支同一套配方队列，不再显示画符带与出战预载；出战符仍在装备栏设置。自研已定稿入口改为「去工坊」。（2026-08-19）
+
+- **工坊主体界面**：炼丹/炼器/符箓/阵法/傀儡改为页顶外层按钮（回大厅下方）；去掉「当前将锁定天气」占位行。消耗道值勾选挪到开工按钮后：扣当前队列主体（本体或化身）道值，为造物附加本命道之力。请求缺字段不再把英文 `Field required` 甩给玩家。（2026-08-19）
+
+- **悟道独立页**：角色/化身页在**真仙**后显示「悟道」入口；未达真仙不可见 `/dao`。本体与化身各有本命道与道值，互不影响。化身开道不就任道主。`GET/POST /dao/*` 增 `actor=main|avatar`。（2026-08-19）
+
+- **角色栏展示本命道**：开通悟道（已锁定本命道）后，大厅简览 / 角色页 / 化身页角色栏显示大道名与道值（含等级）。未开道不占位。（2026-08-19）
+
+- **阵法助战锚点（AVATAR-D09）**：棋子栏新增「助战」；点选后在可部署区放蓝虚线「助」虚位（不进四栏棋子）。有道友化身会话时开战自动落入该格，未布置则拒绝。`PUT /formation/presets/{slot}` 增 `assist_anchor`。单测 `test_avatar_friend_assist_pve`（2026-08-19）
+
+- **修复化身周天与本体锁相**：空闲化身不再按整 tick 空推进 `last_settled_at`（否则会与本体停在同一周天百分比）。`POST /avatar/idle` 切修炼/淬体/制造业时从点击时刻重计一周天，并在同包返回 `character.dual_idle_preview.avatar_last_settled_at`。大厅进度条只用化身锚点。单测 `test_avatar_idle_anchor_independent_of_main`（2026-08-19）
+
+- **修炼占用提示改为操作弹框**：去掉修炼区常驻绿字；化身修炼区进度/本周天预计/停滞提示与本体同一套文案。大厅简览「挂机」改为「状态」。突破/淬体/开战/组队/探索/炼丹炼器/制符/造傀儡时再弹「修炼中无法进行，请先停止修炼」（2026-08-19）
+- **化身独立穿戴 + 大厅修炼日志**：装备/功法/神通按 `actor=main|avatar` 分槽，选择池只显示当前主体可装件（对方已穿实例隐藏）。化身战力按自身境界+独立槽实时计算，不再套凝练快照/本体比例。破除化身：修为池全额转入本体、淬体丢弃、装备回背包；再凝练从金丹初期。大厅绿提示单行；本周天预计含灵石消耗；事件日志满 10 周天一条，主动停止立刻结算。`GET/POST /equipment|techniques|divine-abilities` 增 `actor`。单测 `test_avatar_equipment_independent_of_main`（2026-08-19）
+
+- **化身页与大厅简览**：顶栏「化身」紧挨「角色」。化身简览不显示品阶/轮回点，改显示化身体力与助战次数（当前/上限）；名称位改为助战开关。化身页右侧展示装备/功法/神通（无傀儡、灵宠、符宝、符箓）。传修为说明收入 i 标签，保留率动态。大厅简览同槽切换本体/化身。修炼区四键一排，本体也可采矿；挂机标签统一为空闲/修炼/淬体/制造业修炼/采矿。化身切修炼与本体一样从点击时刻起算周天。`POST /avatar/idle` 写入 `last_settled_at=now`（2026-08-19）
+
+- **化身挂机迁至大厅修炼区**：化身页去掉挂机栏；已凝练后大厅 `IdlePanel` 本体线程下方显示化身进度/池/修炼·淬体·制造业·采矿按钮。`POST /avatar/idle` 不变（2026-08-19）
+
+- **化身修士 OOP 重构（v1.3 代码）**：`CultivatorCharacter` 为后台按类渲染境界栏的父类；`AvatarCharacter` 不再挂 `SenseMinionCharacter`，改修士叶 + `DivineSenseConsumer`。编成永久必须含本体（吃独战）。`avatars` 自有境界字段与双封顶；化身面板不套用本体轮回 `initial_attr`/成长。单测 `test_game_arch_abc` / `test_avatar_realm_caps` / `test_avatar_features`。ARCH [`统一实体类层次与重构方案.md`](./统一实体类层次与重构方案.md) **v1.0.6**（2026-08-19）
+
+- **化身 v1.3 设定冻结**（仅文档）：化身可突破（相对本体封顶）；绝对硬顶为 **道主境 / 轮回境**（非常规修为台阶）；轮回商店预留化身专项，结算 **不**把本体 `initial_attr` / 成长套到化身；取消独战。实现切片 **AVATAR-D07～D10**。真相源 [`化身系统设计.md`](./化身系统设计.md)。**M4-D02** 落入 D08；**M5-D07 取消**（2026-08-19）
+
+- **化身页改版**：去掉神识条与功能解锁栏；未凝练仅四个资源槽（灵力/灵石/化身功法/媒介）+ 凝练；已凝练对齐角色属性栏并提供「破除化身」。`POST /avatar/condense` 须填功法与媒介；新增 `POST /avatar/dismiss`。单测 `test_condense_recipe_and_dismiss`（2026-08-19）
+
+- **资源分配可超额**：投入境界/淬体不再按本档门槛截断；突破/淬体成功只扣本档所需，超额保留。超额时弹窗确认「所需 / 本次分配」。单测 `test_allocate_body_temper_overflow_kept`（2026-08-19）
+- **M8+ 自创与实例拆开登记**：现行自研仅功法/阵法/符箓；丹药、傀儡为工坊炼成。自创另开专文，不塞进类型+实例翻表（2026-08-19）
+- **M8+ 类型与实例整改（登记）**：类型=白板锚点、实例=最终属性；回收 24h + 待清理 7 天；清单见 [`后续待完成.md`](./后续待完成.md) §1.14；**拍板前不开 M9、不改正式专文**（2026-08-19）
+- **阵法页布局收束**：棋子槽在左、棋盘在右；部署模式说明栏删除；防守快照改为工具条「刷新快照」按钮，悬停显示上次更新时间（2026-08-19）
+- **阵法页：傀儡与编成板对齐**：未点「上阵傀儡」时 Bench 为 (0/0)；默认试炼木傀不再进可上场名单/保存。下拉「尚无自研阵」文案删除；阵法选择移到保存后；「去设计新阵盘」改名「自研阵法」。前端再滤 `puppet_N`，避免旧进程仍下发试炼木傀。单测 `test_unequipped_puppets_not_on_bench`（2026-08-19）
+- **阵法页文案与坐标**：棋子栏「分身」改为「化身」；棋盘不再显示横纵坐标数字（2026-08-19）
+- **阵法页改版（前端优先）**：顶栏「布阵」改为「阵法」；去掉装备栏说明文案；预设改为下拉选择 + 自定义名称 + 保存，最多 5 套（不再展示进攻/防守/临时）。棋子按装备分成角色 / 灵宠 / 傀儡 / 化身四栏，计数为已上阵/已装备（未装备为 0/0）。后端惰性补齐第 4、5 槽。`constants.formation`。单测 `test_formation_snapshot_battle`（2026-08-19）
+
+- **选择栏紧凑化 + 统一悬停**：体质/功法/神通/装备点槽后用方格选装（不再一行一件）；悬停按装备属性固定 format。神通 i：「神通装备数量与修为和品阶相关」。[`功法系统设计.md`](./功法系统设计.md) **v0.2**；[`道具与装备实体设计.md`](./道具与装备实体设计.md) **v0.8.9**（2026-08-18）
+- **神通池选装**：神通栏与功法同交互（点槽从已学池装备），无主副之分；格数 = 修为基数 + 跨境品阶。专栏 [`神通系统设计.md`](./神通系统设计.md) **v0.2**。单测 `test_divine_ability_loadout`（2026-08-18）
+- **神通栏装备口子**：根基里神通与耐力对调；角色页右侧神通栏。专栏 [`神通系统设计.md`](./神通系统设计.md)。（2026-08-18）
+- **角色面板排序**：悟性/耐力/神通进根基；战斗按资源→攻防→机动→抗性；生成属性按炼丹/炼器/制符成对。耐力=体修占位，神通=可装备格数（修为+品阶）。（2026-08-18）
+- **角色面板分栏**：简介含轮回点与体力；「生活属性」改「生产属性」；天劫抗/心魔抗/吐纳效率进根基；根骨格不拉满。[`ATTR战斗属性占位设计.md`](./ATTR战斗属性占位设计.md) **v1.4.2**（2026-08-18）
+- **悬停浮层字色**：功法/体质/傀儡说明/挂机拆解改为深色底浅色字，避免浅色 tooltip 把字压成纯黑（2026-08-18）
+- **功法双角色装备口子**：主功法 1 格 + 技法多格（随修为增加）；悬停看名称/等级/属性/来源；有技能才在下方列出。玩家/NPC 带灵根，创角默认杂灵根。专栏 [`功法系统设计.md`](./功法系统设计.md)。单测 `test_technique_loadout`（2026-08-18）
+- **大厅摘要去卡头**：去掉「角色摘要 / 打开角色页」一行；进角色页改走顶栏「角色」。`PlayNav` 含大厅…商店与账号，同一组 `size="small"` 按钮。元素抗并入「战斗属性」；开口异常抗 `resist_ailment`、暗抗 `resist_dark`。专栏 [`战斗系统完善设计.md`](./战斗系统完善设计.md)。单测 `test_combat_attrs` / `test_talisman_stack_and_status`（2026-08-18）
+- **玩法壳全局跳转 + 装备栏上阵**：任意玩法页顶栏 `PlayNav` 可互跳。化身在装备栏开关上阵；灵宠/傀儡/符箓也在装备栏设置。神识只按装备栏占用（与棋盘落子无关）；阵法页只布阵。工坊按制作等级锁图纸并掷造物品质。符箓同种类不叠加与异常状态回合序冻结为纯函数（引擎完整链仍 M3-D03 / M8-D04）。专文 [`符箓叠层与异常状态设计.md`](./符箓叠层与异常状态设计.md)。单测 `test_loadout_sense_formation` / `test_craft_level_quality` / `test_talisman_stack_and_status`（2026-08-18）
+- **角色属性栏**：取消「其它」；轮回点、神通、炼丹/炼器/制符/阵法/傀儡制作等级并入折叠「生活属性」。`CharacterPublic.craft_levels`（2026-08-18）
+- **简示栏微调**：神识只显示 `已用/ 总量`、不附百分比；灵石去掉「推算」标注；角色属性折叠去掉「属性来源拆解」（2026-08-18）
+- **角色类层次 + 简示栏神识**：`Character` 基类含法力；`PlayerNpcCharacter`（玩家/NPC）持神识池；分身/灵宠/傀儡继承 `SenseMinionCharacter`（`divine_sense_cost`）。简示栏生命值/法力值去掉血蓝备注，百分比改为与「（0.5/分）」同级的括号小字；神识分子=已用、分母=总量。上阵化身+灵宠+傀儡累加同一神识池。单测 `test_game_arch_abc` / `test_pets_sense` / `test_equipment_attr_feed`（2026-08-18）
+- **简示栏生命/法力**：角色摘要改为「生命值」「法力值」`当前/ 最大` + 括号百分比；不再显示攻击力。非战时当前=上限。`CharacterPublic` 增 `hp_current`/`hp_max`/`mp_current`/`mp_max`（2026-08-18）
+- **体质栏居中对齐**：本源/旁支格子居中；旁支按数量与本源同轴；格加大一号；操作提示改为「铜皮凡体 → 本源 / 旁支一」（2026-08-18）
+- **体质本源/旁支**：栏位动态（初始 1 本源 + 2 旁支，轮回点加槽，软顶 7 无硬顶）；同一体质两套效果；独立收藏区不进道具背包；角色页紧凑格 + 点槽收集 + i 说明。单测 `test_constitution`（2026-08-18）
+- **傀儡编成 UI**：去掉「傀儡编成板」标题；发挥%与神识占用仅在点开「上阵傀儡」后显示（2026-08-18）
+- **傀儡编成硬顶 3 + 神识分母**：上阵最多 3 只（选第 4 只拒绝）；「神识占用」分母读角色面板 `divine_sense.capacity`。i 标签：「上阵傀儡最多不得超过3个，神识消耗总量超过最大神识后，傀儡强度将会受到削弱」。`puppet_loadout_max: 3`（2026-08-18）
+- **傀儡编成板上阵勾选**：角色页「上阵傀儡」展开栏位列出全部可上阵傀儡与神识占用；选择/取消选择即时预览发挥%；点「上阵」才 `PUT /equipment/puppet-loadout` 保存。`divine_sense.costs.puppet=2`；slots DTO 增 `puppet_sense`。开战棋子乘区仍待接。单测 `test_replace_puppet_loadout_and_sense_payload`（2026-08-18）
+
+- **角色页穿戴栏示意剪影**：左右列小方槽夹修士轮廓（中间不叠部位槽）；底排主手/副手；符宝/灵宠在武器上一行；槽名项链/饰品/符宝；点槽列出该部位可装备（已穿置顶金色框，按钮「装备」「卸下」）；再点取消选中并隐藏背包；空列表为带边框栏位。穿戴/体质/功法三栏默认收起。双手武器两格同名，副手框红色。`constants.equipment` 中文标签同步（2026-08-17）
+- **M8 出口体验打磨**：渡劫/待引渡/轮回页级只读（自研/画符/穿戴）；阵法脏离开确认；切自研分支清 session；材料中文名与空态文案；「后续开放」替「本期不做」；GM 发装刷新装备栏；`smoke_m8` 断言待引渡写门禁 40211（2026-08-17）
+- **M8 R6 落地（样本校验器与总装）**：`app.config_source.validate_content`（启动/CI/`python -m app.config_source.validate_content`）；坏装备 stats / 坏符效果 / 坏体质词条拒绝；ADM `equipment`/`research`/`talisman_effects` 发布探针；大厅 nav「工坊」「自研」+「继续草案」；`GET /research/sessions`；待引渡/渡劫禁自研写与画符；GM `grant_test_equipment`；`scripts/smoke_m8.py`。单测 `test_content_validator`（2026-08-17）
+
+- **M8 R5 落地（宗门图纸 / M7-D06）**：权威 `item_type=manual` + `manual_kind`；代工真扣材料；兑换图纸入包；捐赠校验 `40209`；藏宝阁拒图纸；`SectWorkshopPanel` 背包上缴/领取。单测 `test_sect_blueprint_item_type`。图纸品阶/学习完式延后 **M8-D06**（2026-08-17）
+
+- **M8 R4 落地（自研符箓）**：`talisman_effects.yaml` 白名单；定稿 `custom:talisman:{cid}:{slug}`；`POST /craft/talisman/scribe` + `GET|PUT /craft/talisman/preload`；开战注入 `item_trigger`（可关 `research.talisman.battle.enabled`）；`/research?mode=talisman` + 工坊全宽画符带。单测 `test_research_talisman_whitelist`（2026-08-17）
+
+- **M8 R3 落地（自研阵法）**：`research.yaml` `formation` + `private_formations`；`POST /research/sessions/{id}/draft`；定稿 `custom:formation:{cid}:{slug}`；`/research?mode=formation` 设计器；布阵 picker 自研分组；防守快照内联蓝图。单测 `test_research_formation_blueprint`（2026-08-17）
+
+- **R0 傀儡编成板 + 双手双指针**：`POST /equipment/puppet-loadout/add|remove` 写 `occupancy=deployed`；`GET /equipment/slots` 返回 `puppet_loadout`/`bag_puppets`；布阵 Bench 仅编成傀儡（试炼木傀例外）；`weapon_2h` 同 id 占 `weapon_1`+`weapon_2`、卸一侧清两侧、聚合按 inv id 去重；样本 `iron_greatsword_t1`；角色页编成板 UI（2026-08-17）
+
+- **穿戴栏废除五槽过渡**：API/ORM/前端权威改为 **17 区**指针槽（15 装备 + `pet` + 傀儡编成说明）；旧 `weapon`/`armor`/`fabao` 仅读档迁移。专文 v0.8.2 / M8 核心 v1.1.9 / 前端 v1.1.2（2026-08-17）
+
+- **M8 R0 道具系统开工（原 ITEM-0）**：竖切最高优先。落地 `Item` 工厂与子类、四法则、背包四页/`occupancy`、丹药 `use_effect` 白名单与多轨时钟校验；穿戴栏以 17 区为准。单测 `test_item_r0`（2026-08-17）
+
+- **M8 ITEM-0 丹药方案 A（设计）**：`use_effect` 白名单；时效多轨 `wall`（现实时间）/ `battle`（场次）/ `round`（回合）；禁止裸 duration；时钟结算仍 M8-D05。专文 [`道具与装备实体设计.md`](./道具与装备实体设计.md) **v0.8**（2026-08-17）
+
+- **M8 ITEM-0 傀儡/灵宠兼容（设计）**：废止单指针傀儡槽；角色页 **17 区** = 15 装备 + 灵宠硬顶 1 + 傀儡编成板（无件数硬顶）；傀儡战力走 M4 §6.4 平行神识乘区。专文 [`道具与装备实体设计.md`](./道具与装备实体设计.md) **v0.7**（2026-08-17）
+
+- **M8 ITEM-0 设计开篇（道具 ABC）**：[`道具与装备实体设计.md`](./道具与装备实体设计.md) **v0.7**（由 v0.6 修订）——17 区穿戴栏、福宝不可逆耐久、四页背包、占位不迁格；ITEM-0 优先于 R3（2026-08-17）
+
+- **M8 R2 落地（自研功法）**：后端 `research.yaml` + 会话/定稿 ORM（`research_sessions` / `private_techniques`）+ `/research/catalog|mine|sessions*`；骰子 `purpose=research_technique`；定稿 id `custom:technique:{cid}:{slug}` 写入功法列表；`submit_review` 恒 `40210`；前端 `/research?mode=technique`（阵法/符占位）+ 角色页功法「来源」列与「去自研」；单测 `test_research_technique_finalize`（2026-08-17）
+
+- **M8 R1 落地（ATTR-D02 装备通道）**：后端 `equipment.yaml` + `/equipment/slots|equip|unequip|catalog`；`build_combat_attrs` 装备来源；IDLE-R01 / DICE-R01 装备通道打开；傀儡 `build_puppet_combat_preview`；前端 `EquipmentSlotsPanel`；单测 `test_equipment_attr_feed`（槽表后扩 17 区）（2026-08-17）
+
+- **开 M8 设计（自研与内容管线）**：新增 [`M8自研与内容管线设计.md`](./M8自研与内容管线设计.md) **v1.0.1** / [`M8前端目录与路由设计.md`](./M8前端目录与路由设计.md) **v1.1**；竖切 R1～R6；路由 `/research`；ATTR-D02 必须先于自研；延后 M8-D01～D05；**前端补布局/样式文字方案**（1100px 玩法壳、mode-nav、虚线槽、BoardGrid、大厅不塞大卡）；开发计划 **v3.7**（2026-08-17）
+
+- **后台角色管理（ADM-P7）**：玩家管理新增「角色管理」；账号页道号可跳转；通用软删(`characters.is_active`)/死亡(待引渡)/强制轮回/修为·炼体小境突破/邮件给予物品种类；独立改基础属性·状态·背包·功法·境界·制造业等级与配方·货币（不含仙缘）；状态常量入 `constants/character`；API `/admin/ops/characters*`；单测 `test_admin_character_ops`（2026-08-14）
+
+- **账号 user_id 规则 + 后台批量**：对外 `user_id`=`M|P|T|G`+7 位（邮箱/手机/测试/GM）；数据库ID仍自增；软删 `is_active=false`，登录提示「无效用户名」；后台可勾选批量封号/重置密码/改联系方式/派发仙缘/软删/设GM；行内直接展开打赏与流水（2026-08-14）
+
+- **玩家账号页（ADM-P6）**：改密改为弹窗（原/新/确认）；`REGISTER_REQUIRE_EMAIL_CODE` 同时控制改密是否走邮箱验证码（`/verification/email/*` + `email_ticket`）；资料展示仙缘余额、累计打赏、累计观看广告次数；「打赏记录」账单（时间/金额/单号/途径原文）。API `GET /account/summary`、`GET /account/tips`（2026-08-14）
+
+- **后台计划 v2.0 重建**：废止旧《后台管理系统开发计划》v1.x 稿；新文档对齐主计划 §0.0/§0.6.3；§1.1 增 **ADM-P0～P4**（玩家运营轨）与 **ADM-C\***；账号管理抽 `constants/admin_player` + `/ops/players/schema` 中文字段契约（2026-08-14）
+
+- **账号流水三表**：打赏 `player_tip_records`（录入时间/路径/订单号/金额，累加总打赏）、仙缘派发 `fate_luck_grant_records`（派发时自动写）、广告观看 `player_ad_watch_records`（先可查看，写入待广告接入）；账号页「更多」入口（2026-08-14）
+
+- **后台整改首步·玩家账号管理**：侧栏改为「玩家管理 → 账号管理」；Navicat 风格网格展示数据库ID/user_id/邮箱/手机/仙缘/总打赏；支持封号·重置密码(12345678)·改联系方式·派发仙缘；搜索+分页(10/20/50/100)；旧配置域菜单暂下线；`users.total_recharge_amount`；API `/admin/ops/players*`（2026-08-14）
+
+- **社交目标兼容 user_id**：组队/交易/道友/道侣/邮件/师徒解析统一经 `character_resolve`；输入框可填道号或纯数字账号 id（2026-08-14）
+
+- **CONTENT_STORE_MODE 真正接通玩法 Bundle**：`realm_config._load_yaml` 经 `ContentStore`；`.env` 的 `yaml_authority` / `yaml_base_db_overlay` / `db_authority` 决定读 YAML 还是合并 DB 发布层；启动日志打印模式；单测 `test_content_store_mode`（2026-08-14）
+
+- **ARCH S1-6 收口**：删除 `domain.m4_constants` shim（调用方改 `app.constants.m4`）；ORM 增加 `CharacterRow` 别名（表名不改）；`app.constant` 标明为长期入口；ARCH 存量整改 S1 完成（2026-08-14）
+
+- **ARCH S1-4 / S1-5**：`PuppetActor` ORM + `PuppetService`（炼成/懒绑定）；布阵 bench `ref_id=Actor.id`；开战真傀经 `PuppetCharacter`；试炼木傀仍 ephemeral；道主 `privileges` 布尔↔`grants` 双写（`normalize_privileges_payload`）；收紧 `is_trial_puppet_uid`（仅 `puppet_N`）；单测 `test_s1_4_5_puppet_dao_lord`（2026-08-14）
+
+- **常量统一管理（法律 §0.6.3）+ ARCH S1-2/S1-3**：新建 `backend/app/constants/`（及别名 `app/constant.py`）；抽出战斗/ATTR/Ability/M4/背包等协议常量（均中文注释）；`AutochessService` 开战经 `on_battle_enter`；功法/体质 `GrantSource`；开发计划强制后续遵守（2026-08-14）
+
+- **ARCH v1.0 底层骨架（优先于 M8）**：落地 `backend/app/game/**`（Character/Item ABC、Ability、BattleUnitSeed、ContentStore）；`CharacterService.build_player_character`；`CONTENT_STORE_MODE`；单测 `test_game_arch_abc`；OOP/双轨文档升 **v1.0**；M0～M7 与专题设计补 ARCH 对齐节；排期改为先夯实 S1-2（开战统一）（2026-08-14）
+
+- **统一实体类层次与重构方案（草案 v0.1）**：六大域 ABC（Character/Item/Content/Law/Environment/Org）+ Ability 授予模型 + 傀儡双切面 + 现行 `domain`/`services` 映射与 R0～R6 分期；文档 [`统一实体类层次与重构方案.md`](./统一实体类层次与重构方案.md)；登记延后项 **ARCH-R01**（2026-08-14）
+
+- **双轨整改与配置兼容（草案 v0.1）**：步骤1存量按新 OOP 整改、步骤2未开发强制新规范；ContentStore 三模式（`yaml_authority` 测试默认 / `yaml_base_db_overlay` 现行 / `db_authority` 正式目标）；保证测试继续只改 YAML；文档 [`双轨整改与配置兼容方案.md`](./双轨整改与配置兼容方案.md)；**ARCH-R02**（2026-08-14）
+
+- **大道 Navicat 网格编辑**：`dao` / `dao_restraint` 接通 sheet codec；域编辑「表格编辑」为勾选/批量删/新增/保存/取消；`entries`/`labels` 覆盖整段替换（删行可盖过 YAML）；存储仍为 YAML 底表 + DB 草稿/发布，后期迁库无需改操作方式（2026-08-14）
+
+- **GM 道主控制台**：侧栏「道主运营」+「道主」配置域合并为「道主控制台」；左右双栏（运行时干预 / 系统·功能配置）；字段说明与当前生效合并为分类对照表；旧 `/domains/dao_lord` 自动跳转（2026-08-14）
 
 - **修复前端生产构建类型错误（第二批）**：`inviteNotify.afterNavigate` 放宽返回类型；`BazaarCatalogPayload` 补全 `inventory_sellable` 等字段；`AvatarAssistPanel` 日志 level 与 `GameLogLevel` 对齐；`style.css` 尾注释改为合法 UTF-8（2026-08-13）
 

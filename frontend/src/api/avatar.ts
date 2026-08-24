@@ -42,16 +42,32 @@ export async function fetchAvatarFeatures(): Promise<ApiResponse<AvatarFeaturesP
 }
 
 /** POST /avatar/condense */
-export async function condenseAvatar(): Promise<
-  ApiResponse<AvatarMutationPayload | AvatarPublic>
-> {
+export async function condenseAvatar(body: {
+  technique_id: string
+  medium_item_id: string
+}): Promise<ApiResponse<AvatarMutationPayload | AvatarPublic>> {
   try {
     const response = await http.post<ApiResponse<AvatarMutationPayload | AvatarPublic>>(
       '/avatar/condense',
+      body,
     )
     return response.data
   } catch (error: unknown) {
     return envelopeFromAxiosError<AvatarMutationPayload | AvatarPublic>(error)
+  }
+}
+
+/** POST /avatar/dismiss */
+export async function dismissAvatar(): Promise<
+  ApiResponse<{ dismissed?: boolean; avatar_id?: number }>
+> {
+  try {
+    const response = await http.post<ApiResponse<{ dismissed?: boolean; avatar_id?: number }>>(
+      '/avatar/dismiss',
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<{ dismissed?: boolean; avatar_id?: number }>(error)
   }
 }
 

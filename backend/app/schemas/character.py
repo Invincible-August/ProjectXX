@@ -125,6 +125,10 @@ class CharacterPublic(BaseModel):
     idle_tick_seconds: int = Field(default=60, description="一片挂机时长（秒）")
     base_atk: int = Field(default=0, description="衍生基础攻击（= combat.final.phys_atk 别名）")
     base_hp: int = Field(default=0, description="衍生基础生命（= combat.final.hp 别名）")
+    hp_current: int = Field(default=0, description="当前生命（血）；非战时等于 hp_max")
+    hp_max: int = Field(default=0, description="生命上限（= combat.final.hp）")
+    mp_current: int = Field(default=0, description="当前法力（蓝）；非战时等于 mp_max")
+    mp_max: int = Field(default=0, description="法力上限（= combat.final.mp）")
     combat: dict | None = Field(
         default=None,
         description="ATTR CombatAttrBlock：final/primary/labels/breakdown/growth",
@@ -141,7 +145,10 @@ class CharacterPublic(BaseModel):
     realm_progress: int = Field(default=0, description="已投入当前档的境界进度（突破门槛）")
     breakthrough_grade: str = Field(default="none", description="最近跨境品阶键；无跨境为 none")
     breakthrough_grade_name: str = Field(default="无", description="品阶中文名")
-    divine_ability_slots: int = Field(default=0, description="由品阶推导的神通槽位数")
+    divine_ability_slots: int = Field(
+        default=0,
+        description="可装备神通格数（修为基数 + 跨境品阶加成）",
+    )
     membership_tier: str = Field(default="free", description="会员档：free/tier1/tier2")
     membership_expires_at: str | None = Field(
         default=None,
@@ -168,6 +175,10 @@ class CharacterPublic(BaseModel):
     avatar_summary: dict | None = Field(default=None, description="化身摘要（方向/三池等）")
     divine_sense: dict | None = Field(default=None, description="神识容量与占用摘要")
     array_craft_level: int = Field(default=0, description="阵法制造等级")
+    craft_levels: list[dict] = Field(
+        default_factory=list,
+        description="制造业分支等级（炼丹/炼器/制符/阵法/傀儡制作）",
+    )
     craft_jobs_summary: dict = Field(
         default_factory=lambda: {"running": 0, "ready": 0},
         description="工坊队列 running/ready 计数",
@@ -203,6 +214,10 @@ class CharacterPublic(BaseModel):
     spirit_root_tags: list[str] = Field(
         default_factory=list,
         description="灵根环境标签（如 thunder_root），参与挂机乘区",
+    )
+    spirit_roots: list[dict] = Field(
+        default_factory=list,
+        description="灵根展示：id + label_zh",
     )
     activity: dict | None = Field(
         default=None,

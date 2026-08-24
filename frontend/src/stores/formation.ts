@@ -1,5 +1,5 @@
 /**
- * 布阵 Pinia store（M3）：预设三槽 + 编辑草稿 + 棋盘元数据。
+ * 阵法 Pinia store：最多 5 套可命名预设 + 编辑草稿 + 棋盘元数据。
  *
  * draft 为未保存草稿；isDirty 时离开页面应确认。
  * 保存不会自动更新防守快照（需在 SnapshotUpdateBar 手动触发）。
@@ -13,12 +13,14 @@ import {
   savePresetApi,
 } from '../api/formation'
 import type {
+  AssistGuestInfo,
   BenchUnit,
   BoardMeta,
   FormationInfo,
   FormationPreset,
   UnitPlacement,
 } from '../types/formation'
+import { isTrialPuppetUid } from '../types/formation'
 
 /** 编辑中的草稿结构 */
 interface DraftState {
@@ -26,6 +28,30 @@ interface DraftState {
   role: string
   formation_id: string
   units: UnitPlacement[]
+  assist_anchor: { x: number; y: number } | null
+}
+
+/** 可上场傀儡：仅编成板真傀，不含试炼木傀。 */
+function isLoadoutPuppet(unit: { unit_kind: string; unit_uid: string; ref_id?: number }): boolean {
+  if (unit.unit_kind !== 'puppet') return false
+  if (isTrialPuppetUid(unit.unit_uid)) return false
+  return true
+}
+
+function sanitizeBench(raw: BenchUnit[]): BenchUnit[] {
+  return raw.filter((unit) => unit.unit_kind !== 'puppet' || isLoadoutPuppet(unit))
+}
+
+function sanitizeUnits(units: UnitPlacement[], benchList: BenchUnit[]): UnitPlacement[] {
+  const allowedPuppets = new Set(
+    benchList.filter((unit) => unit.unit_kind === 'puppet').map((unit) => unit.unit_uid),
+  )
+  return units.filter((unit) => {
+    if (String(unit.unit_uid).startsWith('avatar_guest_')) return false
+    if (unit.unit_kind !== 'puppet') return true
+    if (isTrialPuppetUid(unit.unit_uid)) return false
+    return allowedPuppets.has(unit.unit_uid)
+  })
 }
 
 export const useFormationStore = defineStore('formation', () => {
@@ -33,6 +59,7 @@ export const useFormationStore = defineStore('formation', () => {
   const presets = ref<FormationPreset[]>([])
   const formations = ref<FormationInfo[]>([])
   const bench = ref<BenchUnit[]>([])
+  const assistGuest = ref<AssistGuestInfo | null>(null)
   const maxUnits = ref(0)
   const activeSlot = ref(0)
   const loading = ref(false)
@@ -42,6 +69,7 @@ export const useFormationStore = defineStore('formation', () => {
     role: 'attack',
     formation_id: 'none',
     units: [],
+    assist_anchor: null,
   })
 
   /** 当前槽已保存的预设 */
@@ -59,6 +87,7 @@ export const useFormationStore = defineStore('formation', () => {
         role: saved.role,
         formation_id: saved.formation_id,
         units: saved.units,
+        assist_anchor: saved.assist_anchor ?? null,
       }) !== JSON.stringify(draft.value)
     )
   })
@@ -81,6 +110,7 @@ export const useFormationStore = defineStore('formation', () => {
       role: saved.role,
       formation_id: saved.formation_id,
       units: saved.units.map((u) => ({ ...u })),
+      assist_anchor: saved.assist_anchor ? { ...saved.assist_anchor } : null,
     }
   }
 
@@ -94,7 +124,8 @@ export const useFormationStore = defineStore('formation', () => {
     if (envelope.code !== 0 || !envelope.data) {
       return envelope.message || '加载棋子清单失败'
     }
-    bench.value = envelope.data.bench
+    bench.value = sanitizeBench(envelope.data.bench)
+    draft.value.units = sanitizeUnits(draft.value.units, bench.value)
     return null
   }
 
@@ -116,10 +147,15 @@ export const useFormationStore = defineStore('formation', () => {
       if (presetsEnvelope.code !== 0 || !presetsEnvelope.data) {
         return presetsEnvelope.message || '加载预设失败'
       }
+      const cleanedBench = sanitizeBench(presetsEnvelope.data.bench)
       boardMeta.value = metaEnvelope.data
-      presets.value = presetsEnvelope.data.presets
+      presets.value = presetsEnvelope.data.presets.map((preset) => ({
+        ...preset,
+        units: sanitizeUnits(preset.units, cleanedBench),
+      }))
       formations.value = presetsEnvelope.data.formations
-      bench.value = presetsEnvelope.data.bench
+      bench.value = cleanedBench
+      assistGuest.value = presetsEnvelope.data.assist_guest ?? null
       maxUnits.value = presetsEnvelope.data.max_units
       resetDraftFromPreset()
       return null
@@ -152,6 +188,10 @@ export const useFormationStore = defineStore('formation', () => {
     if (draft.value.units.some((u) => u.x === x && u.y === y && u.unit_uid !== unit.unit_uid)) {
       return
     }
+    const anchor = draft.value.assist_anchor
+    if (anchor && anchor.x === x && anchor.y === y) {
+      return
+    }
     const existing = draft.value.units.find((u) => u.unit_uid === unit.unit_uid)
     if (existing) {
       existing.x = x
@@ -179,17 +219,32 @@ export const useFormationStore = defineStore('formation', () => {
     draft.value.units = draft.value.units.filter((u) => u.unit_uid !== unitUid)
   }
 
+  /** 放置或移动助战虚位。 */
+  function placeAssistAnchor(x: number, y: number): void {
+    if (draft.value.units.some((u) => u.x === x && u.y === y)) {
+      return
+    }
+    draft.value.assist_anchor = { x, y }
+  }
+
+  /** 撤下助战虚位。 */
+  function clearAssistAnchor(): void {
+    draft.value.assist_anchor = null
+  }
+
   /**
    * 保存当前草稿到服务端。
    *
    * @returns 错误消息；成功为 null
    */
   async function save(): Promise<string | null> {
+    const units = sanitizeUnits(draft.value.units, bench.value)
     const envelope = await savePresetApi(activeSlot.value, {
       name: draft.value.name,
       role: draft.value.role,
       formation_id: draft.value.formation_id,
-      units: draft.value.units,
+      units,
+      assist_anchor: draft.value.assist_anchor,
     })
     if (envelope.code !== 0 || !envelope.data) {
       return envelope.message || `保存失败（code=${envelope.code}）`
@@ -197,7 +252,10 @@ export const useFormationStore = defineStore('formation', () => {
     // 覆盖本地已保存态
     const index = presets.value.findIndex((p) => p.slot === envelope.data!.slot)
     if (index >= 0) {
-      presets.value[index] = envelope.data
+      presets.value[index] = {
+        ...envelope.data,
+        units: sanitizeUnits(envelope.data.units, bench.value),
+      }
     }
     resetDraftFromPreset()
     return null
@@ -208,6 +266,7 @@ export const useFormationStore = defineStore('formation', () => {
     presets,
     formations,
     bench,
+    assistGuest,
     maxUnits,
     activeSlot,
     loading,
@@ -219,6 +278,8 @@ export const useFormationStore = defineStore('formation', () => {
     loadBench,
     selectSlot,
     place,
+    placeAssistAnchor,
+    clearAssistAnchor,
     remove,
     save,
   }

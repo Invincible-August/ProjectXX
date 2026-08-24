@@ -20,7 +20,7 @@ export const useCraftStore = defineStore('craft', () => {
   const recipes = ref<CraftRecipe[]>([])
   const jobs = ref<CraftJob[]>([])
   const actor = ref<CraftActor>('main')
-  /** 开工是否耗道值运用（偏好由 DaoUsageToggle / CraftDaoUsageLine 写入） */
+  /** 开工是否赋予道韵（RecipeList 开工旁勾选；扣当前 actor 道值） */
   const useDao = ref(false)
   const loading = ref(false)
   /** 驱动本地进度条重算 */

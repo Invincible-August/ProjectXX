@@ -1,0 +1,66 @@
+# =====================================================================
+# 用途：装备样本定义（槽位 / stats / 挂机 / 骰子修正）
+# 加载时机：M8 R0 穿戴校验与 ATTR 喂入；须与 inventory.yaml 同 id
+# 槽位：17 区指针 id（weapon_1 / armor_chest / fabao_1 …）；无旧五槽名
+# =====================================================================
+
+items:
+  iron_sword_t1:
+    label_zh: 玄铁剑（占位）
+    help_zh: 教学武器；打开装备通道后增加物理攻击
+    slot: weapon_1h
+    stats:
+      phys_atk: 3
+    dice_mods:
+      min_bonus: 0
+      max_bonus: 1
+    idle_mods:
+      idle_mult: 1.02
+    grants: []
+    required_major_realm: body_tempering
+
+  iron_greatsword_t1:
+    label_zh: 玄铁大剑（占位）
+    help_zh: 双手武器；同 id 占主副手两格；属性只计一次
+    slot: weapon_2h
+    stats:
+      phys_atk: 6
+    dice_mods:
+      min_bonus: 0
+      max_bonus: 1
+    idle_mods:
+      idle_mult: 1.0
+    grants: []
+    required_major_realm: body_tempering
+
+  cloth_robe_t1:
+    label_zh: 粗布法衣（占位）
+    help_zh: 教学防具；增加生命
+    slot: armor_chest
+    stats:
+      hp: 15
+    idle_mods:
+      idle_mult: 1.01
+    grants: []
+    required_major_realm: body_tempering
+
+  jade_pendant_t1:
+    label_zh: 青玉佩（占位）
+    help_zh: 教学饰品；略增物理攻击
+    slot: accessory
+    stats:
+      phys_atk: 1
+    grants: []
+    required_major_realm: body_tempering
+
+  spirit_bead_t1:
+    label_zh: 灵珠（占位）
+    help_zh: 教学法宝；略增法术攻击
+    slot: fabao_1
+    stats:
+      magic_atk: 2
+    dice_mods:
+      min_bonus: 0
+      max_bonus: 0
+    grants: []
+    required_major_realm: body_tempering

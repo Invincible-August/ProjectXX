@@ -20,11 +20,11 @@ from app.core.config import get_settings
 from app.core.time_utils import now_utc, to_utc_iso
 from app.db.models.character import Character
 from app.db.models.defense_snapshot import DefenseSnapshot
+from app.db.models.research import PrivateFormation
 from app.domain.snapshot_hash import compute_content_hash
 from app.schemas.common import AppError
 from app.services.avatar_service import AvatarService
 from app.services.character_service import CharacterService
-from app.services.divine_sense_service import DivineSenseService
 from app.services.formation_service import FormationService
 from app.services.pet_service import PetService
 from app.services.realm_config import (
@@ -119,40 +119,7 @@ class SnapshotService:
                 entry["ref_id"] = ref_id
             units.append(entry)
 
-        av_count, _pet_count, pet_costs = DivineSenseService.count_deployed_from_units(
-            preset_units,
-        )
-        # 物种 divine_sense_cost 覆盖（按 ref_id 查 species）
-        from app.db.models.pet import Pet
-
-        pets_cfg = get_game_config().pets
-        ds_cfg = get_game_config().divine_sense
-        enriched_costs: list[int] = []
-        for unit in preset_units:
-            if str(unit.get("unit_kind")) != "pet":
-                continue
-            cost = ds_cfg.cost_pet
-            ref_id = unit.get("ref_id")
-            if ref_id is not None:
-                row = await self._session.execute(
-                    select(Pet).where(
-                        Pet.id == int(ref_id),
-                        Pet.character_id == character.id,
-                    ),
-                )
-                pet_row = row.scalar_one_or_none()
-                if pet_row is not None:
-                    sp = pets_cfg.species.get(pet_row.species_id)
-                    if sp is not None and sp.divine_sense_cost is not None:
-                        cost = int(sp.divine_sense_cost)
-            enriched_costs.append(cost)
-
-        sense = DivineSenseService.snapshot_for_character(
-            character,
-            avatar_deploy_count=av_count,
-            pet_deploy_count=len(enriched_costs),
-            pet_costs=enriched_costs or None,
-        )
+        sense = await AvatarService(self._session).get_sense(character)
         if sense["load"] > sense["soft_cap"]:
             mult = sense["overload_mult"]
             for idx, u in enumerate(units):
@@ -186,6 +153,22 @@ class SnapshotService:
             "combat_stats_note": "frozen at snapshot time",
             "created_at": to_utc_iso(now_utc()),
         }
+        formation_id = str(preset.formation_id or "none")
+        if FormationService.is_custom_formation_id(formation_id):
+            private = (
+                await self._session.execute(
+                    select(PrivateFormation)
+                    .where(
+                        PrivateFormation.formation_id == formation_id,
+                        PrivateFormation.character_id == character.id,
+                    )
+                    .limit(1),
+                )
+            ).scalar_one_or_none()
+            if private is not None:
+                payload["formation_name"] = private.label_zh
+                payload["formation_revision"] = int(private.revision)
+                payload["formation_blueprint"] = json.loads(private.blueprint_json or "{}")
         payload["content_hash"] = compute_content_hash(payload)
         return payload
 
@@ -378,14 +361,23 @@ class SnapshotService:
         formation_id = str(payload.get("formation_id") or "none")
         formation_name = "无阵法"
         if formation_id != "none":
-            try:
-                formation_name = FormationService.get_formation_def_static(
-                    formation_id,
-                ).name
-            except AppError:
+            if FormationService.is_custom_formation_id(formation_id):
                 from app.domain.display_labels import label_zh_or_unknown
 
-                formation_name = label_zh_or_unknown(formation_id)
+                formation_name = str(payload.get("formation_name") or "") or label_zh_or_unknown(
+                    formation_id,
+                )
+            else:
+                try:
+                    formation_name = FormationService.get_formation_def_static(
+                        formation_id,
+                    ).name
+                except AppError:
+                    from app.domain.display_labels import label_zh_or_unknown
+
+                    formation_name = str(payload.get("formation_name") or "") or label_zh_or_unknown(
+                        formation_id,
+                    )
         # 只暴露公开字段（不含 content_hash 等内部信息也无妨，此处保留全量供演算）
         return {
             "character_id": payload["character_id"],

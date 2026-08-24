@@ -14,7 +14,7 @@ from typing import Any
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config_source.merge import deep_merge
+from app.config_source.merge import merge_domain_overlay
 from app.config_source.overlay_store import OverlayStore
 from app.config_source.registry import (
     DomainMeta,
@@ -126,11 +126,11 @@ class AdminConfigService:
     def get_effective(self, domain_id: str) -> dict[str, Any]:
         """YAML ∪ 已发布覆盖（当前玩家服所见）。"""
         meta = self._require_enabled_meta(domain_id)
-        # copy=False + get_ref：deep_merge 内部会拷贝
+        # copy=False + get_ref：merge 内部会拷贝
         base = self._yaml.load_raw(meta.filename, copy=False)
         overlay = OverlayStore.get_ref(domain_id)
         if overlay:
-            return deep_merge(base, overlay)
+            return merge_domain_overlay(domain_id, base, overlay)
         # 无覆盖时仅拷贝底表，避免无意义的 empty merge
         return deepcopy(base)
 
@@ -157,7 +157,11 @@ class AdminConfigService:
             "payload": payload,
             "updated_at": updated_at,
             "updated_by": updated_by,
-            "preview_effective": deep_merge(self.get_yaml_base(domain_id), payload),
+            "preview_effective": merge_domain_overlay(
+                domain_id,
+                self.get_yaml_base(domain_id),
+                payload,
+            ),
         }
 
     async def save_draft(
@@ -230,7 +234,11 @@ class AdminConfigService:
         if not isinstance(overlay, dict):
             raise AppError(code=40000, message="overlay 须为 object", http_status=400)
         try:
-            merged = deep_merge(self._yaml.load_raw(meta.filename, copy=False), overlay)
+            merged = merge_domain_overlay(
+                domain_id,
+                self._yaml.load_raw(meta.filename, copy=False),
+                overlay,
+            )
             self._probe_parse_domain(meta, merged)
         except Exception as exc:  # noqa: BLE001 — 配置错误统一映射
             logger.warning("config validate failed domain=%s err=%s", domain_id, exc)
@@ -524,7 +532,7 @@ class AdminConfigService:
             overlay: 候选覆盖。
         """
         current = self.get_effective(domain_id)
-        preview = deep_merge(self.get_yaml_base(domain_id), overlay)
+        preview = merge_domain_overlay(domain_id, self.get_yaml_base(domain_id), overlay)
         return {
             "domain_id": domain_id,
             "added_or_changed_top_keys": sorted(
@@ -647,6 +655,12 @@ class AdminConfigService:
             rc._parse_idle(merged, settings.idle_tick_seconds)
         elif domain == "dice":
             rc._parse_dice(merged)
+        elif domain == "equipment":
+            rc._parse_equipment(merged, combat_attrs=rc.get_game_config().combat_attrs)
+        elif domain == "research":
+            rc._parse_research(merged, combat_attrs=rc.get_game_config().combat_attrs)
+        elif domain == "talisman_effects":
+            rc._parse_talisman_effects(merged)
         elif domain == "combat_attrs":
             rc._parse_combat_attrs(merged)
         elif domain == "sects":
@@ -902,8 +916,8 @@ class AdminConfigService:
             raise AppError(code=40056, message=f"域 {domain_id} 无结构化表格", http_status=400)
         draft = await self.get_draft(domain_id)
         draft_payload = draft.get("payload") if isinstance(draft.get("payload"), dict) else {}
-        # 生效 = YAML∪已发布；再叠草稿，得到运营所见预览
-        preview = deep_merge(self.get_effective(domain_id), draft_payload)
+        # 生效 = YAML∪已发布；再叠草稿（域感知：dao.entries 整段替换）
+        preview = merge_domain_overlay(domain_id, self.get_effective(domain_id), draft_payload)
         sheets = payload_to_sheets(domain_id, preview)
         return {
             "domain_id": domain_id,
@@ -937,11 +951,17 @@ class AdminConfigService:
             raise AppError(code=40056, message=f"域 {domain_id} 无结构化表格", http_status=400)
 
         formatted = sheets_to_payload(domain_id, sheets)
-        if replace_draft:
+        # 目录域（dao）：浅合并顶层键，整表替换 entries/labels，保留 open/pool 等其它草稿键
+        # 全量 sheet 域（realms 等）：默认整段替换草稿，避免残缺 merge
+        draft_view = await self.get_draft(domain_id)
+        current = draft_view["payload"] if isinstance(draft_view.get("payload"), dict) else {}
+        if domain_id in {"dao", "dao_restraint"}:
+            payload = {**current, **formatted}
+        elif replace_draft:
             payload = formatted
         else:
-            draft_view = await self.get_draft(domain_id)
-            current = draft_view["payload"] if isinstance(draft_view.get("payload"), dict) else {}
+            from app.config_source.merge import deep_merge as merge_dicts
+
             payload = merge_dicts(current, formatted)
 
         saved = await self.save_draft(domain_id, payload, admin=admin)

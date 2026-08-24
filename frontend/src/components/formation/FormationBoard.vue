@@ -13,6 +13,7 @@ import type {
   FormationTerrainCell,
   UnitPlacement,
 } from '../../types/formation'
+import { ASSIST_ANCHOR_KIND, ASSIST_ANCHOR_UID } from '../../types/formation'
 
 const props = defineProps<{
   meta: BoardMeta
@@ -22,6 +23,8 @@ const props = defineProps<{
   selectedUid: string | null
   /** 有效可部署格；缺省回退 board-meta 默认区 */
   deployCells?: [number, number][]
+  /** 助战虚位 */
+  assistAnchor?: { x: number; y: number } | null
 }>()
 
 const emit = defineEmits<{
@@ -35,6 +38,7 @@ const KIND_LABELS: Record<string, string> = {
   puppet: '傀',
   pet: '宠',
   avatar: '化',
+  assist: '助',
   prop: '器',
 }
 
@@ -44,8 +48,8 @@ const deployCellsResolved = computed(
 )
 
 /** 已落棋子 → 棋盘加载层棋子 */
-const pieces = computed<BoardPiece[]>(() =>
-  props.units.map((unit) => ({
+const pieces = computed<BoardPiece[]>(() => {
+  const list: BoardPiece[] = props.units.map((unit) => ({
     uid: unit.unit_uid,
     x: unit.x,
     y: unit.y,
@@ -53,8 +57,20 @@ const pieces = computed<BoardPiece[]>(() =>
     side: 0,
     label: KIND_LABELS[unit.unit_kind] ?? unit.unit_kind.charAt(0),
     selected: unit.unit_uid === props.selectedUid,
-  })),
-)
+  }))
+  if (props.assistAnchor) {
+    list.push({
+      uid: ASSIST_ANCHOR_UID,
+      x: props.assistAnchor.x,
+      y: props.assistAnchor.y,
+      kind: ASSIST_ANCHOR_KIND,
+      side: 0,
+      label: '助',
+      selected: props.selectedUid === ASSIST_ANCHOR_UID,
+    })
+  }
+  return list
+})
 
 /** 阵法地形 → 通用地形格（type 字段改名 kind） */
 const terrainCells = computed<BoardTerrainCell[]>(() =>
@@ -71,12 +87,11 @@ const terrainCells = computed<BoardTerrainCell[]>(() =>
       :terrain="terrainCells"
       :pieces="pieces"
       interactive
-      show-axis
       @cell-click="(x, y) => emit('cellClick', x, y)"
     />
     <el-text type="info" size="small" class="board-legend">
       青绿格 = 可部署区（随阵法变化） · 上方暗红 = 敌方半区 · 中间暗行 =
-      中立（默认禁落） · 障/渊/禁 = 阵法地形（不可停留）
+      中立（默认禁落） · 障/渊/禁 = 阵法地形（不可停留） · 蓝虚线「助」= 助战位置
     </el-text>
   </div>
 </template>

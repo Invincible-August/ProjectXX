@@ -1,9 +1,10 @@
 /**
- * M0～M7 路由表 + 全局前置守卫。
+ * M0～M8 路由表 + 全局前置守卫。
  *
  * 公开页：登录 / 注册 / 学习页；受保护页：创角 / 大厅 / 玩法页。
  * M5：`/tribulation` `/reincarnation`；M6：`/dao` `/dao-lord`；
- * M7 L1：`/sect`；L2：`/market` `/social`；双修/商店仍占位；
+ * M7：`/sect` `/market` `/social` `/friends` `/party` `/dual-cultivation` `/shop`；
+ * M8：`/cave` 洞府；`/cave/lab` 研究室（query `mode=technique|formation|talisman`）；
  * 待引渡强引导；`showWorldBar` 顶栏。
  */
 import {
@@ -34,11 +35,16 @@ import FriendsView from '../views/FriendsView.vue'
 import PartyView from '../views/PartyView.vue'
 import DualCultivationView from '../views/DualCultivationView.vue'
 import ShopView from '../views/ShopView.vue'
+import AbodeView from '../views/AbodeView.vue'
+import AbodeHubView from '../views/AbodeHubView.vue'
+import ResearchView from '../views/ResearchView.vue'
 import AccountView from '../views/AccountView.vue'
 import TestPage from '../test/apps.vue'
 import { useAuthStore } from '../stores/auth'
+import { useAvatarStore } from '../stores/avatar'
 import { useCharacterStore } from '../stores/character'
 import { clearLastPlayPath } from '../utils/safeRedirect'
+import { canEnterWudao } from '../utils/realm'
 
 /** 路由 meta：公开页 / 需登录 / 根路径分流 / 世界顶栏 */
 declare module 'vue-router' {
@@ -76,6 +82,9 @@ const PLAY_ROUTE_NAMES = new Set([
   'party',
   'dual-cultivation',
   'shop',
+  'cave',
+  'cave-hub',
+  'cave-lab',
 ])
 
 /** 待引渡时禁止进入的积极玩法（允许 /hall；/dao /sect 只读允许） */
@@ -89,6 +98,9 @@ const FERRY_BLOCKED_ROUTES = new Set([
   'market',
   'dual-cultivation',
   'shop',
+  'cave',
+  'cave-hub',
+  'cave-lab',
 ])
 
 const routes: RouteRecordRaw[] = [
@@ -232,6 +244,28 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, showWorldBar: true },
   },
   {
+    path: '/cave',
+    name: 'cave',
+    component: AbodeView,
+    meta: { requiresAuth: true, showWorldBar: true },
+    children: [
+      {
+        path: '',
+        name: 'cave-hub',
+        component: AbodeHubView,
+      },
+      {
+        path: 'lab',
+        name: 'cave-lab',
+        component: ResearchView,
+      },
+    ],
+  },
+  {
+    path: '/research',
+    redirect: (to) => ({ path: '/cave/lab', query: to.query }),
+  },
+  {
     path: '/account',
     name: 'account',
     component: AccountView,
@@ -340,6 +374,34 @@ router.beforeEach(async (to: RouteLocationNormalized) => {
           query: { mode: 'ferry' },
           replace: true,
         }
+      }
+    }
+
+    // 悟道页：未达真仙不可见（本体/化身各自门槛）
+    if (to.name === 'dao') {
+      const characterStore = useCharacterStore()
+      if (!characterStore.character) {
+        try {
+          await characterStore.fetchMe()
+        } catch {
+          // 拉取失败不挡导航，由页面自行处理
+        }
+      }
+      const actor = to.query.actor === 'avatar' ? 'avatar' : 'main'
+      if (actor === 'avatar') {
+        const avatarStore = useAvatarStore()
+        if (!avatarStore.avatar) {
+          try {
+            await avatarStore.load()
+          } catch {
+            return { path: '/avatar', replace: true }
+          }
+        }
+        if (!canEnterWudao(avatarStore.avatar?.major_realm)) {
+          return { path: '/avatar', replace: true }
+        }
+      } else if (!canEnterWudao(characterStore.character?.major_realm)) {
+        return { path: '/character', replace: true }
       }
     }
     return true

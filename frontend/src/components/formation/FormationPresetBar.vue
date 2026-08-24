@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 预设三槽切换条：展示 role/name；切槽时若草稿脏则由父组件确认。
+ * 阵法预设下拉：按自定义名称选槽编辑；切槽确认由父组件处理。
  */
 import type { FormationPreset } from '../../types/formation'
 
@@ -13,32 +13,30 @@ const emit = defineEmits<{
   select: [slot: number]
 }>()
 
-/** 定位 → 中文标签 */
-const ROLE_LABELS: Record<string, string> = {
-  attack: '进攻',
-  defense: '防守',
-  temp: '临时',
+function optionLabel(preset: FormationPreset): string {
+  const name = preset.name.trim()
+  return name || `阵法${preset.slot + 1}`
 }
 </script>
 
 <template>
-  <div class="preset-bar">
-    <el-button
+  <el-select
+    class="preset-select"
+    size="small"
+    :model-value="activeSlot"
+    @update:model-value="(value: number) => emit('select', value)"
+  >
+    <el-option
       v-for="preset in presets"
       :key="preset.slot"
-      :type="preset.slot === activeSlot ? 'primary' : 'default'"
-      size="small"
-      @click="emit('select', preset.slot)"
-    >
-      [{{ ROLE_LABELS[preset.role] ?? preset.role }}] {{ preset.name }}
-    </el-button>
-  </div>
+      :value="preset.slot"
+      :label="optionLabel(preset)"
+    />
+  </el-select>
 </template>
 
 <style scoped>
-.preset-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+.preset-select {
+  width: 160px;
 }
 </style>

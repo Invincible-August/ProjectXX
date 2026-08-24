@@ -74,7 +74,7 @@ def main() -> None:
     assert meta["size"] == 7, "棋盘尺寸应为 7"
 
     presets = expect(call("GET", "/formation/presets", token=token_a), "presets 列表")
-    assert len(presets["presets"]) == 3, "默认三槽"
+    assert len(presets["presets"]) == 5, "默认五槽"
 
     expect(
         call(
@@ -86,7 +86,6 @@ def main() -> None:
                 "formation_id": "none",
                 "units": [
                     {"unit_uid": "main", "unit_kind": "main", "x": 0, "y": 3},
-                    {"unit_uid": "puppet_1", "unit_kind": "puppet", "x": 1, "y": 2},
                 ],
             },
             token=token_a,

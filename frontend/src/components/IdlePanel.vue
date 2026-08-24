@@ -1,27 +1,36 @@
 <script setup lang="ts">
 /**
- * 修炼面板：本体三向挂机；资源分配 / 进阶弹窗入口。
+ * 修炼面板：本体三向挂机；已凝练化身后嵌化身线程；资源分配 / 进阶弹窗入口。
  */
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import AllocatePanel from './AllocatePanel.vue'
 import BreakthroughPanel from './BreakthroughPanel.vue'
 import IdleEnvPanel from './IdleEnvPanel.vue'
+import AvatarIdlePanel from './avatar/AvatarIdlePanel.vue'
 import { useActivityGate } from '../composables/useActivityGate'
+import { useAvatarStore } from '../stores/avatar'
 import { useCharacterStore } from '../stores/character'
 import { useWorldStore } from '../stores/world'
-import type { IdleDirection } from '../types/idle'
+import type { IdleDirection, IdleSyncData } from '../types/idle'
+import { startMine } from '../api/sect'
 import { formatTickGainLabel } from '../utils/idleRateClient'
-import { isIdleBusyDirection, isProductiveDirection } from '../utils/idlePredict'
+import { idleDirectionLabel } from '../utils/idleLabels'
+import { isProductiveDirection } from '../utils/idlePredict'
 
 const emit = defineEmits<{
   log: [message: string, level?: 'info' | 'success' | 'warning' | 'system']
   needClaimOffline: []
+  settleTick: [data: IdleSyncData]
+  settleStop: [data: IdleSyncData]
+  avatarSettleTick: [gains: IdleSyncData['avatar_gains']]
+  avatarSettleStop: [gains: IdleSyncData['avatar_gains']]
 }>()
 
 const characterStore = useCharacterStore()
+const avatarStore = useAvatarStore()
 const worldStore = useWorldStore()
-const { canEnterIdle, blockReason, modeLabel, activity } = useActivityGate()
+const { canEnterIdle, blockReason, activity } = useActivityGate()
 const busy = ref(false)
 const creditFlash = ref(false)
 const allocateOpen = ref(false)
@@ -34,12 +43,26 @@ const direction = computed(() => character.value?.idle_direction ?? 'none')
 /** 修灵/炼体/制造业产出中 */
 const isActive = computed(() => isProductiveDirection(direction.value))
 /** 含采矿：占用修炼态 */
-const isBusy = computed(() => isIdleBusyDirection(direction.value))
 const isMining = computed(() => direction.value === 'sect_mining')
 const showStalled = computed(
   () => display.value?.is_stalled === true || character.value?.is_stalled === true,
 )
 const hasPending = computed(() => Boolean(character.value?.offline_pending))
+const hasAvatar = computed(() => Boolean(character.value?.has_avatar))
+const inSect = computed(() => Boolean(character.value?.sect?.in_sect))
+
+/**
+ * 凝练后拉化身面板与功能解锁，供修炼区按钮禁用态。
+ */
+async function ensureAvatarLoaded(): Promise<void> {
+  if (!hasAvatar.value) return
+  if (!avatarStore.avatar) {
+    await avatarStore.load()
+  }
+  if (!avatarStore.features?.features?.length) {
+    await avatarStore.loadFeatures()
+  }
+}
 
 /** 开始某方向修炼是否应禁用（停止当前方向始终可点，除非 pending） */
 function startDisabled(target: IdleDirection): boolean {
@@ -106,27 +129,20 @@ watch(
   },
 )
 
+watch(hasAvatar, (ready) => {
+  if (ready) void ensureAvatarLoaded()
+})
+
+onMounted(() => {
+  void ensureAvatarLoaded()
+})
+
 onBeforeUnmount(() => {
   if (creditFlashTimer !== null) {
     clearTimeout(creditFlashTimer)
     creditFlashTimer = null
   }
 })
-
-function formatSettleLog(data: {
-  settled_ticks: number
-  gained_cultivation: number
-  gained_body?: number
-  gained_crafting?: number
-  spent_spirit_stones: number
-}): string {
-  const parts: string[] = []
-  if (data.gained_cultivation) parts.push(`修为 +${data.gained_cultivation}`)
-  if (data.gained_body) parts.push(`淬体度 +${data.gained_body}`)
-  if (data.gained_crafting) parts.push(`制造业经验 +${data.gained_crafting}`)
-  parts.push(`灵石 -${data.spent_spirit_stones}`)
-  return `结算 ${data.settled_ticks} 周天：${parts.join('，')}`
-}
 
 /**
  * 切换到指定方向，或再次点击停止。
@@ -144,10 +160,7 @@ async function setDirection(target: IdleDirection): Promise<void> {
   try {
     if (direction.value === target) {
       const data = await characterStore.setDirection('none')
-      emit('log', '已停止修炼。', 'info')
-      if (data.settled_ticks > 0) {
-        emit('log', formatSettleLog(data), 'success')
-      }
+      emit('settleStop', data)
       return
     }
     if (!isMining.value && !canEnterIdle.value && target !== 'none') {
@@ -161,12 +174,12 @@ async function setDirection(target: IdleDirection): Promise<void> {
       spirit: '修炼',
       body: '淬体',
       crafting: '制造业修炼',
-      none: '待机',
+      none: '空闲',
     }
     ElMessage.success(`已开始${names[target] ?? target}`)
     emit('log', `开始${names[target] ?? target}。`, 'success')
-    if (data.settled_ticks > 0) {
-      emit('log', formatSettleLog(data), 'success')
+    if (data.settled_ticks > 0 || data.avatar_gains?.settled_ticks) {
+      emit('settleTick', data)
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : '切换修炼失败'
@@ -177,7 +190,7 @@ async function setDirection(target: IdleDirection): Promise<void> {
   }
 }
 
-/** 结束采矿（修炼区不提供开始采矿入口）。 */
+/** 结束采矿。 */
 async function stopMining(): Promise<void> {
   if (busy.value || !character.value) return
   busy.value = true
@@ -185,7 +198,7 @@ async function stopMining(): Promise<void> {
     const data = await characterStore.setDirection('none')
     emit('log', '已结束采矿。', 'info')
     if (data.settled_ticks > 0) {
-      emit('log', formatSettleLog(data), 'success')
+      emit('settleTick', data)
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : '结束采矿失败'
@@ -194,6 +207,52 @@ async function stopMining(): Promise<void> {
   } finally {
     busy.value = false
   }
+}
+
+/** 开始采矿（宗门矿脉名额）。 */
+async function startMining(): Promise<void> {
+  if (busy.value || !character.value) return
+  if (hasPending.value) {
+    ElMessage.warning('请先领取离线收益')
+    emit('needClaimOffline')
+    return
+  }
+  if (!inSect.value) {
+    ElMessage.warning('需先入宗')
+    return
+  }
+  if (!canEnterIdle.value) {
+    const reason = enterIdleBlockHint.value || '当前不可采矿'
+    ElMessage.warning(reason)
+    emit('log', reason, 'warning')
+    return
+  }
+  busy.value = true
+  try {
+    const envelope = await startMine()
+    if (envelope.code !== 0) {
+      ElMessage.error(envelope.message || '开始采矿失败')
+      emit('log', envelope.message || '开始采矿失败', 'warning')
+      return
+    }
+    await characterStore.fetchMe()
+    ElMessage.success('已开始采矿')
+    emit('log', '开始采矿。', 'success')
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : '开始采矿失败'
+    ElMessage.error(msg)
+    emit('log', msg, 'warning')
+  } finally {
+    busy.value = false
+  }
+}
+
+function onMiningClick(): void {
+  if (isMining.value) {
+    void stopMining()
+    return
+  }
+  void startMining()
 }
 </script>
 
@@ -217,7 +276,7 @@ async function stopMining(): Promise<void> {
       <div class="thread-block">
         <div class="thread-title">
           <el-text tag="b" size="small">本体</el-text>
-          <el-tag size="small" type="info">{{ character.idle_direction_name }}</el-tag>
+          <el-tag size="small" type="info">{{ idleDirectionLabel(character.idle_direction) }}</el-tag>
         </div>
 
         <!-- 修炼/淬体/制造业修炼：仅环境修正行；采矿保留速度与推算 -->
@@ -228,7 +287,7 @@ async function stopMining(): Promise<void> {
           class="idle-desc"
         >
           <el-descriptions-item label="预估速度">
-            每 {{ character.idle_tick_seconds }}s：{{ poolGainLabel }} / 耗战斗体力
+            每 {{ character.idle_tick_seconds }}s：{{ poolGainLabel }} / 耗体力
           </el-descriptions-item>
           <el-descriptions-item v-if="display" label="实时推算">
             灵石 {{ display.spirit_stones }} · 自开始起满一段后结算灵石并扣体力
@@ -308,55 +367,56 @@ async function stopMining(): Promise<void> {
           class="idle-stall"
         />
 
-        <el-alert
-          v-if="isBusy"
-          :title="
-            isMining
-              ? '当前：采矿中 — 占用修炼状态，不可开战/炼丹炼器/突破/渡劫；消耗战斗体力（与生活属性体力同源）'
-              : `当前：${modeLabel} — 请先停止修炼后再开战/炼丹炼器/突破/渡劫`
-          "
-          type="success"
-          show-icon
-          :closable="false"
-          class="idle-stall"
-        />
-
         <div class="idle-actions">
           <el-button
+            size="small"
             :type="direction === 'spirit' ? 'primary' : 'default'"
             :loading="busy"
             :disabled="startDisabled('spirit')"
             @click="setDirection('spirit')"
           >
-            {{ direction === 'spirit' ? '停止修炼' : '修炼' }}
+            修炼
           </el-button>
           <el-button
+            size="small"
             :type="direction === 'body' ? 'primary' : 'default'"
             :loading="busy"
             :disabled="startDisabled('body')"
             @click="setDirection('body')"
           >
-            {{ direction === 'body' ? '停止淬体' : '淬体' }}
+            淬体
           </el-button>
           <el-button
+            size="small"
             :type="direction === 'crafting' ? 'primary' : 'default'"
             :loading="busy"
             :disabled="startDisabled('crafting')"
             @click="setDirection('crafting')"
           >
-            {{ direction === 'crafting' ? '停止制造业修炼' : '制造业修炼' }}
+            制造业
           </el-button>
-          <el-button
-            v-if="isMining"
-            type="warning"
-            :loading="busy"
-            :disabled="hasPending"
-            @click="stopMining"
-          >
-            结束采矿
-          </el-button>
+          <el-tooltip :disabled="inSect || isMining" content="需先入宗" placement="top">
+            <el-button
+              size="small"
+              :type="isMining ? 'warning' : 'default'"
+              :loading="busy"
+              :disabled="hasPending || (!inSect && !isMining)"
+              @click="onMiningClick"
+            >
+              采矿
+            </el-button>
+          </el-tooltip>
         </div>
       </div>
+
+      <AvatarIdlePanel
+        v-if="hasAvatar"
+        :avatar="avatarStore.avatar"
+        :features="avatarStore.features?.features"
+        @log="(msg, level) => emit('log', msg, level)"
+        @settle-stop="(gains) => emit('avatarSettleStop', gains)"
+        @settle-tick="(gains) => emit('avatarSettleTick', gains)"
+      />
 
       <el-alert
         v-if="hasPending"
@@ -454,7 +514,14 @@ async function stopMining(): Promise<void> {
 
 .idle-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  flex-wrap: nowrap;
+  gap: 0.25rem;
+}
+
+.idle-actions :deep(.el-button) {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 5px 4px;
+  font-size: 12px;
 }
 </style>

@@ -27,6 +27,7 @@ from app.domain.dao_lord_rules import (
     is_window_open,
 )
 from app.schemas.common import AppError
+from app.game.law.privilege import normalize_privileges_payload
 from app.services.dao_service import DaoService
 from app.services.play_gate import PlayGate
 from app.services.realm_config import get_game_config
@@ -234,6 +235,20 @@ class DaoLordService:
             return None
         return await self._inaugurate(character, fate)
 
+    def _default_privileges(self) -> dict[str, Any]:
+        """就任/任命时写入的归一化特权载荷（布尔 ↔ grants）。"""
+        return normalize_privileges_payload(
+            None,
+            defaults=dict(self._lord_cfg().privileges_default),
+        )
+
+    def _normalize_stored_privileges(self, raw: dict[str, Any] | None) -> dict[str, Any]:
+        """读席位 privileges_json 时补齐布尔与 grants。"""
+        return normalize_privileges_payload(
+            raw,
+            defaults=dict(self._lord_cfg().privileges_default),
+        )
+
     async def _inaugurate(self, character: Character, dao_id: str) -> dict[str, Any]:
         """写入道主席位（空位）。写入前再读一次，降低并发双写。"""
         existing = await self._lordship(dao_id)
@@ -250,7 +265,7 @@ class DaoLordService:
                 message="该道已有道主，请报名道主之争赛会更替",
                 http_status=400,
             )
-        priv = dict(self._lord_cfg().privileges_default)
+        priv = self._default_privileges()
         snap_id = await self._latest_snapshot_id(character.id)
         row = DaoLordship(
             dao_id=dao_id,
@@ -446,6 +461,7 @@ class DaoLordService:
                 priv = json.loads(row.privileges_json)
             except json.JSONDecodeError:
                 priv = {}
+        priv = self._normalize_stored_privileges(priv if isinstance(priv, dict) else {})
         return {
             "dao_id": row.dao_id,
             "dao_label": self._dao.label_of(row.dao_id),
@@ -461,7 +477,7 @@ class DaoLordService:
         if dao_id not in get_game_config().dao.entries:
             raise AppError(code=40000, message="未知大道", http_status=400)
         existing = await self._lordship(dao_id)
-        priv = dict(self._lord_cfg().privileges_default)
+        priv = self._default_privileges()
         snap_id = await self._latest_snapshot_id(character.id)
         if existing:
             existing.character_id = character.id

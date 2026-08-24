@@ -5,11 +5,12 @@
  * 战报摘要写入大厅事件日志；完整回放在 /battle 页（本会话战报列表）。
  * 修炼中（idle_direction ≠ none）禁止开战。
  */
-import { computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { useActivityGate } from '../composables/useActivityGate'
 import { useBattleStore } from '../stores/battle'
+import { useCharacterStore } from '../stores/character'
+import { alertIfIdleBlocked } from '../utils/idleBlockDialog'
 
 const emit = defineEmits<{
   log: [message: string, level?: 'info' | 'success' | 'warning' | 'system']
@@ -17,18 +18,20 @@ const emit = defineEmits<{
 
 const router = useRouter()
 const battleStore = useBattleStore()
+const characterStore = useCharacterStore()
 const { canStartBattle, blockReason } = useActivityGate()
-
-/** 正在修炼或其它互斥态时不可开战 */
-const isCultivating = computed(() => !canStartBattle.value)
 
 /**
  * 对 tutorial_slime 开战；摘要写入事件日志。
  */
 async function onFight(): Promise<void> {
   if (battleStore.fighting) return
+  if (await alertIfIdleBlocked(characterStore.character, '开战')) {
+    emit('log', '修炼中无法开战，请先停止修炼', 'warning')
+    return
+  }
   if (!canStartBattle.value) {
-    const msg = blockReason('start_battle') || '修炼中不可开战，请先停止修炼'
+    const msg = blockReason('start_battle') || '当前不可开战'
     ElMessage.warning(msg)
     emit('log', msg, 'warning')
     return
@@ -62,20 +65,10 @@ async function onFight(): Promise<void> {
       教学怪：浊气蛙。摘要写入右侧日志；完整回放去「战斗」页。
     </el-text>
 
-    <el-alert
-      v-if="isCultivating"
-      title="修炼中不可开战，请先停止修炼"
-      type="warning"
-      show-icon
-      :closable="false"
-      class="battle-block"
-    />
-
     <div class="battle-actions">
       <el-button
         type="danger"
         :loading="battleStore.fighting"
-        :disabled="isCultivating"
         @click="onFight"
       >
         挑战浊气蛙
@@ -88,10 +81,6 @@ async function onFight(): Promise<void> {
 <style scoped>
 .battle-hint {
   display: block;
-  margin-bottom: 0.75rem;
-}
-
-.battle-block {
   margin-bottom: 0.75rem;
 }
 

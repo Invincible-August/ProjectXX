@@ -5,6 +5,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import {
   condenseAvatar,
+  dismissAvatar,
   fetchAvatar,
   fetchAvatarFeatures,
   fetchDivineSense,
@@ -27,16 +28,16 @@ import { useCharacterStore } from './character'
 function unwrapAvatarPayload(
   data: AvatarMutationPayload | AvatarPublic | null | undefined,
 ): { avatar: AvatarPublic | null; character?: CharacterPublic } {
-  if (!data) return { avatar: null }
-  if ('avatar' in data || 'character' in data) {
-    const wrapped = data as AvatarMutationPayload
-    return {
-      avatar: wrapped.avatar ?? null,
-      character: wrapped.character,
-    }
+  if (!data || typeof data !== 'object') return { avatar: null }
+  const wrapped = data as AvatarMutationPayload & AvatarPublic
+  if (wrapped.avatar && typeof wrapped.avatar === 'object') {
+    return { avatar: wrapped.avatar, character: wrapped.character }
   }
-  if ('id' in data && 'idle_direction' in data) {
-    return { avatar: data as AvatarPublic }
+  if ('id' in wrapped && 'idle_direction' in wrapped) {
+    return { avatar: wrapped as AvatarPublic, character: wrapped.character }
+  }
+  if (wrapped.character) {
+    return { avatar: null, character: wrapped.character }
   }
   return { avatar: null }
 }
@@ -110,11 +111,14 @@ export const useAvatarStore = defineStore('avatar', () => {
     return null
   }
 
-  /** 凝练化身 */
-  async function condense(): Promise<string | null> {
+  /** 凝练化身（须已填功法与媒介） */
+  async function condense(body: {
+    technique_id: string
+    medium_item_id: string
+  }): Promise<string | null> {
     loading.value = true
     try {
-      const envelope = await condenseAvatar()
+      const envelope = await condenseAvatar(body)
       if (envelope.code !== 0 || !envelope.data) {
         return envelope.message || `凝练失败（code=${envelope.code}）`
       }
@@ -126,8 +130,6 @@ export const useAvatarStore = defineStore('avatar', () => {
       } else {
         await characterStore.fetchMe()
       }
-      await Promise.all([loadSense()])
-      // 凝练响应含完整 panel 时直接回填功能表
       if (av?.features) {
         features.value = {
           major_realm: characterStore.character?.major_realm ?? '',
@@ -143,22 +145,52 @@ export const useAvatarStore = defineStore('avatar', () => {
     }
   }
 
+  /** 破除化身 */
+  async function dismiss(): Promise<string | null> {
+    loading.value = true
+    try {
+      const envelope = await dismissAvatar()
+      if (envelope.code !== 0) {
+        return envelope.message || `破除失败（code=${envelope.code}）`
+      }
+      avatar.value = null
+      const characterStore = useCharacterStore()
+      await Promise.all([characterStore.fetchMe(), loadFeatures()])
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
   /** 设置化身挂机方向 */
-  async function setIdle(direction: AvatarIdleDirection | string): Promise<string | null> {
+  async function setIdle(
+    direction: AvatarIdleDirection | string,
+  ): Promise<{ error: string | null; idleGains: AvatarPublic['idle_gains'] }> {
     loading.value = true
     try {
       const envelope = await setAvatarIdle(direction)
       if (envelope.code !== 0 || !envelope.data) {
-        return envelope.message || `切换化身方向失败（code=${envelope.code}）`
+        return {
+          error: envelope.message || `切换化身方向失败（code=${envelope.code}）`,
+          idleGains: undefined,
+        }
       }
-      const { avatar: av, character } = unwrapAvatarPayload(envelope.data)
-      if (av) avatar.value = av
+      const data = envelope.data as AvatarPublic & AvatarMutationPayload & {
+        idle_gains?: AvatarPublic['idle_gains']
+      }
+      const { avatar: av, character } = unwrapAvatarPayload(data)
+      const characterStore = useCharacterStore()
+      if (av) {
+        avatar.value = av
+        characterStore.patchAvatarIdleThread(av)
+      }
       if (character) {
-        useCharacterStore().applyCharacter(character)
+        characterStore.applyCharacter(character)
       } else {
-        await useCharacterStore().fetchMe()
+        await characterStore.fetchMe()
       }
-      return null
+      const idleGains = data.idle_gains ?? av?.idle_gains
+      return { error: null, idleGains }
     } finally {
       loading.value = false
     }
@@ -237,6 +269,7 @@ export const useAvatarStore = defineStore('avatar', () => {
     loadFeatures,
     loadSense,
     condense,
+    dismiss,
     setIdle,
     preview,
     transfer,

@@ -88,9 +88,10 @@ def test_settle_gains_cultivation_over_ticks(tmp_path: Path) -> None:
                 assert settle.gained_cultivation == 30
                 assert settle.gained_body == 0
                 assert settle.gained_crafting == 0
-                assert settle.spent_spirit_stones == 3
+                # 锻体/炼气免费挂机：0 耗石
+                assert settle.spent_spirit_stones == 0
                 assert character.cultivation_points == 30
-                assert character.spirit_stones == 997
+                assert character.spirit_stones == 1000
 
     _run(_body())
 
@@ -146,7 +147,7 @@ def test_settle_crafting_direction(tmp_path: Path) -> None:
 
 
 def test_settle_stalled_when_no_stones(tmp_path: Path) -> None:
-    """灵石不足：is_stalled，池不涨，锚点不飞。"""
+    """筑基起耗石：灵石不足则 is_stalled，池不涨，锚点不飞。"""
 
     async def _body() -> None:
         async with open_test_session_factory(tmp_path / "idle_stall.db") as factory:
@@ -157,6 +158,8 @@ def test_settle_stalled_when_no_stones(tmp_path: Path) -> None:
                 start = datetime(2026, 8, 3, 12, 0, 0, tzinfo=timezone.utc)
                 character.last_settled_at = start
                 character.idle_direction = "spirit"
+                character.major_realm = "foundation"
+                character.realm_stage = 1
                 character.spirit_stones = 0
                 character.cultivation_points = 50
                 await session.commit()

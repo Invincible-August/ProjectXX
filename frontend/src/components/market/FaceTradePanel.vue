@@ -467,7 +467,7 @@ async function onInvite(): Promise<void> {
     } else {
       const name = peerName.value.trim()
       if (!name) {
-        ElMessage.warning('请输入对方道号，或右侧快捷选择')
+        ElMessage.warning('请输入对方道号或 user_id，或右侧快捷选择')
         return
       }
       err = await tradeStore.inviteFace({ peer_name: name })
@@ -866,7 +866,7 @@ async function focusPeerInput(): Promise<void> {
           <label class="field-label">对方道号</label>
           <el-input
             v-model="peerName"
-            placeholder="道号（或右侧快捷选择）"
+            placeholder="道号或 user_id（或右侧快捷选择）"
             size="small"
             clearable
             @clear="selectedPeerId = null"

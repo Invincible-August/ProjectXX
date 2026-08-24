@@ -60,7 +60,7 @@ bonus_channels:
     enabled: true                     # 体质挂机钩子：读已装备词条 effects.idle_mult
     default_mult: 1.0                 # 无 idle_mult 词条时
   equipment_idle:
-    enabled: false                    # IDLE-R01 延后
+    enabled: true                     # IDLE-R01：读已穿戴 idle_mods
     default_mult: 1.0
   buff_pill:
     enabled: false                    # IDLE-R02 延后

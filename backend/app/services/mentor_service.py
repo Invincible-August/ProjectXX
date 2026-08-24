@@ -1221,21 +1221,17 @@ class MentorService:
         self,
         character_id: int | None,
         name: str | None,
+        user_id: int | None = None,
     ) -> Character:
-        if character_id is not None:
-            ch = await self._session.get(Character, int(character_id))
-            if ch is None:
-                raise AppError(code=40000, message="目标角色不存在", http_status=404)
-            return ch
-        nm = (name or "").strip()
-        if not nm:
-            raise AppError(code=40000, message="请提供目标角色 id 或道号", http_status=400)
-        ch = (
-            await self._session.execute(select(Character).where(Character.name == nm))
-        ).scalar_one_or_none()
-        if ch is None:
-            raise AppError(code=40000, message=f"找不到道号「{nm}」", http_status=404)
-        return ch
+        from app.services.character_resolve import resolve_character_ref
+
+        return await resolve_character_ref(
+            self._session,
+            character_id=character_id,
+            name=name,
+            user_id=user_id,
+            not_found_zh="目标",
+        )
 
     async def _bond_public(self, row: MentorBond, *, viewer_id: int) -> dict[str, Any]:
         master = await self._session.get(Character, row.master_character_id)
@@ -1701,9 +1697,11 @@ class MentorService:
                 character_id=character.id,
                 technique_id=technique_id,
                 level=0,
+                source="mentor",
             )
             self._session.add(row)
             await self._session.flush()
+        row.source = "mentor"
         remaining = max(0, int(amount))
         levels = 0
         costs = list(getattr(cfg, "cost_per_level", None) or [])
@@ -1803,6 +1801,7 @@ class MentorService:
                 character_id=apprentice.id,
                 technique_id=item_id,
                 level=0,
+                source="mentor",
             )
             self._session.add(row)
             await self._session.flush()
@@ -1822,6 +1821,7 @@ class MentorService:
         if master_lv > 0:
             target = min(target, master_lv)
         row.level = max(int(row.level), target)
+        row.source = "mentor"
         await self._session.flush()
 
 

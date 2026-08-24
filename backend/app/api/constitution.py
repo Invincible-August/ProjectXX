@@ -25,7 +25,7 @@ async def constitution_me(
     service: ConstitutionService = Depends(get_constitution_service),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """背包 + 格子 + 已镶嵌。"""
+    """收藏区 + 本源/旁支格子 + 已镶嵌。"""
     character = await gate.require_character(current_user)
     await gate.resolve_pending_before_play(character)
     state = await service.get_constitution_state(character)

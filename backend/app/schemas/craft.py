@@ -17,3 +17,16 @@ class CraftClaimRequest(BaseModel):
     """POST /craft/claim 请求体。"""
 
     job_id: int
+
+
+class TalismanScribeRequest(BaseModel):
+    """POST /craft/talisman/scribe."""
+
+    template_id: str
+    quantity: int = Field(default=1, ge=1, le=99)
+
+
+class TalismanPreloadRequest(BaseModel):
+    """PUT /craft/talisman/preload."""
+
+    inventory_item_ids: list[int] = Field(default_factory=list)

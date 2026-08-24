@@ -1,5 +1,5 @@
 """
-体质背包与镶嵌槽 ORM（M2 骨架）。
+体质收藏与镶嵌槽 ORM。
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from app.db.base import Base
 
 
 class ConstitutionItem(Base):
-    """角色体质背包中的实例物品。"""
+    """角色体质收藏中的实例。"""
 
     __tablename__ = "character_constitution_items"
 
@@ -36,7 +36,7 @@ class ConstitutionItem(Base):
 
 
 class ConstitutionSlot(Base):
-    """角色主/副镶嵌格。"""
+    """角色本源/旁支镶嵌格。"""
 
     __tablename__ = "character_constitution_slots"
 

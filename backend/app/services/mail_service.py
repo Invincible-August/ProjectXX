@@ -996,21 +996,17 @@ class MailService:
         self,
         to_character_id: int | None,
         to_name: str | None,
+        to_user_id: int | None = None,
     ) -> Character:
-        if to_character_id is not None:
-            ch = await self._session.get(Character, int(to_character_id))
-            if ch is None:
-                raise AppError(code=40000, message="目标角色不存在", http_status=404)
-            return ch
-        name = (to_name or "").strip()
-        if not name:
-            raise AppError(code=40000, message="请提供目标角色 id 或道号", http_status=400)
-        ch = (
-            await self._session.execute(select(Character).where(Character.name == name))
-        ).scalar_one_or_none()
-        if ch is None:
-            raise AppError(code=40000, message=f"找不到道号「{name}」", http_status=404)
-        return ch
+        from app.services.character_resolve import resolve_character_ref
+
+        return await resolve_character_ref(
+            self._session,
+            character_id=to_character_id,
+            name=to_name,
+            user_id=to_user_id,
+            not_found_zh="目标",
+        )
 
 
 

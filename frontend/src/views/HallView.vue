@@ -2,34 +2,95 @@
 /**
  * 修仙大厅：角色摘要 / 修炼区 / 事件日志。
  */
-import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import AuthSessionBar from '../components/AuthSessionBar.vue'
 import CharacterPanel from '../components/CharacterPanel.vue'
 import GameLogPanel from '../components/GameLogPanel.vue'
 import HallInviteList from '../components/hall/HallInviteList.vue'
 import IdlePanel from '../components/IdlePanel.vue'
 import OfflineClaimDialog from '../components/OfflineClaimDialog.vue'
 import { useAuthStore } from '../stores/auth'
+import { useAvatarStore } from '../stores/avatar'
 import { useCharacterStore } from '../stores/character'
 import { useGameLogStore } from '../stores/gameLog'
+import { useResearchStore } from '../stores/research'
 import { useWsStore } from '../stores/ws'
 import { type GameLogEntry } from '../types/gameLog'
 import type { IdleSyncData } from '../types/idle'
+import { avatarAsCharacter } from '../utils/avatarAsCharacter'
+import {
+  addGainChunk,
+  chunkFromIdleSync,
+  emptyGainChunk,
+  flushGainChunk,
+  formatIdleSettleLine,
+  takeSettleChunks,
+  type IdleGainChunk,
+} from '../utils/idleSettleLog'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const characterStore = useCharacterStore()
+const avatarStore = useAvatarStore()
 const gameLogStore = useGameLogStore()
+const researchStore = useResearchStore()
 const wsStore = useWsStore()
 
 const loadError = ref('')
 const offlineDialogOpen = ref(false)
+const briefTab = ref<'main' | 'avatar'>('main')
+
+const hasAvatar = computed(
+  () => Boolean(characterStore.character?.has_avatar) || Boolean(avatarStore.avatar),
+)
+
+const hallBriefCharacter = computed(() => {
+  const ch = characterStore.character
+  if (!ch) return null
+  if (briefTab.value !== 'avatar') return ch
+  const av = avatarStore.avatar
+  if (!av) return ch
+  return avatarAsCharacter(ch, av)
+})
+
+const draftResumeHint = computed(() => {
+  const row = researchStore.openSessions[0]
+  if (!row) return ''
+  return `有进行中的${row.kind_label_zh}草案，可点「继续草案」。`
+})
 
 function pushLog(
   message: string,
   level: GameLogEntry['level'] = 'info',
 ): void {
   gameLogStore.push(message, level)
+}
+
+const mainSettleBuf: IdleGainChunk = emptyGainChunk()
+const avatarSettleBuf: IdleGainChunk = emptyGainChunk()
+
+function ingestSettle(
+  who: 'main' | 'avatar',
+  chunk: IdleGainChunk,
+  stopped: boolean,
+): void {
+  const buf = who === 'main' ? mainSettleBuf : avatarSettleBuf
+  if (chunk.ticks > 0) addGainChunk(buf, chunk)
+  if (stopped) {
+    const rest = flushGainChunk(buf)
+    if (rest) {
+      const line = formatIdleSettleLine(who, rest, true)
+      if (line) pushLog(line, 'success')
+    } else {
+      pushLog(who === 'main' ? '本体停止修炼' : '化身停止修炼', 'info')
+    }
+    return
+  }
+  for (const piece of takeSettleChunks(buf)) {
+    const line = formatIdleSettleLine(who, piece, false)
+    if (line) pushLog(line, 'success')
+  }
 }
 
 function onPollSettled(data: IdleSyncData): void {
@@ -49,21 +110,41 @@ function onPollSettled(data: IdleSyncData): void {
       `采矿结算 ${data.settled_ticks} 周天：${parts.join('，') || '无收益'}`,
       'success',
     )
+    ingestSettle('avatar', chunkFromIdleSync(data.avatar_gains || {}), false)
     return
   }
-  if (!data.settled_ticks) return
-  const parts: string[] = []
-  if (data.gained_cultivation) parts.push(`修为 +${data.gained_cultivation}`)
-  if (data.gained_body) parts.push(`淬体度 +${data.gained_body}`)
-  if (data.gained_crafting) parts.push(`制造业经验 +${data.gained_crafting}`)
-  if (data.spent_spirit_stones) parts.push(`灵石 -${data.spent_spirit_stones}`)
-  pushLog(
-    `修炼结算 ${data.settled_ticks} 周天：${parts.join('，') || '无收益'}`,
-    'success',
-  )
+  ingestSettle('main', chunkFromIdleSync(data), false)
+  ingestSettle('avatar', chunkFromIdleSync(data.avatar_gains || {}), false)
   if (data.character.is_stalled) {
     pushLog('灵石不足，修炼停滞；可通过战斗获取灵石。', 'warning')
   }
+}
+
+function onMainSettleTick(data: IdleSyncData): void {
+  ingestSettle('main', chunkFromIdleSync(data), false)
+  ingestSettle('avatar', chunkFromIdleSync(data.avatar_gains || {}), false)
+}
+
+function onMainSettleStop(data: IdleSyncData): void {
+  ingestSettle('main', chunkFromIdleSync(data), true)
+  ingestSettle('avatar', chunkFromIdleSync(data.avatar_gains || {}), false)
+}
+
+function onAvatarSettleTick(gains: IdleSyncData['avatar_gains']): void {
+  ingestSettle('avatar', chunkFromIdleSync(gains || {}), false)
+}
+
+function onAvatarSettleStop(gains: IdleSyncData['avatar_gains']): void {
+  ingestSettle('avatar', chunkFromIdleSync(gains || {}), true)
+}
+
+function continueResearchDraft(): void {
+  const row = researchStore.openSessions[0]
+  if (!row) return
+  void router.push({
+    path: '/cave/lab',
+    query: { mode: row.kind, session: String(row.id) },
+  })
 }
 
 function openOfflineDialog(): void {
@@ -93,6 +174,14 @@ watch(
   },
 )
 
+watch(hasAvatar, (ready) => {
+  if (!ready) briefTab.value = 'main'
+})
+
+watch(briefTab, (tab) => {
+  if (tab === 'avatar' && !avatarStore.avatar) void avatarStore.load()
+})
+
 onMounted(async () => {
   loadError.value = ''
   characterStore.setIdleSettledCallback(onPollSettled)
@@ -115,6 +204,10 @@ onMounted(async () => {
     }
     const ch = characterStore.character
     if (!ch) return
+    await researchStore.loadOpenSessions()
+    if (ch.has_avatar) {
+      await avatarStore.load()
+    }
 
     if (firstVisit) {
       pushLog(`欢迎回来，${ch.name}。`, 'success')
@@ -135,7 +228,7 @@ onMounted(async () => {
           offlineDialogOpen.value = true
         }
       } else {
-        pushLog('大厅已就绪：角色 · 修炼 · 宗门 · 社交 · 商店；右侧有邀请列表。', 'info')
+        pushLog('大厅已就绪：角色 · 修炼 · 工坊 · 洞府 · 宗门 · 社交 · 商店；右侧有邀请列表。', 'info')
       }
     } else if (ch.offline_pending && autoOpenOfflineEnabled()) {
       offlineDialogOpen.value = true
@@ -154,21 +247,19 @@ onUnmounted(() => {
 
 <template>
   <div class="hall-page">
+    <AuthSessionBar />
     <div class="hall-title">
       <el-text tag="b" size="large">修仙大厅</el-text>
       <el-text type="info" size="small">养成枢纽</el-text>
-      <div class="hall-nav">
-        <el-button size="small" type="primary" plain @click="router.push('/character')">
-          角色
-        </el-button>
-        <el-button size="small" @click="router.push('/formation')">布阵</el-button>
-        <el-button size="small" type="danger" @click="router.push('/battle')">战斗</el-button>
-        <el-button size="small" type="warning" @click="router.push('/avatar')">化身</el-button>
-        <el-button size="small" type="success" plain @click="router.push('/sect')">宗门</el-button>
-        <el-button size="small" type="primary" @click="router.push('/social')">社交</el-button>
-        <el-button size="small" type="warning" plain @click="router.push('/shop')">商店</el-button>
-        <el-button size="small" @click="router.push('/account')">账号</el-button>
-      </div>
+      <el-button
+        v-if="researchStore.openSessions.length"
+        type="warning"
+        size="small"
+        class="offline-btn"
+        @click="continueResearchDraft"
+      >
+        继续草案
+      </el-button>
       <el-button
         v-if="characterStore.hasOfflinePending"
         type="warning"
@@ -179,6 +270,15 @@ onUnmounted(() => {
         领取离线收益
       </el-button>
     </div>
+
+    <el-alert
+      v-if="draftResumeHint"
+      :title="draftResumeHint"
+      type="info"
+      show-icon
+      :closable="false"
+      class="hall-alert"
+    />
 
     <el-alert
       v-if="loadError"
@@ -193,8 +293,22 @@ onUnmounted(() => {
 
     <div v-else class="hall-grid">
       <aside class="hall-side">
-        <CharacterPanel :character="characterStore.character" compact />
-        <IdlePanel @log="pushLog" @need-claim-offline="openOfflineDialog" />
+        <CharacterPanel
+          :character="hallBriefCharacter"
+          compact
+          :variant="briefTab"
+          :show-brief-switch="hasAvatar"
+          :brief-tab="briefTab"
+          @update:brief-tab="briefTab = $event"
+        />
+        <IdlePanel
+          @log="pushLog"
+          @need-claim-offline="openOfflineDialog"
+          @settle-tick="onMainSettleTick"
+          @settle-stop="onMainSettleStop"
+          @avatar-settle-tick="onAvatarSettleTick"
+          @avatar-settle-stop="onAvatarSettleStop"
+        />
       </aside>
       <main class="hall-main">
         <GameLogPanel :entries="gameLogStore.entries" />
@@ -222,20 +336,6 @@ onUnmounted(() => {
   align-items: baseline;
   gap: 0.5rem 0.75rem;
   margin: 0.75rem 0 1rem;
-}
-
-.hall-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  width: 100%;
-}
-
-@media (min-width: 801px) {
-  .hall-nav {
-    width: auto;
-    margin-left: auto;
-  }
 }
 
 .offline-btn {

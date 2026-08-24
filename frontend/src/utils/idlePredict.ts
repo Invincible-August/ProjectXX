@@ -51,6 +51,17 @@ export function isIdleBusyDirection(direction: string): boolean {
   return isProductiveDirection(direction) || direction === 'sect_mining'
 }
 
+/** 本体或化身任一线程占用修炼态。 */
+export function isEitherThreadBusy(character: CharacterPublic | null | undefined): boolean {
+  if (!character) return false
+  if (isIdleBusyDirection(character.idle_direction)) return true
+  const avDir =
+    character.dual_idle_preview?.avatar_idle_direction ??
+    character.avatar_summary?.idle_direction ??
+    ''
+  return isIdleBusyDirection(String(avDir))
+}
+
 /**
  * 构造无片内进度的快照。
  */
@@ -363,6 +374,7 @@ export function predictAvatarIdleDisplay(
           : 0
   const rateS = Math.max(0, preview?.avatar_stones_per_tick ?? 0)
 
+  // 只读化身自己的锚点；禁止回退到本体 character.last_settled_at，否则两条周天会锁相
   const lastIso =
     preview?.avatar_last_settled_at ?? summary.last_settled_at ?? ''
   const stalledByPending = Boolean(character.offline_pending)
@@ -469,23 +481,40 @@ export function resolveNextDueMs(
   nextTickAt: string | null | undefined,
 ): number | null {
   if (!character) return null
-  if (!isIdleBusyDirection(character.idle_direction) || character.status !== 'normal') {
+  const avDir =
+    character.dual_idle_preview?.avatar_idle_direction ??
+    character.avatar_summary?.idle_direction ??
+    ''
+  const mainBusy = isIdleBusyDirection(character.idle_direction)
+  const avatarBusy = isIdleBusyDirection(String(avDir))
+  if ((!mainBusy && !avatarBusy) || character.status !== 'normal') {
     return null
   }
   if (
-    (isProductiveDirection(character.idle_direction) && character.is_stalled) ||
+    (mainBusy && isProductiveDirection(character.idle_direction) && character.is_stalled) ||
     character.offline_pending
   ) {
-    return null
+    if (!avatarBusy || character.offline_pending) return null
   }
 
-  if (nextTickAt) {
+  const candidates: number[] = []
+  if (nextTickAt && mainBusy) {
     const ms = parseUtcMs(nextTickAt)
-    if (Number.isFinite(ms)) return ms
+    if (Number.isFinite(ms)) candidates.push(ms)
   }
-
-  const lastMs = parseUtcMs(character.last_settled_at)
-  if (!Number.isFinite(lastMs)) return null
-  const tickSeconds = Math.max(1, character.idle_tick_seconds || 60)
-  return lastMs + tickSeconds * 1000
+  if (mainBusy) {
+    const lastMs = parseUtcMs(character.last_settled_at)
+    const tickSeconds = Math.max(1, character.idle_tick_seconds || 60)
+    if (Number.isFinite(lastMs)) candidates.push(lastMs + tickSeconds * 1000)
+  }
+  if (avatarBusy) {
+    const avLast =
+      character.dual_idle_preview?.avatar_last_settled_at ??
+      character.avatar_summary?.last_settled_at
+    const lastMs = avLast ? parseUtcMs(avLast) : Number.NaN
+    const tickSeconds = Math.max(1, character.idle_tick_seconds || 60)
+    if (Number.isFinite(lastMs)) candidates.push(lastMs + tickSeconds * 1000)
+  }
+  if (!candidates.length) return null
+  return Math.min(...candidates)
 }

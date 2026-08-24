@@ -14,6 +14,7 @@ from app.db.models import User
 from app.schemas.avatar import (
     AvatarAssistInviteRequest,
     AvatarAssistSettingsRequest,
+    AvatarCondenseRequest,
     AvatarIdleRequest,
     AvatarQuestAcceptRequest,
     AvatarTransferRequest,
@@ -52,11 +53,27 @@ async def avatar_features(
 
 @router.post("/condense", response_model=None)
 async def condense_avatar(
+    payload: AvatarCondenseRequest,
     service: AvatarService = Depends(get_avatar_service),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """凝练化身（金丹门槛；永久单化身）。"""
-    data = await service.condense(current_user)
+    """凝练化身（金丹门槛；须填化身功法与媒介；永久单化身）。"""
+    data = await service.condense(
+        current_user,
+        technique_id=payload.technique_id,
+        medium_item_id=payload.medium_item_id,
+        require_recipe=True,
+    )
+    return success(data)
+
+
+@router.post("/dismiss", response_model=None)
+async def dismiss_avatar(
+    service: AvatarService = Depends(get_avatar_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """破除已凝练化身（散掉，不退资源）。"""
+    data = await service.dismiss(current_user)
     return success(data)
 
 

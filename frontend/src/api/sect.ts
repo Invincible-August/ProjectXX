@@ -324,16 +324,31 @@ export async function exchangeWorkshopBlueprint(
 export async function donateWorkshopBlueprint(
   branch: string,
   body: {
-    recipe_id: string
-    label_zh: string
+    recipe_id?: string
+    label_zh?: string
     cost_contribution?: number
     self_research?: boolean
+    inventory_item_id?: number | null
   },
 ): Promise<ApiResponse<Record<string, unknown>>> {
   try {
     const response = await http.post<ApiResponse<Record<string, unknown>>>(
       `/sect/workshops/${encodeURIComponent(branch)}/blueprints/donate`,
       body,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** POST /sect/workshops/jobs/{job_id}/claim */
+export async function claimWorkshopJob(
+  jobId: number,
+): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      `/sect/workshops/jobs/${jobId}/claim`,
     )
     return response.data
   } catch (error: unknown) {

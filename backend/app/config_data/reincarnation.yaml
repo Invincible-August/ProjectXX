@@ -120,17 +120,18 @@ permanent_bonus_on_settle:
     max: 0.95
 
 # ---------------------------------------------------------------------
-# 体质 / 灵根装配槽：初始 + 轮回次数免费 + 商店购买，总上限 total_max
+# 体质 / 灵根装配槽：初始 + 轮回次数免费 + 商店购买
+# 体质：1 本源 + N 旁支；soft_cap 仅提示，不写 shop_max_buy / total_max 则无硬顶
+# 灵根：仍受 shop_max_buy / total_max 硬拒
 # free_by_count: reincarnation_count 达到键值时，免费槽变为该值（取最大达标）
 # ---------------------------------------------------------------------
 slots:
   constitution:
-    initial: 1
+    initial: 3
     free_by_count:
-      3: 2
-      10: 3
-    shop_max_buy: 2
-    total_max: 5
+      3: 4
+      10: 5
+    soft_cap: 7
   spirit_root:
     initial: 1
     free_by_count:
@@ -222,6 +223,8 @@ legacy_catalog:
 # ---------------------------------------------------------------------
 # 轮回商店：固定货架 + 随机商品池（可刷新）
 # 刷新消耗轮回点或仙缘（fate_luck）
+# 化身专项（AVATAR-D10）：effect 走 avatar_upgrade_*，记本体侧再凝练套用；
+# 禁止把 upgrade_permanent.initial_attr / minor_growth / major_growth 套到化身。
 # ---------------------------------------------------------------------
 shop:
   # 固定出售（始终可见）
@@ -246,7 +249,7 @@ shop:
         buy_spirit_root_slot: 1
     extra_constitution_slot:
       label: 额外体质槽
-      summary: 体质装配槽 +1（受 total_max / shop_max_buy 限制）
+      summary: 旁支体质槽 +1（软上限 7，可继续购买）
       cost_points: 12
       effect:
         buy_constitution_slot: 1

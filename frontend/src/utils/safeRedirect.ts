@@ -32,6 +32,9 @@ const ALLOWED_REDIRECT_PATHS = new Set([
   '/shop',
   '/account',
   '/character',
+  '/cave',
+  '/cave/lab',
+  '/research',
 ])
 
 const LAST_PATH_KEY = 'xiuxian_last_play_path'

@@ -32,6 +32,25 @@ def test_deep_merge_nested_species() -> None:
     assert "a" in merged["species"] and "b" in merged["species"]
 
 
+def test_dao_entries_replace_on_overlay() -> None:
+    """dao.entries 整段替换：删除底表道后不应残留。"""
+    from app.config_source.merge import merge_domain_overlay
+
+    base = {
+        "open": {"picks": 3},
+        "entries": {"dao_a": {"label_zh": "甲"}, "dao_b": {"label_zh": "乙"}},
+        "labels": {"dao_a": "甲", "dao_b": "乙"},
+    }
+    overlay = {
+        "entries": {"dao_a": {"label_zh": "甲改"}},
+        "labels": {"dao_a": "甲改"},
+    }
+    merged = merge_domain_overlay("dao", base, overlay)
+    assert merged["open"]["picks"] == 3
+    assert list(merged["entries"].keys()) == ["dao_a"]
+    assert "dao_b" not in merged["labels"]
+
+
 def test_player_token_rejected_as_admin_and_vice_versa() -> None:
     """玩家 / 后台 JWT 不可互用。"""
     OverlayStore.replace_all({})

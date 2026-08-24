@@ -4,7 +4,7 @@
  *
  * 攻打的是对方「防守快照」（异步非对称），对方零打扰、零损失。
  */
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { fetchOpponentsApi } from '../../api/battle'
 import { previewSnapshotApi } from '../../api/snapshot'
@@ -12,6 +12,7 @@ import { useBattleStore } from '../../stores/battle'
 import { useCharacterStore } from '../../stores/character'
 import type { OpponentInfo } from '../../types/autochess'
 import type { SnapshotPreviewPayload } from '../../types/formation'
+import { alertIfIdleBlocked } from '../../utils/idleBlockDialog'
 
 const emit = defineEmits<{
   fought: []
@@ -24,11 +25,6 @@ const opponents = ref<OpponentInfo[]>([])
 const targetId = ref<number | null>(null)
 const preview = ref<SnapshotPreviewPayload | null>(null)
 const previewing = ref(false)
-
-const isCultivating = computed(() => {
-  const direction = characterStore.character?.idle_direction
-  return Boolean(direction && direction !== 'none')
-})
 
 async function loadOpponents(): Promise<void> {
   const envelope = await fetchOpponentsApi()
@@ -62,8 +58,7 @@ async function onAttack(): Promise<void> {
     ElMessage.warning('请先选择或输入目标角色 id')
     return
   }
-  if (isCultivating.value) {
-    ElMessage.warning('修炼中不可开战，请先停止修炼')
+  if (await alertIfIdleBlocked(characterStore.character, '开战')) {
     return
   }
   const error = await battleStore.startPvp(targetId.value)
@@ -111,7 +106,6 @@ onMounted(() => {
         type="danger"
         size="small"
         :loading="battleStore.fighting"
-        :disabled="isCultivating"
         @click="onAttack"
       >
         攻打

@@ -1,11 +1,13 @@
 <script setup lang="ts">
 /**
- * 布阵页（M3 · /formation）：7×7 编辑器 + 预设三槽 + 阵法 + 快照更新。
+ * 阵法页（/formation）：7×7 编辑器 + 最多 5 套可命名预设 + 阵法 + 快照更新。
  *
- * 交互约定（前端设计 §6.1）：
+ * 交互约定：
  * - 点 Bench 棋子选中 → 点绿色合法格落子；点己方棋子选中 → 点空合法格移动；
  * - 非法格 toast 提示；保存由服务端权威校验（40041/42/43/44）；
  * - isDirty 时切槽 / 离开页需确认；保存成功明示「未自动更新防守快照」。
+ * - 棋子四栏只展示装备栏已上阵单位；内部 role 不在界面暴露。
+ * - 助战栏摆「助」虚位；客串化身不进棋子栏，开战自动落入锚点。
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -18,7 +20,7 @@ import SnapshotUpdateBar from '../components/formation/SnapshotUpdateBar.vue'
 import UnitBench from '../components/formation/UnitBench.vue'
 import { useFormationStore } from '../stores/formation'
 import { useCharacterStore } from '../stores/character'
-import type { BenchUnit } from '../types/formation'
+import { FORMATION_PRESET_SLOT_MAX, ASSIST_ANCHOR_UID, type BenchUnit } from '../types/formation'
 
 const route = useRoute()
 const router = useRouter()
@@ -86,18 +88,6 @@ const deployKeys = computed(
   () => new Set(effectiveDeployCells.value.map(([x, y]) => `${x},${y}`)),
 )
 
-/** 部署模式展示文案 */
-const deployModeLabel = computed(() => {
-  const mode = formationStore.draftFormation?.deploy?.mode ?? 'default'
-  const labels: Record<string, string> = {
-    default: '默认区',
-    fixed: '固定格',
-    free_own: '己方半区自由',
-    mask: '掩码区',
-  }
-  return labels[mode] ?? mode
-})
-
 /** 当前阵法生效的上阵上限（优先服务端 max_units_effective） */
 const effectiveMaxUnits = computed(() => {
   const fromServer = formationStore.draftFormation?.max_units_effective
@@ -110,15 +100,6 @@ const effectiveMaxUnits = computed(() => {
     return Math.min(base, effectiveDeployCells.value.length || base)
   }
   return Math.min(base, formCap, effectiveDeployCells.value.length || formCap)
-})
-
-/** 移位预览文案 */
-const forceShiftHint = computed(() => {
-  const shifts = formationStore.draftFormation?.force_shifts ?? []
-  if (!shifts.length) return ''
-  return shifts
-    .map((s) => `(${s.from[0]},${s.from[1]})→(${s.to[0]},${s.to[1]})`)
-    .join('；')
 })
 
 /**
@@ -161,6 +142,15 @@ function pruneUnitsForCurrentDeploy(): void {
   if (dropped > 0) {
     ElMessage.warning(`换阵后 ${dropped} 个棋子不在可部署区，已自动撤下`)
   }
+
+  const anchor = formationStore.draft.assist_anchor
+  if (anchor) {
+    const key = `${anchor.x},${anchor.y}`
+    if (!zone.has(key) || blocked.has(key) || formationStore.draft.units.some((u) => u.x === anchor.x && u.y === anchor.y)) {
+      formationStore.clearAssistAnchor()
+      ElMessage.warning('换阵后助战位置不在可部署区，已撤下')
+    }
+  }
 }
 
 // 切换阵法 id 时清洗非法占位
@@ -183,12 +173,40 @@ function onSelectBench(unit: BenchUnit): void {
   selectedRefId.value = unit.ref_id
 }
 
+/** 选中助战虚位，再点可部署格放置。 */
+function onSelectAssist(): void {
+  selectedUid.value = ASSIST_ANCHOR_UID
+  selectedKind.value = 'assist'
+  selectedRefId.value = undefined
+}
+
+function occupiedByAssist(x: number, y: number): boolean {
+  const anchor = formationStore.draft.assist_anchor
+  return Boolean(anchor && anchor.x === x && anchor.y === y)
+}
+
 /**
  * 棋盘点击：优先选中己方棋子；已有选中则尝试落子 / 移动。
  */
 function onCellClick(x: number, y: number): void {
   const key = `${x},${y}`
   const occupied = formationStore.draft.units.find((u) => u.x === x && u.y === y)
+  const assistHere = occupiedByAssist(x, y)
+
+  if (assistHere && selectedUid.value !== ASSIST_ANCHOR_UID) {
+    onSelectAssist()
+    return
+  }
+  if (
+    assistHere &&
+    selectedUid.value === ASSIST_ANCHOR_UID
+  ) {
+    formationStore.clearAssistAnchor()
+    selectedUid.value = null
+    selectedKind.value = 'main'
+    ElMessage.success('已撤下助战位置')
+    return
+  }
 
   // 点到己方棋子 → 切换选中（带回 ref_id）
   if (occupied && occupied.unit_uid !== selectedUid.value) {
@@ -213,7 +231,7 @@ function onCellClick(x: number, y: number): void {
     return
   }
   if (!selectedUid.value) {
-    ElMessage.info('请先在左侧选择要上阵的棋子')
+    ElMessage.info('请先在左侧选择要上阵的棋子或助战位置')
     return
   }
   // 合法性即时反馈（权威校验仍在服务端保存时执行）
@@ -225,10 +243,31 @@ function onCellClick(x: number, y: number): void {
     ElMessage.warning('该格被阵法地形占用，不可停留')
     return
   }
+  if (assistHere && selectedUid.value !== ASSIST_ANCHOR_UID) {
+    ElMessage.warning('该格已是助战位置')
+    return
+  }
+  if (occupied && selectedUid.value === ASSIST_ANCHOR_UID) {
+    ElMessage.warning('助战位置不可与已有棋子重叠')
+    return
+  }
+  if (selectedUid.value === ASSIST_ANCHOR_UID) {
+    const moving = Boolean(formationStore.draft.assist_anchor)
+    if (
+      !moving &&
+      formationStore.draft.units.length + 1 > effectiveMaxUnits.value
+    ) {
+      ElMessage.warning(`上阵数量已达上限（${effectiveMaxUnits.value}）`)
+      return
+    }
+    formationStore.placeAssistAnchor(x, y)
+    return
+  }
   if (
     !occupied &&
     !formationStore.draft.units.some((u) => u.unit_uid === selectedUid.value) &&
-    formationStore.draft.units.length >= effectiveMaxUnits.value
+    formationStore.draft.units.length + (formationStore.draft.assist_anchor ? 1 : 0) >=
+      effectiveMaxUnits.value
   ) {
     ElMessage.warning(`上阵数量已达上限（${effectiveMaxUnits.value}）`)
     return
@@ -305,7 +344,11 @@ onMounted(async () => {
   }
   // ?slot=N 打开指定槽
   const slotQuery = Number(route.query.slot)
-  if (Number.isInteger(slotQuery) && slotQuery >= 0 && slotQuery <= 2) {
+  if (
+    Number.isInteger(slotQuery) &&
+    slotQuery >= 0 &&
+    slotQuery < FORMATION_PRESET_SLOT_MAX
+  ) {
     formationStore.selectSlot(slotQuery)
   }
 })
@@ -325,11 +368,10 @@ onMounted(async () => {
       >
         回擂台
       </el-button>
-      <el-text tag="b" size="large">布阵</el-text>
+      <el-text tag="b" size="large">阵法</el-text>
       <el-text v-if="fromDaoArena" type="warning" size="small">
-        擂台改的是进攻预设（及实时面板）；开打瞬间双方现场锁定，无需先刷防守快照 · 设好后点「回擂台」
+        擂台改的是当前选中的预设（及实时面板）；开打瞬间双方现场锁定，无需先刷防守快照 · 设好后点「回擂台」
       </el-text>
-      <el-text v-else type="info" size="small">M3 · 预设三槽 · 阵法 · 防守快照</el-text>
     </div>
 
     <el-alert
@@ -354,28 +396,18 @@ onMounted(async () => {
 
     <template v-else-if="formationStore.boardMeta">
       <div class="formation-toolbar">
-        <FormationPresetBar
-          :presets="formationStore.presets"
-          :active-slot="formationStore.activeSlot"
-          @select="onSelectSlot"
-        />
-        <div class="toolbar-right">
+        <div class="toolbar-left">
+          <FormationPresetBar
+            :presets="formationStore.presets"
+            :active-slot="formationStore.activeSlot"
+            @select="onSelectSlot"
+          />
           <el-input
             v-model="formationStore.draft.name"
             size="small"
             maxlength="20"
             class="preset-name"
-            placeholder="预设名"
-          />
-          <el-select v-model="formationStore.draft.role" size="small" class="role-select">
-            <el-option value="attack" label="进攻" />
-            <el-option value="defense" label="防守" />
-            <el-option value="temp" label="临时" />
-          </el-select>
-          <FormationPicker
-            v-model="formationStore.draft.formation_id"
-            :formations="formationStore.formations"
-            :array-craft-level="characterStore.character?.array_craft_level ?? 0"
+            placeholder="自定义名称"
           />
           <el-button
             type="primary"
@@ -386,21 +418,17 @@ onMounted(async () => {
           >
             保存
           </el-button>
+          <FormationPicker
+            v-model="formationStore.draft.formation_id"
+            :formations="formationStore.formations"
+            :array-craft-level="characterStore.character?.array_craft_level ?? 0"
+          />
+          <el-button size="small" @click="router.push('/cave/lab?mode=formation')">
+            去研究室
+          </el-button>
+          <SnapshotUpdateBar />
         </div>
       </div>
-
-      <el-alert
-        type="info"
-        :closable="false"
-        show-icon
-        class="formation-alert"
-        :title="`部署模式：${deployModeLabel} · 可部署 ${effectiveDeployCells.length} 格 · 上阵上限 ${effectiveMaxUnits}`"
-        :description="
-          forceShiftHint
-            ? `开战移位预览：${forceShiftHint}（源空则无效）`
-            : undefined
-        "
-      />
 
       <div class="formation-grid">
         <UnitBench
@@ -408,8 +436,12 @@ onMounted(async () => {
           :units="formationStore.draft.units"
           :selected-uid="selectedUid"
           :max-units="effectiveMaxUnits"
+          :assist-anchor="formationStore.draft.assist_anchor"
+          :assist-guest-name="formationStore.assistGuest?.name ?? null"
           @select="onSelectBench"
           @remove="formationStore.remove"
+          @select-assist="onSelectAssist"
+          @remove-assist="formationStore.clearAssistAnchor"
         />
         <FormationBoard
           :meta="formationStore.boardMeta"
@@ -417,11 +449,10 @@ onMounted(async () => {
           :terrain="draftTerrain"
           :selected-uid="selectedUid"
           :deploy-cells="effectiveDeployCells"
+          :assist-anchor="formationStore.draft.assist_anchor"
           @cell-click="onCellClick"
         />
       </div>
-
-      <SnapshotUpdateBar class="formation-snapshot" />
     </template>
   </div>
 </template>
@@ -454,7 +485,7 @@ onMounted(async () => {
   margin-bottom: 1rem;
 }
 
-.toolbar-right {
+.toolbar-left {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -465,10 +496,6 @@ onMounted(async () => {
   width: 140px;
 }
 
-.role-select {
-  width: 100px;
-}
-
 .formation-grid {
   display: grid;
   grid-template-columns: minmax(200px, 260px) 1fr;
@@ -477,13 +504,10 @@ onMounted(async () => {
   margin-bottom: 1rem;
 }
 
-.formation-snapshot {
-  margin-top: 0.5rem;
-}
-
 @media (max-width: 800px) {
   .formation-grid {
     grid-template-columns: 1fr;
   }
 }
+
 </style>

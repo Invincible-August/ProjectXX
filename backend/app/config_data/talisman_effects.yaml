@@ -1,0 +1,83 @@
+# =====================================================================
+# 用途：符箓效果白名单（自研只许引用已发布 id）
+# 加载时机：ResearchService 定稿 / 开战 item_trigger / 叠层解析
+# 叠层：同 stack_group 不叠加，取最高 magnitude；组内其余仍消耗
+# =====================================================================
+
+first_hit_ward:
+  label_zh: 护体残符
+  help_zh: 占位：首次受击（或本场未挨打则在结束前）写入战报，不改数值。
+  trigger: first_hit
+  kind: buff
+  stack_group: first_hit_ward
+  magnitude: 0
+  duration_kind: global
+  duration: 0
+  attr: phys_atk
+  use_chance: 0
+  hit_chance: 1
+
+atk_pct_global_15:
+  label_zh: 锐金符·全局
+  help_zh: 开战起全程增加 15% 攻击；同组取最高，低效果符仍消耗。
+  trigger: battle_start
+  kind: buff
+  stack_group: atk_pct
+  magnitude: 0.15
+  duration_kind: global
+  duration: 0
+  attr: phys_atk
+  use_chance: 0
+  hit_chance: 1
+
+atk_pct_global_30:
+  label_zh: 锐金符·强
+  help_zh: 开战起全程增加 30% 攻击。
+  trigger: battle_start
+  kind: buff
+  stack_group: atk_pct
+  magnitude: 0.30
+  duration_kind: global
+  duration: 0
+  attr: phys_atk
+  use_chance: 0
+  hit_chance: 1
+
+atk_pct_attacks_30:
+  label_zh: 锐金符·三击
+  help_zh: 增加 30% 攻击，持续 3 次攻击后回落到同组全局层。
+  trigger: battle_start
+  kind: buff
+  stack_group: atk_pct
+  magnitude: 0.30
+  duration_kind: attacks
+  duration: 3
+  attr: phys_atk
+  use_chance: 0
+  hit_chance: 1
+
+atk_pct_rounds_10:
+  label_zh: 锐金符·三回合
+  help_zh: 增加 10% 攻击共 3 回合；若同组有更高全局层则全程至少保留全局。
+  trigger: battle_start
+  kind: buff
+  stack_group: atk_pct
+  magnitude: 0.10
+  duration_kind: rounds
+  duration: 3
+  attr: phys_atk
+  use_chance: 0
+  hit_chance: 1
+
+atk_strike_direct:
+  label_zh: 伤杀符
+  help_zh: 攻击行动时先掷使用、再掷命中、再结算符伤害，然后才走普攻。移动/打障碍不触发。
+  trigger: on_attack
+  kind: offensive
+  stack_group: atk_strike_direct
+  magnitude: 12
+  duration_kind: global
+  duration: 0
+  attr: phys_atk
+  use_chance: 0.35
+  hit_chance: 0.8

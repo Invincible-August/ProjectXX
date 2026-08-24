@@ -29,6 +29,7 @@ def _cfg(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "register_require_real_name", False)
     monkeypatch.setattr(settings, "register_require_email_code", False)
     monkeypatch.setattr(settings, "dao_system_enabled", True)
+    monkeypatch.setattr(settings, "avatar_enabled", True)
     clear_game_config_cache()
     yield
     clear_game_config_cache()
@@ -93,5 +94,87 @@ def test_dao_open_flow(tmp_path: Path) -> None:
                 with pytest.raises(AppError) as exc2:
                     await dao.roll_open(user)
                 assert exc2.value.code == 40081
+
+    _run(_body())
+
+
+def test_avatar_dao_independent_of_main(tmp_path: Path) -> None:
+    """化身金丹不可悟道；真仙后独立开道，道值不与本体共享。"""
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "dao_avatar.db") as factory:
+            async with factory() as session:
+                from app.db.models.avatar import Avatar
+                from app.db.models.character import Character
+                from app.services.avatar_service import AvatarService
+
+                await auth_service.register_user(
+                    session,
+                    RegisterRequest(password="password123", email="daoav@example.com"),
+                )
+                await session.commit()
+                user = (
+                    await session.execute(select(User).where(User.email == "daoav@example.com"))
+                ).scalar_one()
+                await character_service.create_character(
+                    session,
+                    user,
+                    CreateCharacterRequest(name="化身开道测"),
+                )
+                await session.commit()
+
+                await GmService(session).gm_set_character(
+                    user,
+                    force_true_immortal=True,
+                    spirit_stones=5000,
+                )
+                await session.commit()
+
+                dao = DaoService(session)
+                character = (
+                    await session.execute(select(Character).where(Character.user_id == user.id))
+                ).scalar_one()
+                await dao.gm_lock_fate_dao(character, "dao_flame")
+                await dao.gm_set_resources(character, dao_qi=999)
+                await session.commit()
+
+                panel = await AvatarService(session).condense(user)
+                assert panel["major_realm"] == "jindan"
+                await session.commit()
+
+                with pytest.raises(AppError) as exc:
+                    await dao.roll_open(user, actor="avatar")
+                assert exc.value.code == 40080
+
+                avatar = (
+                    await session.execute(select(Avatar).where(Avatar.character_id == character.id))
+                ).scalar_one()
+                avatar.major_realm = "true_immortal"
+                await session.flush()
+
+                offer = await dao.roll_open(user, actor="avatar")
+                await session.commit()
+                assert offer["actor"] == "avatar"
+                chosen = offer["options"][0]["dao_id"]
+                result = await dao.choose_open(
+                    user,
+                    dao_id=chosen,
+                    session_id=offer["session_id"],
+                    actor="avatar",
+                )
+                await session.commit()
+                assert result["dao"]["actor"] == "avatar"
+                assert result["dao"]["fate_dao_id"] == chosen
+                assert result["dao"]["qi"] != 999
+
+                main = await dao.enrich_dao_summary(character)
+                assert main is not None
+                assert main["fate_dao_id"] == "dao_flame"
+                assert main["qi"] == 999
+
+                av_sum = await dao.enrich_avatar_dao_summary(character, avatar)
+                assert av_sum is not None
+                assert av_sum["fate_dao_id"] == chosen
+                assert av_sum["qi"] != 999
 
     _run(_body())

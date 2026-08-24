@@ -63,9 +63,12 @@ def compute_load(
     cost_avatar: int,
     cost_pet: int,
     pet_costs: Sequence[int] | None = None,
+    puppet_count: int = 0,
+    cost_puppet: int = 0,
+    puppet_costs: Sequence[int] | None = None,
 ) -> int:
     """
-    计算上阵占用（化身×cost + 灵宠占用）。
+    计算上阵占用（化身 + 灵宠 + 傀儡消耗合计）。
 
     参数:
         avatar_count: 上阵化身数。
@@ -73,14 +76,23 @@ def compute_load(
         cost_avatar: 每个化身占用。
         cost_pet: 默认每个灵宠占用。
         pet_costs: 可选；各宠实际占用（含物种覆盖）；优先于 pet_count×cost_pet。
+        puppet_count: 上阵傀儡数（无 puppet_costs 时用默认 cost_puppet）。
+        cost_puppet: 默认每只傀儡占用。
+        puppet_costs: 可选；各傀实际占用；优先于 puppet_count×cost_puppet。
 
     返回:
-        总占用。
+        总占用（简示栏分子）。
     """
     avatar_load = int(avatar_count) * int(cost_avatar)
     if pet_costs is not None:
-        return avatar_load + sum(max(0, int(c)) for c in pet_costs)
-    return avatar_load + int(pet_count) * int(cost_pet)
+        pet_load = sum(max(0, int(c)) for c in pet_costs)
+    else:
+        pet_load = int(pet_count) * int(cost_pet)
+    if puppet_costs is not None:
+        puppet_load = sum(max(0, int(c)) for c in puppet_costs)
+    else:
+        puppet_load = int(puppet_count) * int(cost_puppet)
+    return avatar_load + pet_load + puppet_load
 
 
 def soft_hard_caps(capacity: int, *, soft_ratio: float, hard_ratio: float) -> tuple[int, int]:
@@ -207,6 +219,73 @@ def overload_multiplier(
         fallback_stat_mult=overload_stat_mult,
     )
     return float(band.combat_stat_mult)
+
+
+def serialize_overload_bands(
+    bands: Sequence[OverloadBand] | Sequence[Mapping[str, Any]],
+    *,
+    zone_labels: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    """把阶梯表序列化为前端预览用的 DTO（不含曲线另算）。"""
+    rows: list[dict[str, Any]] = []
+    for raw in bands:
+        if isinstance(raw, OverloadBand):
+            zone = raw.zone
+            max_r = raw.max_load_ratio
+            mult = raw.combat_stat_mult
+        else:
+            zone = str(raw.get("zone") or "overload")
+            max_r = raw.get("max_load_ratio")
+            mult = float(raw.get("combat_stat_mult", 1.0))
+        rows.append(
+            {
+                "max_load_ratio": None if max_r is None else float(max_r),
+                "combat_stat_mult": float(mult),
+                "zone": zone,
+                "zone_label_zh": str(zone_labels.get(zone, zone)),
+            },
+        )
+    return rows
+
+
+def puppet_sense_reading(
+    *,
+    load: int,
+    capacity: int,
+    soft_cap: int,
+    hard_cap: int,
+    bands: Sequence[OverloadBand] | Sequence[Mapping[str, Any]],
+    fallback_stat_mult: float = 0.7,
+    zone_labels: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """
+    傀儡编成板预览读数（M4 §6.4）。
+
+    与共享池同一张 ``overload_bands``；此处 load 为编成板上傀儡自身占用，
+    便于勾选时预览发挥%。角色面板神识分子仍为化身+灵宠+傀儡合计。
+    舒适区 load ≤ soft_cap → 发挥 100%。
+
+    Returns:
+        load/capacity/soft_cap/hard_cap/percent/overload_mult/zone/zone_label_zh。
+    """
+    labels = zone_labels or {}
+    band = resolve_overload_band(
+        load,
+        capacity,
+        soft_cap=soft_cap,
+        bands=bands,
+        fallback_stat_mult=fallback_stat_mult,
+    )
+    return {
+        "load": int(load),
+        "capacity": int(capacity),
+        "soft_cap": int(soft_cap),
+        "hard_cap": int(hard_cap),
+        "percent": int(round(float(band.combat_stat_mult) * 100)),
+        "overload_mult": float(band.combat_stat_mult),
+        "zone": band.zone,
+        "zone_label_zh": str(labels.get(band.zone, band.zone)),
+    }
 
 
 def apply_overload_mult(stats: dict[str, Any], mult: float) -> dict[str, Any]:

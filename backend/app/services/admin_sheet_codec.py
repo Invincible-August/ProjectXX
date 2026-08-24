@@ -12,6 +12,8 @@ from typing import Any, Callable
 from app.schemas.common import AppError
 from app.services.admin_field_schema import (
     AVATAR_SCHEMA,
+    DAO_RESTRAINT_SCHEMA,
+    DAO_SCHEMA,
     DICE_SCHEMA,
     IDLE_SCHEMA,
     REALMS_SCHEMA,
@@ -694,9 +696,13 @@ def dice_sheets_to_payload(sheets: list[dict[str, Any]]) -> dict[str, Any]:
 _AVATAR_GLOBAL_HELP: dict[str, tuple[str, str]] = {
     "unlock_major_realm": ("凝练门槛", "最低大境界 id"),
     "max_avatars": ("化身上限", "定案必须为 1"),
+    "max_major_realm": ("常规修为硬顶", "化身最高大境界 id；不可为道主/轮回"),
+    "avatar_lead_majors": ("可比本体高几个大境", "默认 0；功法/装备可授予叠加"),
     "initial_stat_ratio": ("初始属性比例", "相对本体"),
     "material_mod_placeholder": ("材料修正", "占位乘区"),
     "condense_spirit_stone_cost": ("凝练灵石", "整数"),
+    "condense_cultivation_cost": ("凝练灵力", "本体修为池扣减"),
+    "condense_medium_quantity": ("媒介数量", "每次凝练消耗件数"),
     "spirit_stone_cost_per_tick_ratio": ("耗石比例", "相对本体同境"),
 }
 
@@ -826,9 +832,13 @@ def avatar_sheets_to_payload(sheets: list[dict[str, Any]]) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "unlock_major_realm": "jindan",
         "max_avatars": 1,
+        "max_major_realm": "true_immortal",
+        "avatar_lead_majors": 0,
         "initial_stat_ratio": 0.5,
         "material_mod_placeholder": 1.0,
         "condense_spirit_stone_cost": 1000,
+        "condense_cultivation_cost": 500,
+        "condense_medium_quantity": 1,
         "spirit_stone_cost_per_tick_ratio": 0.8,
         "feature_unlocks": {},
         "transfer": {
@@ -857,7 +867,10 @@ def avatar_sheets_to_payload(sheets: list[dict[str, Any]]) -> dict[str, Any]:
         val = row.get("value")
         if key in {
             "max_avatars",
+            "avatar_lead_majors",
             "condense_spirit_stone_cost",
+            "condense_cultivation_cost",
+            "condense_medium_quantity",
         }:
             payload[key] = _as_int(val)
         elif key in {"initial_stat_ratio", "material_mod_placeholder", "spirit_stone_cost_per_tick_ratio"}:
@@ -926,11 +939,161 @@ def avatar_sheets_to_payload(sheets: list[dict[str, Any]]) -> dict[str, Any]:
     return payload
 
 
+# ----- dao（道目录） / dao_restraint（克制边）-----
+
+
+def dao_payload_to_sheets(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    大道域 JSON → 道目录网格行。
+
+    entries 为 dao_id→定义；同步带出 labels 仅作展示冗余，保存时再写回。
+    """
+    entries = payload.get("entries")
+    if not isinstance(entries, dict):
+        entries = {}
+    labels = payload.get("labels")
+    if not isinstance(labels, dict):
+        labels = {}
+
+    rows: list[dict[str, Any]] = []
+    for dao_id, body in entries.items():
+        if not isinstance(body, dict):
+            continue
+        label = body.get("label_zh") or labels.get(dao_id) or ""
+        rows.append(
+            {
+                "dao_id": str(dao_id),
+                "label_zh": str(label),
+                "category": str(body.get("category") or ""),
+                "rarity": str(body.get("rarity") or ""),
+                "weight": body.get("weight", 100),
+                "description": str(body.get("description") or ""),
+            },
+        )
+    # 稳定排序，便于运营对照
+    rows.sort(key=lambda r: str(r.get("dao_id") or ""))
+    return [{**DAO_SCHEMA.sheets[0].to_dict(), "rows": rows}]
+
+
+def dao_sheets_to_payload(sheets: list[dict[str, Any]]) -> dict[str, Any]:
+    """
+    道目录网格 → ``entries`` + ``labels`` 覆盖片段。
+
+    仅返回目录相关顶层键；save_sheets 会浅合并进草稿，保留 open/pool 等。
+    发布后经 merge_domain_overlay 对 entries/labels 整段替换，删除行可盖过 YAML。
+    """
+    mapped = _sheet_map(sheets)
+    rows = _require_rows(mapped, "entries")
+    entries: dict[str, Any] = {}
+    labels: dict[str, str] = {}
+    seen: set[str] = set()
+
+    for idx, row in enumerate(rows):
+        dao_id = str(row.get("dao_id") or "").strip()
+        if not dao_id:
+            raise AppError(
+                code=40000,
+                message=f"道目录第 {idx + 1} 行缺少 dao_id",
+                http_status=400,
+            )
+        if dao_id in seen:
+            raise AppError(
+                code=40000,
+                message=f"道目录 dao_id 重复: {dao_id}",
+                http_status=400,
+            )
+        seen.add(dao_id)
+        label_zh = str(row.get("label_zh") or "").strip() or dao_id
+        category = str(row.get("category") or "").strip()
+        rarity = str(row.get("rarity") or "").strip()
+        if not category:
+            raise AppError(
+                code=40000,
+                message=f"{dao_id} 缺少 category",
+                http_status=400,
+            )
+        if not rarity:
+            raise AppError(
+                code=40000,
+                message=f"{dao_id} 缺少 rarity",
+                http_status=400,
+            )
+        entries[dao_id] = {
+            "label_zh": label_zh,
+            "category": category,
+            "rarity": rarity,
+            "weight": _as_float(row.get("weight", 100)),
+            "description": str(row.get("description") or "").strip(),
+        }
+        labels[dao_id] = label_zh
+
+    if not entries:
+        raise AppError(code=40000, message="道目录不能为空", http_status=400)
+
+    return {"entries": entries, "labels": labels}
+
+
+def dao_restraint_payload_to_sheets(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """克制边 JSON → 网格行。"""
+    edges = payload.get("edges")
+    if not isinstance(edges, list):
+        edges = []
+    rows: list[dict[str, Any]] = []
+    for item in edges:
+        if not isinstance(item, dict):
+            continue
+        rows.append(
+            {
+                "attacker": str(item.get("attacker") or ""),
+                "defender": str(item.get("defender") or ""),
+                "damage_mul": item.get("damage_mul", 1.0),
+                "label_zh": str(item.get("label_zh") or ""),
+            },
+        )
+    return [{**DAO_RESTRAINT_SCHEMA.sheets[0].to_dict(), "rows": rows}]
+
+
+def dao_restraint_sheets_to_payload(sheets: list[dict[str, Any]]) -> dict[str, Any]:
+    """克制边网格 → ``edges`` 列表（list 合并时本就整段替换）。"""
+    mapped = _sheet_map(sheets)
+    rows = _require_rows(mapped, "edges")
+    edges: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for idx, row in enumerate(rows):
+        attacker = str(row.get("attacker") or "").strip()
+        defender = str(row.get("defender") or "").strip()
+        if not attacker or not defender:
+            raise AppError(
+                code=40000,
+                message=f"克制边第 {idx + 1} 行须填攻方/守方道 ID",
+                http_status=400,
+            )
+        key = (attacker, defender)
+        if key in seen:
+            raise AppError(
+                code=40000,
+                message=f"克制边重复: {attacker} → {defender}",
+                http_status=400,
+            )
+        seen.add(key)
+        edges.append(
+            {
+                "attacker": attacker,
+                "defender": defender,
+                "damage_mul": _as_float(row.get("damage_mul", 1.0)),
+                "label_zh": str(row.get("label_zh") or "").strip() or "克制",
+            },
+        )
+    return {"edges": edges}
+
+
 _PAYLOAD_TO_SHEETS: dict[str, Callable[[dict[str, Any]], list[dict[str, Any]]]] = {
     "realms": realms_payload_to_sheets,
     "idle": idle_payload_to_sheets,
     "dice": dice_payload_to_sheets,
     "avatar": avatar_payload_to_sheets,
+    "dao": dao_payload_to_sheets,
+    "dao_restraint": dao_restraint_payload_to_sheets,
 }
 
 _SHEETS_TO_PAYLOAD: dict[str, Callable[[list[dict[str, Any]]], dict[str, Any]]] = {
@@ -938,6 +1101,8 @@ _SHEETS_TO_PAYLOAD: dict[str, Callable[[list[dict[str, Any]]], dict[str, Any]]] 
     "idle": idle_sheets_to_payload,
     "dice": dice_sheets_to_payload,
     "avatar": avatar_sheets_to_payload,
+    "dao": dao_sheets_to_payload,
+    "dao_restraint": dao_restraint_sheets_to_payload,
 }
 
 

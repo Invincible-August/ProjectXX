@@ -453,6 +453,7 @@ async def workshop_blueprint_donate(
             label_zh=body.label_zh,
             cost_contribution=body.cost_contribution,
             self_research=body.self_research,
+            inventory_item_id=body.inventory_item_id,
         ),
     )
 

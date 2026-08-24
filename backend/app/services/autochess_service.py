@@ -30,7 +30,6 @@ from app.domain.battle_text import render_board, render_detailed, render_summary
 from app.domain.env_modifiers import combine_env_multipliers, lookup_modifier
 from app.schemas.common import AppError
 from app.domain.divine_sense import apply_overload_mult
-from app.services.divine_sense_service import DivineSenseService
 from app.services.pet_service import PetService
 from app.services.avatar_service import AvatarService
 from app.services.character_service import CharacterService
@@ -153,125 +152,266 @@ class AutochessService:
         """
         用预设占位 + 权威战力组装进攻方（side=0）棋子列表。
 
-        本体面板走 ``build_combat_stats``（品阶 / 功法 / 体质全修正）；
-        傀儡等派生棋子按 board.yaml 比例折算（与快照口径一致）。
+        S1-2：经 Character 门面 ``on_battle_enter`` → ``seed_to_engine_unit``；
+        数值口径与改前等价（品阶/功法/体质、傀儡比例、客串化身）。
         """
+        from app.constants.battle import (
+            BATTLE_SIDE_ATTACKER,
+            DICE_PURPOSE_COMBAT_DAMAGE,
+            PIECE_KIND_AVATAR,
+            PIECE_KIND_MAIN,
+            PIECE_KIND_PET,
+            PIECE_KIND_PUPPET,
+        )
+        from app.game.battle.assemble import (
+            build_scaled_puppet_seed,
+            is_trial_puppet_uid,
+            seed_to_engine_unit,
+        )
+        from app.game.character import AvatarCharacter, PetCharacter
+        from app.services.avatar_repo import fetch_avatar_row
+
         board = get_game_config().board
         main_atk, main_hp, _, _ = await self._characters.build_combat_stats(character)
-        from app.services.avatar_repo import fetch_avatar_row
+        player = await self._characters.build_player_character(character)
 
         pet_svc = PetService(self._session)
         avatar_row = await fetch_avatar_row(self._session, character.id)
 
-        # 修为区间骰：进攻方按角色解析（先攻/伤害共用 combat_damage 区间）
         from app.services.dice_service import DiceService
 
         dice_svc = DiceService(self._session)
         char_bounds = await dice_svc.resolve_for_character(
             character,
-            purpose="combat_damage",
+            purpose=DICE_PURPOSE_COMBAT_DAMAGE,
         )
         dice_payload = DiceService.unit_dice_payload(char_bounds)
 
         units: list[dict[str, Any]] = []
         for unit in preset_units:
-            kind = str(unit.get("unit_kind", "main"))
-            defaults = board.unit_defaults.get(kind) or board.unit_defaults["main"]
-            if kind == "main":
-                atk, hp, name = main_atk, main_hp, character.name
-            elif kind == "avatar":
+            kind = str(unit.get("unit_kind", PIECE_KIND_MAIN))
+            defaults = board.unit_defaults.get(kind) or board.unit_defaults[PIECE_KIND_MAIN]
+            x, y = int(unit["x"]), int(unit["y"])
+            unit_uid = str(unit["unit_uid"])
+            seed = None
+            display_name: str | None = None
+
+            if kind == PIECE_KIND_MAIN:
+                seed = player.on_battle_enter(
+                    unit_uid=unit_uid,
+                    side="attacker",
+                    x=x,
+                    y=y,
+                )
+                display_name = character.name
+            elif kind == PIECE_KIND_AVATAR:
                 from app.services.avatar_assist_service import parse_guest_unit_uid
 
-                guest_ids = parse_guest_unit_uid(str(unit.get("unit_uid", "")))
+                guest_ids = parse_guest_unit_uid(unit_uid)
                 if guest_ids is not None:
-                    # 客串化身：按主人归属取战力（非借入人本化身）
                     _owner_id, guest_avatar_id = guest_ids
                     guest_row = await self._session.get(Avatar, int(guest_avatar_id))
                     if guest_row is None:
                         raise AppError(code=40057, message="客串化身不存在", http_status=400)
-                    stats = AvatarService.avatar_combat_stats(guest_row)
-                    atk, hp = stats["atk"], stats["hp"]
                     owner_ch = await self._session.get(Character, int(_owner_id))
+                    avatar_svc = AvatarService(self._session)
+                    if owner_ch is not None:
+                        stats = await avatar_svc.live_combat_stats(owner_ch, guest_row)
+                    else:
+                        stats = AvatarService.avatar_combat_stats(guest_row)
+                    facade = AvatarCharacter.from_orm(
+                        guest_row,
+                        stats={
+                            "hp": stats["hp"],
+                            "phys_atk": stats["atk"],
+                            "speed": defaults.speed,
+                            "mp": 0,
+                        },
+                    )
+                    seed = facade.on_battle_enter(
+                        unit_uid=unit_uid,
+                        side="attacker",
+                        x=x,
+                        y=y,
+                    )
                     owner_label = owner_ch.name if owner_ch else str(_owner_id)
-                    name = f"{owner_label}·{guest_row.name}"
+                    display_name = f"{owner_label}·{guest_row.name}"
                 elif avatar_row is not None:
-                    stats = AvatarService.avatar_combat_stats(avatar_row)
-                    atk, hp = stats["atk"], stats["hp"]
-                    name = avatar_row.name
+                    stats = await AvatarService(self._session).live_combat_stats(
+                        character,
+                        avatar_row,
+                    )
+                    facade = AvatarCharacter.from_orm(
+                        avatar_row,
+                        stats={
+                            "hp": stats["hp"],
+                            "phys_atk": stats["atk"],
+                            "speed": defaults.speed,
+                            "mp": 0,
+                        },
+                    )
+                    seed = facade.on_battle_enter(
+                        unit_uid=unit_uid,
+                        side="attacker",
+                        x=x,
+                        y=y,
+                    )
+                    display_name = avatar_row.name
                 else:
-                    atk = max(1, int(main_atk * defaults.atk_ratio))
-                    hp = max(1, int(main_hp * defaults.hp_ratio))
-                    name = kind
-            elif kind == "pet" and unit.get("ref_id") is not None:
-                stats = await pet_svc.get_pet_stats(int(unit["ref_id"]), character.id)
-                atk, hp = stats["atk"], stats["hp"]
-                name = f"pet_{unit['ref_id']}"
-            elif kind == "puppet":
-                atk = max(1, int(main_atk * defaults.atk_ratio))
-                hp = max(1, int(main_hp * defaults.hp_ratio))
-                name = "试炼木傀" if str(unit.get("unit_uid", "")).startswith("puppet_") else "傀儡"
+                    seed = build_scaled_puppet_seed(
+                        unit_uid=unit_uid,
+                        side="attacker",
+                        x=x,
+                        y=y,
+                        main_atk=main_atk,
+                        main_hp=main_hp,
+                        atk_ratio=float(defaults.atk_ratio),
+                        hp_ratio=float(defaults.hp_ratio),
+                        speed=int(defaults.speed),
+                        label_zh=kind,
+                        ephemeral=False,
+                    )
+                    # 无化身时回退比例：kind 仍标 avatar（与旧行为一致）
+                    seed.unit_kind = PIECE_KIND_AVATAR
+                    display_name = kind
+            elif kind == PIECE_KIND_PET and unit.get("ref_id") is not None:
+                ref_id = int(unit["ref_id"])
+                stats = await pet_svc.get_pet_stats(ref_id, character.id)
+                from types import SimpleNamespace
+
+                from app.db.models.pet import Pet
+
+                pet_row = await self._session.get(Pet, ref_id)
+                pet_obj = pet_row or SimpleNamespace(
+                    id=ref_id,
+                    species_id="pet",
+                    nickname=None,
+                )
+                facade = PetCharacter.from_orm(
+                    pet_obj,
+                    stats={
+                        "hp": stats["hp"],
+                        "phys_atk": stats["atk"],
+                        "speed": stats["speed"],
+                        "mp": 0,
+                    },
+                )
+                seed = facade.on_battle_enter(
+                    unit_uid=unit_uid,
+                    side="attacker",
+                    x=x,
+                    y=y,
+                )
+                display_name = f"pet_{ref_id}"
+            elif kind == PIECE_KIND_PUPPET:
+                ephemeral = is_trial_puppet_uid(unit_uid)
+                if ephemeral:
+                    label = "试炼木傀"
+                    seed = build_scaled_puppet_seed(
+                        unit_uid=unit_uid,
+                        side="attacker",
+                        x=x,
+                        y=y,
+                        main_atk=main_atk,
+                        main_hp=main_hp,
+                        atk_ratio=float(defaults.atk_ratio),
+                        hp_ratio=float(defaults.hp_ratio),
+                        speed=int(defaults.speed),
+                        label_zh=label,
+                        ephemeral=True,
+                    )
+                    display_name = label
+                else:
+                    from app.db.models.puppet_actor import PuppetActor
+                    from app.game.battle.assemble import scale_atk_hp
+                    from app.services.puppet_service import PuppetService
+
+                    atk, hp = scale_atk_hp(
+                        main_atk,
+                        main_hp,
+                        atk_ratio=float(defaults.atk_ratio),
+                        hp_ratio=float(defaults.hp_ratio),
+                    )
+                    stats = {
+                        "hp": hp,
+                        "phys_atk": atk,
+                        "speed": int(defaults.speed),
+                        "mp": 0,
+                    }
+                    puppet_svc = PuppetService(self._session)
+                    actor = None
+                    ref_id = unit.get("ref_id")
+                    if ref_id is not None:
+                        actor = await self._session.get(PuppetActor, int(ref_id))
+                    if actor is None:
+                        # 兼容旧预设：unit_uid = item_uid
+                        from app.constants.inventory import ITEM_TYPE_PUPPET
+                        from app.db.models.inventory_item import InventoryItem
+
+                        inv_row = (
+                            await self._session.execute(
+                                select(InventoryItem).where(
+                                    InventoryItem.character_id == character.id,
+                                    InventoryItem.item_uid == unit_uid,
+                                    InventoryItem.item_type == ITEM_TYPE_PUPPET,
+                                ),
+                            )
+                        ).scalar_one_or_none()
+                        if inv_row is not None:
+                            actor = await puppet_svc.ensure_for_inventory_item(inv_row)
+                    if actor is not None:
+                        facade = puppet_svc.build_character_from_actor(actor, stats=stats)
+                        seed = facade.on_battle_enter(
+                            unit_uid=unit_uid,
+                            side="attacker",
+                            x=x,
+                            y=y,
+                        )
+                        display_name = facade.display_name
+                    else:
+                        seed = build_scaled_puppet_seed(
+                            unit_uid=unit_uid,
+                            side="attacker",
+                            x=x,
+                            y=y,
+                            main_atk=main_atk,
+                            main_hp=main_hp,
+                            atk_ratio=float(defaults.atk_ratio),
+                            hp_ratio=float(defaults.hp_ratio),
+                            speed=int(defaults.speed),
+                            label_zh="傀儡",
+                            ephemeral=False,
+                        )
+                        display_name = "傀儡"
             else:
-                atk = max(1, int(main_atk * defaults.atk_ratio))
-                hp = max(1, int(main_hp * defaults.hp_ratio))
-                name = kind
-            speed = defaults.speed
-            if kind == "pet" and unit.get("ref_id") is not None:
-                speed = (await pet_svc.get_pet_stats(int(unit["ref_id"]), character.id))["speed"]
+                seed = build_scaled_puppet_seed(
+                    unit_uid=unit_uid,
+                    side="attacker",
+                    x=x,
+                    y=y,
+                    main_atk=main_atk,
+                    main_hp=main_hp,
+                    atk_ratio=float(defaults.atk_ratio),
+                    hp_ratio=float(defaults.hp_ratio),
+                    speed=int(defaults.speed),
+                    label_zh=kind,
+                    ephemeral=False,
+                )
+                seed.unit_kind = kind
+                display_name = kind
+
             units.append(
-                {
-                    "uid": f"a_{unit['unit_uid']}",
-                    "kind": kind,
-                    "name": name,
-                    "side": 0,
-                    "x": int(unit["x"]),
-                    "y": int(unit["y"]),
-                    "atk": atk,
-                    "hp": hp,
-                    "speed": speed,
-                    "attack_range": defaults.attack_range,
-                    "attack_kind": defaults.attack_kind,
-                    "can_fly": defaults.can_fly,
-                    **dice_payload,
-                },
+                seed_to_engine_unit(
+                    seed,
+                    defaults=defaults,
+                    dice_payload=dice_payload,
+                    name=display_name,
+                    side=BATTLE_SIDE_ATTACKER,
+                ),
             )
 
-        # M4：进攻方神识超载衰减（仅 attacker）
-        # DIVINE_SENSE_STRICT=false 时仅打日志不衰减（DEV）；正式默认 true
-        av_count, _pet_count, _pet_costs = DivineSenseService.count_deployed_from_units(
-            preset_units,
-        )
-        from sqlalchemy import select
-
-        from app.db.models.pet import Pet
-
-        pets_cfg = get_game_config().pets
-        ds_cfg = get_game_config().divine_sense
-        enriched_costs: list[int] = []
-        for unit in preset_units:
-            if str(unit.get("unit_kind")) != "pet":
-                continue
-            cost = ds_cfg.cost_pet
-            ref_id = unit.get("ref_id")
-            if ref_id is not None:
-                row = await self._session.execute(
-                    select(Pet).where(
-                        Pet.id == int(ref_id),
-                        Pet.character_id == character.id,
-                    ),
-                )
-                pet_row = row.scalar_one_or_none()
-                if pet_row is not None:
-                    sp = pets_cfg.species.get(pet_row.species_id)
-                    if sp is not None and sp.divine_sense_cost is not None:
-                        cost = int(sp.divine_sense_cost)
-            enriched_costs.append(cost)
-
-        sense = DivineSenseService.snapshot_for_character(
-            character,
-            avatar_deploy_count=av_count,
-            pet_deploy_count=len(enriched_costs),
-            pet_costs=enriched_costs or None,
-        )
+        # 神识超载按装备栏（化身开关+灵宠槽+傀儡编成），与棋盘落子无关
+        sense = await AvatarService(self._session).get_sense(character)
         settings = get_settings()
         if sense["load"] > sense["soft_cap"]:
             if settings.divine_sense_strict:
@@ -301,30 +441,60 @@ class AutochessService:
 
         - 配置了 ``units``：坐标即绝对棋盘坐标（配置约定敌对半区）；
         - 旧式单体怪：回退为单棋子落防守锚点（默认锚 x 镜像 → (6,3)）。
+        S1-2：经 MonsterCharacter.on_battle_enter 再转引擎 dict。
         """
+        from app.constants.battle import (
+            BATTLE_SIDE_DEFENDER,
+            DICE_PURPOSE_COMBAT_DAMAGE,
+            PIECE_KIND_MAIN,
+            PIECE_KIND_MONSTER,
+        )
+        from app.game.battle.assemble import seed_to_engine_unit
+        from app.game.character import MonsterCharacter
         from app.services.dice_service import DiceService
 
-        monster_bounds = DiceService().monster_bounds(purpose="combat_damage")
+        monster_bounds = DiceService().monster_bounds(purpose=DICE_PURPOSE_COMBAT_DAMAGE)
         dice_payload = DiceService.unit_dice_payload(monster_bounds)
         if monster.units:
             catalog = get_game_config().taunt_auras
             result: list[dict[str, Any]] = []
             for u in monster.units:
-                row: dict[str, Any] = {
-                    "uid": f"d_{u.unit_uid}",
-                    "kind": "monster",
-                    "name": u.name,
-                    "side": 1,
-                    "x": u.x,
-                    "y": u.y,
-                    "atk": u.atk,
-                    "hp": u.hp,
-                    "speed": u.speed,
-                    "attack_range": u.attack_range,
-                    "attack_kind": u.attack_kind,
-                    "can_fly": u.can_fly,
-                    **dice_payload,
-                }
+                facade = MonsterCharacter.from_template(
+                    u.unit_uid,
+                    {
+                        "label_zh": u.name,
+                        "stats": {
+                            "hp": u.hp,
+                            "phys_atk": u.atk,
+                            "speed": u.speed,
+                            "mp": 0,
+                        },
+                    },
+                )
+                seed = facade.on_battle_enter(
+                    unit_uid=u.unit_uid,
+                    side="defender",
+                    x=u.x,
+                    y=u.y,
+                )
+                # 怪物 defaults：用配置行覆盖 attack_* / can_fly
+                defaults = type(
+                    "MonsterDefaults",
+                    (),
+                    {
+                        "speed": u.speed,
+                        "attack_range": u.attack_range,
+                        "attack_kind": u.attack_kind,
+                        "can_fly": u.can_fly,
+                    },
+                )()
+                row = seed_to_engine_unit(
+                    seed,
+                    defaults=defaults,
+                    dice_payload=dice_payload,
+                    name=u.name,
+                    side=BATTLE_SIDE_DEFENDER,
+                )
                 snap = catalog.resolve_snapshot(u.taunt_aura_id)
                 if snap is not None:
                     row["taunt_aura"] = snap
@@ -332,24 +502,36 @@ class AutochessService:
                 result.append(row)
             return result
         anchor_x, anchor_y = board.default_anchor
-        defaults = board.unit_defaults["main"]
-        return [
+        # 防守锚点 = 进攻锚点 x 镜像（与改前口径一致）
+        defender_x = (board.size - 1) - anchor_x
+        defaults = board.unit_defaults[PIECE_KIND_MAIN]
+        facade = MonsterCharacter.from_template(
+            "monster",
             {
-                "uid": "d_monster",
-                "kind": "monster",
-                "name": monster.name,
-                "side": 1,
-                # 防守锚点 = 进攻锚点 x 镜像
-                "x": (board.size - 1) - anchor_x,
-                "y": anchor_y,
-                "atk": monster.atk,
-                "hp": monster.hp,
-                "speed": defaults.speed,
-                "attack_range": defaults.attack_range,
-                "attack_kind": defaults.attack_kind,
-                "can_fly": False,
-                **dice_payload,
+                "label_zh": monster.name,
+                "stats": {
+                    "hp": monster.hp,
+                    "phys_atk": monster.atk,
+                    "speed": defaults.speed,
+                    "mp": 0,
+                },
             },
+        )
+        seed = facade.on_battle_enter(
+            unit_uid="monster",
+            side="defender",
+            x=defender_x,
+            y=anchor_y,
+        )
+        return [
+            seed_to_engine_unit(
+                seed,
+                defaults=defaults,
+                dice_payload=dice_payload,
+                name=monster.name,
+                side=BATTLE_SIDE_DEFENDER,
+                uid="d_monster",
+            ),
         ]
 
     @staticmethod
@@ -435,7 +617,7 @@ class AutochessService:
         await self._formations.validate_units(character, preset_units, preset.formation_id)
         # 赛会/PVP 路径：禁止道友客串化身
         self._reject_guest_units(preset_units, mode="赛会")
-        formation = self._formations.get_formation_def(preset.formation_id, character)
+        formation = await self._formations.resolve_formation_def(preset.formation_id, character)
         units = await self._attacker_units(character, preset_units)
         formation_plain = (
             None
@@ -474,6 +656,8 @@ class AutochessService:
         self,
         character: Character,
         preset_slot: int | None,
+        *,
+        inject_assist: bool = True,
     ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
         """
         加载进攻预设 → (棋子列表, 阵法 plain)。
@@ -491,24 +675,31 @@ class AutochessService:
             preset_units = [
                 {"unit_uid": "main", "unit_kind": "main", "x": anchor_x, "y": anchor_y},
             ]
-        # 开战前重校验（防配置变更后旧预设越界）
-        await self._formations.validate_units(character, preset_units, preset.formation_id)
-        # 化身独战：扣化身体力与日行动（AVATAR-D03/D04）
-        has_main = any(str(u.get("unit_kind")) == "main" for u in preset_units)
-        if not has_main:
-            from app.services.avatar_repo import fetch_avatar_row
+        from app.services.avatar_assist_service import parse_guest_unit_uid
+        from app.services.formation_service import parse_assist_anchor
 
-            av_svc = AvatarService(self._session)
-            avatar_row = await fetch_avatar_row(self._session, character.id)
-            if avatar_row is not None:
-                av_svc.spend_avatar_action(
-                    avatar_row,
-                    character,
-                    action_key="solo_battle",
-                )
+        preset_units = [
+            unit
+            for unit in preset_units
+            if parse_guest_unit_uid(str(unit.get("unit_uid", ""))) is None
+        ]
+        if inject_assist:
+            preset_units = await self._formations.inject_assist_guest(
+                character,
+                preset_units,
+                parse_assist_anchor(getattr(preset, "assist_anchor_json", None)),
+                formation_id=preset.formation_id,
+            )
+        # 开战前重校验（防配置变更后旧预设越界）
+        await self._formations.validate_units(
+            character,
+            preset_units,
+            preset.formation_id,
+            allow_guest=inject_assist,
+        )
         # 道友助战客串：开战扣主人「助战专用体力」（与探索 stamina 隔离）
         await self._spend_guest_assist_actions(character, preset_units)
-        formation = self._formations.get_formation_def(preset.formation_id, character)
+        formation = await self._formations.resolve_formation_def(preset.formation_id, character)
         units = await self._attacker_units(character, preset_units)
         formation_plain = (
             None
@@ -558,6 +749,36 @@ class AutochessService:
                     message=f"{mode}不可使用道友化身助战",
                     http_status=400,
                 )
+
+    async def _apply_talisman_triggers(
+        self,
+        character: Character,
+        events: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Inject item_trigger rows from preloaded talismans; consume if enabled."""
+        from app.constants.battle import BATTLE_SIDE_ATTACKER
+        from app.domain.talisman_battle import inject_item_triggers
+        from app.services.craft_service import CraftService
+
+        cfg = get_game_config().research.talisman
+        craft = CraftService(self._session)
+        talismans = await craft.peek_preloaded_talismans(character)
+        attacker_uids: set[str] = set()
+        for event in events:
+            if event.get("type") != "battle_start":
+                continue
+            for unit in event.get("units") or []:
+                if int(unit.get("side") or 0) == BATTLE_SIDE_ATTACKER:
+                    attacker_uids.add(str(unit.get("uid") or ""))
+        new_events = inject_item_triggers(
+            events,
+            talismans,
+            enabled=bool(cfg.battle_enabled),
+            attacker_uids=attacker_uids,
+        )
+        if cfg.battle_enabled and talismans:
+            await craft.consume_preloaded_talismans(character)
+        return new_events
 
     @staticmethod
     def _resolve_seed() -> int:
@@ -726,6 +947,7 @@ class AutochessService:
         }
         seed = self._resolve_seed()
         outcome = simulate_battle(setup, seed)
+        outcome["events"] = await self._apply_talisman_triggers(character, outcome["events"])
 
         # P3 结算：奖励入账；修为乘开战锁定环境（日历/天气 battle_cultivation）
         result = outcome["result"]
@@ -848,6 +1070,7 @@ class AutochessService:
         attacker_units, attacker_formation = await self._load_attack_setup(
             character,
             preset_slot,
+            inject_assist=False,
         )
         stamina_state = self._stamina.spend(character, "battle_pvp", now=current_time)
 
@@ -855,10 +1078,19 @@ class AutochessService:
         defender_formation = None
         formation_id = str(payload.get("formation_id") or "none")
         if formation_id != "none":
-            formations = get_game_config().formations.formations
-            formation = formations.get(formation_id)
-            if formation is not None:
-                defender_formation = FormationService.formation_to_plain(formation)
+            inline = payload.get("formation_blueprint")
+            if isinstance(inline, dict):
+                custom = FormationService.def_from_blueprint(
+                    formation_id=formation_id,
+                    name=str(payload.get("formation_name") or formation_id),
+                    blueprint=inline,
+                )
+                defender_formation = FormationService.formation_to_plain(custom)
+            else:
+                formations = get_game_config().formations.formations
+                formation = formations.get(formation_id)
+                if formation is not None:
+                    defender_formation = FormationService.formation_to_plain(formation)
 
         defender_units = self._snapshot_defender_units(payload, board)
         atk_unit = attacker_units[0] if attacker_units else {}
@@ -879,6 +1111,7 @@ class AutochessService:
         }
         seed = self._resolve_seed()
         outcome = simulate_battle(setup, seed)
+        outcome["events"] = await self._apply_talisman_triggers(character, outcome["events"])
 
         # PVP 占位奖励：只加攻方；修为同样乘开战环境（开战时锁定）
         from app.services.calendar_service import CalendarService

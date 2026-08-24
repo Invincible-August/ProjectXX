@@ -17,6 +17,14 @@ export interface IdleSyncData {
   spent_stamina?: number
   /** 采矿顺带宗门库入账 */
   mining_pool_stones?: number
+  /** 同一次 sync 化身线程入账（供 10 周天日志） */
+  avatar_gains?: {
+    settled_ticks: number
+    gained_cultivation: number
+    gained_body?: number
+    gained_crafting?: number
+    spent_spirit_stones: number
+  }
   /** 下一片理论到期 ISO UTC；未修炼/停滞为 null */
   next_tick_at: string | null
 }

@@ -110,21 +110,11 @@ class AllocateService:
             pool = int(character.body_tempering_points)
             if pool < amount:
                 raise AppError(code=40032, message="淬体度池不足", http_status=400)
-            before = int(getattr(character, "body_temper_progress", 0) or 0)
-            # 先试算：写入进度（封顶本境），再按实际增量扣池
             apply_body_temper_progress(character, amount)
-            after = int(character.body_temper_progress)
-            gained = max(0, after - before)
-            if gained <= 0:
-                raise AppError(
-                    code=40032,
-                    message="本境淬体进度已满，请先发起淬体晋境",
-                    http_status=400,
-                )
-            character.body_tempering_points = pool - gained
-            allocated = gained
+            character.body_tempering_points = pool - amount
+            allocated = amount
             levels_gained = 0
-            message = f"已向淬体进度投入 {gained} 点淬体度"
+            message = f"已向淬体进度投入 {amount} 点淬体度"
         elif target_type == "technique":
             if not target_id:
                 raise AppError(code=40033, message="须指定功法 id", http_status=400)

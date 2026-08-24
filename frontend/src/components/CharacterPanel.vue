@@ -1,26 +1,38 @@
 <script setup lang="ts">
 /**
- * 角色属性：境界进度、三池、品阶；详细战斗/生活属性折叠。
- * compact=true 时用于大厅摘要，链到 /character。
+ * 角色属性：境界进度、三池、品阶、已开道则大道/道值；详细战斗/根基/生成属性折叠。
+ * compact=true 时用于大厅摘要（无卡头，详细折叠隐藏）。
  */
 import { computed } from 'vue'
-import { useRouter } from 'vue-router'
 import type { CharacterPublic } from '../types/character'
 import { useActivityGate } from '../composables/useActivityGate'
+import { useAvatarStore } from '../stores/avatar'
 import { useCharacterStore } from '../stores/character'
 import { idleDirectionLabel } from '../utils/idleLabels'
+import { daoLabel } from '../utils/daoLabel'
+import AvatarAssistSwitch from './avatar/AvatarAssistSwitch.vue'
 
 const props = withDefaults(
   defineProps<{
     character: CharacterPublic | null
-    /** 大厅摘要：隐藏详细折叠，显示「打开角色页」 */
+    /** 大厅摘要：隐藏详细折叠 */
     compact?: boolean
+    /** 化身页 / 大厅化身简览 */
+    variant?: 'main' | 'avatar'
+    /** 大厅：本体名与化身同槽切换 */
+    showBriefSwitch?: boolean
+    briefTab?: 'main' | 'avatar'
   }>(),
-  { compact: false },
+  { compact: false, variant: 'main', showBriefSwitch: false, briefTab: 'main' },
 )
 
-const router = useRouter()
+const emit = defineEmits<{
+  'update:briefTab': [value: 'main' | 'avatar']
+  log: [message: string, level?: 'info' | 'success' | 'warning' | 'system']
+}>()
+
 const characterStore = useCharacterStore()
+const avatarStore = useAvatarStore()
 const { activity, modeLabel } = useActivityGate()
 
 /**
@@ -48,9 +60,9 @@ const mainActivityLabel = computed(() => {
     return `制造业修炼 +${rate}/周天`
   }
   if (mainDir === 'sect_mining') {
-    return '采矿中'
+    return '采矿'
   }
-  return '待机'
+  return '空闲'
 })
 
 /** 化身侧：方向与速率（未凝练单独标明） */
@@ -73,8 +85,8 @@ const avatarActivityLabel = computed(() => {
     const rate = preview?.avatar_crafting_per_tick ?? 0
     return `制造业修炼 +${rate}/周天`
   }
-  if (dir === 'sect_mining') return '采矿中'
-  if (dir === 'none') return '待机'
+  if (dir === 'sect_mining') return '采矿'
+  if (dir === 'none') return '空闲'
   return idleDirectionLabel(dir)
 })
 
@@ -116,27 +128,49 @@ const statusTagType = computed(() => {
   return 'warning'
 })
 
+const spiritRootLine = computed(() => {
+  const roots = props.character?.spirit_roots
+  if (roots?.length) {
+    return roots.map((r) => r.label_zh).join('、')
+  }
+  const tags = props.character?.spirit_root_tags
+  if (tags?.length) return tags.join('、')
+  return '未定'
+})
+
+/** 已选定本命道后才在角色栏展示；未开道不占位。本体与化身各读自己的 dao。 */
+const daoOpened = computed(() => Boolean(props.character?.dao?.fate_dao_id))
+const daoName = computed(() =>
+  daoLabel(props.character?.dao?.fate_dao_id, props.character?.dao?.fate_dao_label),
+)
+const daoQi = computed(() => props.character?.dao?.qi ?? 0)
+const daoLevel = computed(() => props.character?.dao?.level ?? 1)
+
 const shownStones = computed(() => {
+  if (props.variant === 'avatar') return props.character?.spirit_stones ?? 0
   if (characterStore.display) return characterStore.display.spirit_stones
   return props.character?.spirit_stones ?? 0
 })
 
 const shownCultivationPool = computed(() => {
+  if (props.variant === 'avatar') return props.character?.cultivation_points ?? 0
   if (characterStore.display) return characterStore.display.cultivation_points
   return props.character?.cultivation_points ?? 0
 })
 
 const shownBody = computed(() => {
+  if (props.variant === 'avatar') return props.character?.body_tempering_points ?? 0
   if (characterStore.display) return characterStore.display.body_tempering_points
   return props.character?.body_tempering_points ?? 0
 })
 
 const shownCrafting = computed(() => {
+  if (props.variant === 'avatar') return props.character?.crafting_exp ?? 0
   if (characterStore.display) return characterStore.display.crafting_exp
   return props.character?.crafting_exp ?? 0
 })
 
-/** 战斗体力：优先惰性恢复后的 battle_stamina */
+/** 体力：优先惰性恢复后的 battle_stamina */
 const battleStaminaLine = computed(() => {
   const ch = props.character
   if (!ch) return '—'
@@ -172,123 +206,271 @@ const shownStalled = computed(() => {
   return props.character?.is_stalled ?? false
 })
 
-const divineSlots = computed(() => {
-  const n = props.character?.divine_ability_slots ?? 0
-  return Array.from({ length: Math.max(0, n) }, (_, i) => i)
-})
-
 const combatFinal = computed(() => props.character?.combat?.final ?? null)
 const combatLabels = computed(() => props.character?.combat?.labels ?? {})
 const combatPrimary = computed(() => props.character?.combat?.primary ?? null)
-const combatBreakdown = computed(() => props.character?.combat?.breakdown ?? [])
 const lifeFinal = computed(() => props.character?.life?.final ?? null)
 const lifeLabels = computed(() => props.character?.life?.labels ?? {})
+
+type PanelRow = { key: string; label: string; value: string | number }
+
+function pickLabeled(
+  bag: Record<string, number> | null | undefined,
+  labels: Record<string, string>,
+  key: string,
+): PanelRow | null {
+  if (!bag || bag[key] === undefined) return null
+  return {
+    key,
+    label: labels[key] || key,
+    value: bag[key],
+  }
+}
+
+/** 战斗：资源 → 攻防 → 机动 → 元素抗 → 异常/暗抗 */
+const COMBAT_ORDER = [
+  'hp',
+  'mp',
+  'phys_atk',
+  'magic_atk',
+  'phys_def',
+  'magic_def',
+  'speed',
+  'hit',
+  'dodge',
+  'resist_metal',
+  'resist_wood',
+  'resist_water',
+  'resist_fire',
+  'resist_earth',
+  'resist_wind',
+  'resist_thunder',
+  'resist_ailment',
+  'resist_dark',
+] as const
 
 const combatCoreRows = computed(() => {
   const f = combatFinal.value
   if (!f) return []
-  const keys = [
-    'hp',
-    'phys_atk',
-    'phys_def',
-    'magic_atk',
-    'magic_def',
-    'speed',
-    'mp',
-    'hit',
-    'dodge',
+  return COMBAT_ORDER.flatMap((k) => {
+    const row = pickLabeled(f, combatLabels.value, k)
+    return row ? [row] : []
+  })
+})
+
+const FOUNDATION_PRIMARY_ORDER = [
+  'strength',
+  'agility',
+  'intelligence',
+  'comprehension',
+  'bone_root',
+] as const
+
+const LIFE_HIDDEN_IN_PANEL = new Set<string>([
+  'stamina',
+  'comprehension',
+  'endurance',
+  'breath_efficiency',
+  'resist_tribulation',
+  'resist_heart_demon',
+])
+
+const foundationRows = computed((): PanelRow[] => {
+  const rows: PanelRow[] = []
+  const primary = combatPrimary.value
+  for (const key of FOUNDATION_PRIMARY_ORDER) {
+    const row =
+      pickLabeled(primary, combatLabels.value, key) ||
+      pickLabeled(lifeFinal.value, lifeLabels.value, key)
+    if (row) rows.push(row)
+  }
+  rows.push({
+    key: 'divine_ability',
+    label: '神通',
+    value: props.character?.divine_ability_slots ?? 0,
+  })
+  const breath = pickLabeled(lifeFinal.value, lifeLabels.value, 'breath_efficiency')
+  if (breath) rows.push(breath)
+  const endurance = pickLabeled(lifeFinal.value, lifeLabels.value, 'endurance')
+  if (endurance) rows.push(endurance)
+  for (const key of ['resist_tribulation', 'resist_heart_demon'] as const) {
+    const row = pickLabeled(lifeFinal.value, lifeLabels.value, key)
+    if (row) rows.push(row)
+  }
+  return rows
+})
+
+/** 生成：心性/灵巧/精密与对应制作等级成对 */
+const GENERATION_LIFE_ORDER = [
+  'temperament',
+  'craft_dexterity',
+  'precision',
+] as const
+
+const generationRows = computed((): PanelRow[] => {
+  const craftByBranch = new Map(
+    craftLevelRows.value.map((row) => [row.branch, row]),
+  )
+  const pairs: [string, string][] = [
+    ['temperament', 'alchemy'],
+    ['craft_dexterity', 'smithing'],
+    ['precision', 'talisman'],
   ]
-  return keys
-    .filter((k) => f[k] !== undefined)
-    .map((k) => ({
-      key: k,
-      label: combatLabels.value[k] || k,
-      value: f[k],
-    }))
+  const rows: PanelRow[] = []
+  for (const [lifeKey, branch] of pairs) {
+    const lifeRow = pickLabeled(lifeFinal.value, lifeLabels.value, lifeKey)
+    if (lifeRow) rows.push(lifeRow)
+    const craft = craftByBranch.get(branch)
+    if (craft) {
+      rows.push({
+        key: `craft:${craft.branch}`,
+        label: craft.label_zh,
+        value: `Lv.${craft.level}`,
+      })
+    }
+  }
+  for (const branch of ['array', 'puppet'] as const) {
+    const craft = craftByBranch.get(branch)
+    if (craft) {
+      rows.push({
+        key: `craft:${craft.branch}`,
+        label: craft.label_zh,
+        value: `Lv.${craft.level}`,
+      })
+    }
+  }
+  for (const key of Object.keys(lifeFinal.value || {})) {
+    if (LIFE_HIDDEN_IN_PANEL.has(key)) continue
+    if ((GENERATION_LIFE_ORDER as readonly string[]).includes(key)) continue
+    const extra = pickLabeled(lifeFinal.value, lifeLabels.value, key)
+    if (extra) rows.push(extra)
+  }
+  return rows
 })
 
-const resistRows = computed(() => {
-  const f = combatFinal.value
-  if (!f) return []
-  return Object.keys(f)
-    .filter((k) => k.startsWith('resist_'))
-    .map((k) => ({
-      key: k,
-      label: combatLabels.value[k] || k,
-      value: f[k],
-    }))
+const craftLevelRows = computed(() => {
+  const rows = props.character?.craft_levels
+  if (Array.isArray(rows) && rows.length) return rows
+  const arrayLv = props.character?.array_craft_level ?? 0
+  return [
+    { branch: 'alchemy', label_zh: '炼丹等级', level: 0 },
+    { branch: 'smithing', label_zh: '炼器等级', level: 0 },
+    { branch: 'talisman', label_zh: '制符等级', level: 0 },
+    { branch: 'array', label_zh: '阵法等级', level: arrayLv },
+    { branch: 'puppet', label_zh: '傀儡制作等级', level: 0 },
+  ]
 })
-
-const primaryRows = computed(() => {
-  const p = combatPrimary.value
-  if (!p) return []
-  return Object.entries(p).map(([k, v]) => ({
-    key: k,
-    label: combatLabels.value[k] || k,
-    value: v,
-  }))
-})
-
-const lifeRows = computed(() => {
-  const f = lifeFinal.value
-  if (!f) return []
-  return Object.entries(f).map(([k, v]) => ({
-    key: k,
-    label: lifeLabels.value[k] || k,
-    value: v,
-  }))
-})
-
-const hasDetailAttrs = computed(
-  () =>
-    combatCoreRows.value.length > 0 ||
-    resistRows.value.length > 0 ||
-    primaryRows.value.length > 0 ||
-    lifeRows.value.length > 0,
-)
 
 function progressPercent(ratio: number): number {
   if (!Number.isFinite(ratio)) return 0
   return Math.max(0, Math.min(100, Math.round(ratio * 100)))
 }
 
-function formatBreakdownLine(row: Record<string, unknown>): string {
-  const label = String(row.label_zh || row.source || '来源')
-  const parts: string[] = []
-  for (const [k, v] of Object.entries(row)) {
-    if (k === 'source' || k === 'label_zh' || k === 'note_zh' || k === 'enabled') continue
-    parts.push(`${combatLabels.value[k] || k}=${v}`)
-  }
-  if (row.enabled === false) {
-    parts.push(String(row.note_zh || '通道未开启'))
-  }
-  return parts.length ? `${label}：${parts.join('，')}` : label
+function formatResourceAmount(current: number, max: number, clampCurrent = true): string {
+  const cap = Math.max(0, Math.round(Number(max) || 0))
+  const raw = Math.max(0, Math.round(Number(current) || 0))
+  const cur = clampCurrent ? Math.min(cap, raw) : raw
+  return `${cur}/ ${cap}`
 }
+
+function resourcePercent(current: number, max: number, clampCurrent = true): number {
+  const cap = Math.max(0, Math.round(Number(max) || 0))
+  const raw = Math.max(0, Math.round(Number(current) || 0))
+  const cur = clampCurrent ? Math.min(cap, raw) : raw
+  if (cap <= 0) return 0
+  return Math.round((cur / cap) * 100)
+}
+
+const hpLine = computed(() => {
+  const ch = props.character
+  const max = ch?.hp_max ?? combatFinal.value?.hp ?? ch?.base_hp ?? 0
+  const cur = ch?.hp_current ?? max
+  return formatResourceAmount(cur, max)
+})
+
+const hpPct = computed(() => {
+  const ch = props.character
+  const max = ch?.hp_max ?? combatFinal.value?.hp ?? ch?.base_hp ?? 0
+  const cur = ch?.hp_current ?? max
+  return resourcePercent(cur, max)
+})
+
+const mpLine = computed(() => {
+  const ch = props.character
+  const max = ch?.mp_max ?? combatFinal.value?.mp ?? 0
+  const cur = ch?.mp_current ?? max
+  return formatResourceAmount(cur, max)
+})
+
+const mpPct = computed(() => {
+  const ch = props.character
+  const max = ch?.mp_max ?? combatFinal.value?.mp ?? 0
+  const cur = ch?.mp_current ?? max
+  return resourcePercent(cur, max)
+})
+
+const senseLine = computed(() => {
+  const sense = props.character?.divine_sense
+  if (!sense) return ''
+  return formatResourceAmount(sense.load, sense.capacity, false)
+})
+
+const ownerName = computed(
+  () => characterStore.character?.name ?? props.character?.name ?? '角色',
+)
+
+const avatarStaminaLine = computed(() => {
+  const s = avatarStore.avatar?.stamina
+  if (!s) return ''
+  return formatResourceAmount(s.stamina, s.stamina_cap)
+})
+
+const avatarAssistCountLine = computed(() => {
+  const s = avatarStore.avatar?.stamina
+  if (!s) return ''
+  return formatResourceAmount(s.daily_actions_remaining, s.daily_action_cap)
+})
 </script>
 
 <template>
   <el-card shadow="never" class="attr-panel">
-    <template #header>
-      <div class="attr-header">
-        <el-text tag="b">{{ compact ? '角色摘要' : '角色属性' }}</el-text>
-        <el-button
-          v-if="compact"
-          size="small"
-          type="primary"
-          link
-          @click="router.push('/character')"
-        >
-          打开角色页
-        </el-button>
-      </div>
+    <template v-if="!compact" #header>
+      <el-text tag="b">{{ variant === 'avatar' ? '化身属性' : '角色属性' }}</el-text>
     </template>
 
     <el-empty v-if="!character" description="暂无角色数据" :image-size="56" />
 
     <template v-else>
       <div class="attr-hero">
-        <el-text tag="b" size="large">{{ character.name }}</el-text>
-        <el-tag type="info" effect="plain" size="small">{{ character.realm_display }}</el-tag>
+        <div v-if="compact && showBriefSwitch" class="brief-switch">
+          <button
+            type="button"
+            class="brief-tab"
+            :class="{ on: briefTab === 'main' }"
+            @click="emit('update:briefTab', 'main')"
+          >
+            {{ ownerName }}
+          </button>
+          <button
+            type="button"
+            class="brief-tab"
+            :class="{ on: briefTab === 'avatar' }"
+            @click="emit('update:briefTab', 'avatar')"
+          >
+            化身
+          </button>
+        </div>
+        <AvatarAssistSwitch
+          v-else-if="variant === 'avatar'"
+          @log="(msg, level) => emit('log', msg, level)"
+        />
+        <el-text v-else tag="b" size="large">{{ character.name }}</el-text>
+        <div class="attr-hero-tags">
+          <el-tag type="info" effect="plain" size="small">{{ character.realm_display }}</el-tag>
+          <el-tag v-if="daoOpened" type="warning" effect="plain" size="small">
+            {{ daoName }}
+          </el-tag>
+        </div>
       </div>
 
       <div class="attr-progress">
@@ -309,7 +491,7 @@ function formatBreakdownLine(row: Record<string, unknown>): string {
       </div>
 
       <el-alert
-        v-if="shownStalled"
+        v-if="variant === 'main' && shownStalled"
         title="灵石不足，修炼停滞；可通过战斗获取灵石"
         type="warning"
         show-icon
@@ -318,7 +500,7 @@ function formatBreakdownLine(row: Record<string, unknown>): string {
       />
 
       <el-alert
-        v-if="character.offline_pending"
+        v-if="variant === 'main' && character.offline_pending"
         title="有未领取的离线收益，请先领取后再修炼"
         type="info"
         show-icon
@@ -328,22 +510,33 @@ function formatBreakdownLine(row: Record<string, unknown>): string {
 
       <el-descriptions :column="1" border size="small" class="attr-desc">
         <el-descriptions-item label="境界">{{ character.realm_display }}</el-descriptions-item>
-        <el-descriptions-item label="品阶">
+        <el-descriptions-item v-if="daoOpened" label="大道">{{ daoName }}</el-descriptions-item>
+        <el-descriptions-item v-if="daoOpened" label="道值">
+          {{ daoQi }}
+          <el-text size="small" type="info">（Lv.{{ daoLevel }}）</el-text>
+        </el-descriptions-item>
+        <el-descriptions-item label="灵根">{{ spiritRootLine }}</el-descriptions-item>
+        <el-descriptions-item v-if="variant !== 'avatar'" label="品阶">
           {{ character.breakthrough_grade_name || '尚未跨境品阶' }}
         </el-descriptions-item>
-        <el-descriptions-item label="本体/化身">
-          <el-text :type="statusTagType === 'info' ? undefined : statusTagType" size="small">
-            {{ bodyAvatarLine }}
-          </el-text>
-          <el-text v-if="statusHint" size="small" type="info" class="status-hint">
-            {{ statusHint }}
+        <el-descriptions-item v-if="variant !== 'avatar'" label="轮回点">
+          {{ character.reincarnation_points ?? 0 }}
+          <el-text v-if="character.reincarnation_count != null" size="small" type="info">
+            （周目 {{ character.reincarnation_count }}）
           </el-text>
         </el-descriptions-item>
-        <el-descriptions-item label="灵石">
-          {{ shownStones }}
-          <el-text v-if="characterStore.display" size="small" type="info">（推算）</el-text>
+        <el-descriptions-item label="生命值">
+          {{ hpLine }}
+          <el-text size="small" type="info">（{{ hpPct }}%）</el-text>
         </el-descriptions-item>
-        <el-descriptions-item label="战斗体力">
+        <el-descriptions-item label="法力值">
+          {{ mpLine }}
+          <el-text size="small" type="info">（{{ mpPct }}%）</el-text>
+        </el-descriptions-item>
+        <el-descriptions-item v-if="variant === 'main' && character.divine_sense" label="神识">
+          {{ senseLine }}
+        </el-descriptions-item>
+        <el-descriptions-item v-if="variant !== 'avatar'" label="体力">
           {{ battleStaminaLine }}
           <el-text
             v-if="character.battle_stamina?.regen_per_minute"
@@ -352,6 +545,26 @@ function formatBreakdownLine(row: Record<string, unknown>): string {
           >
             （{{ character.battle_stamina.regen_per_minute }}/分）
           </el-text>
+        </el-descriptions-item>
+        <el-descriptions-item v-if="variant === 'avatar' && avatarStaminaLine" label="化身体力">
+          {{ avatarStaminaLine }}
+        </el-descriptions-item>
+        <el-descriptions-item v-if="variant === 'avatar' && avatarAssistCountLine" label="助战次数">
+          {{ avatarAssistCountLine }}
+        </el-descriptions-item>
+        <el-descriptions-item v-if="variant === 'main' && !showBriefSwitch" label="本体/化身">
+          <el-text :type="statusTagType === 'info' ? undefined : statusTagType" size="small">
+            {{ bodyAvatarLine }}
+          </el-text>
+          <el-text v-if="statusHint" size="small" type="info" class="status-hint">
+            {{ statusHint }}
+          </el-text>
+        </el-descriptions-item>
+        <el-descriptions-item v-else label="状态">
+          {{ idleDirectionLabel(character.idle_direction) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="灵石">
+          {{ shownStones }}
         </el-descriptions-item>
         <el-descriptions-item label="修为池">
           {{ shownCultivationPool }}
@@ -379,101 +592,46 @@ function formatBreakdownLine(row: Record<string, unknown>): string {
         <el-descriptions-item label="制造业经验">
           {{ shownCrafting }}
         </el-descriptions-item>
-        <el-descriptions-item v-if="!compact" label="攻 / 血">
-          {{ character.base_atk }} / {{ character.base_hp }}
-        </el-descriptions-item>
-        <el-descriptions-item v-if="!compact && character.divine_sense" label="神识">
-          {{ character.divine_sense.load }} / {{ character.divine_sense.capacity }}
-        </el-descriptions-item>
-        <el-descriptions-item v-if="!compact && character.has_avatar" label="化身">
+        <el-descriptions-item v-if="!compact && variant === 'main' && character.has_avatar" label="化身">
           已凝练 · {{ idleDirectionLabel(character.avatar_summary?.idle_direction ?? 'none') }}
         </el-descriptions-item>
       </el-descriptions>
 
-      <template v-if="!compact && hasDetailAttrs">
+      <template v-if="!compact">
         <el-collapse class="attr-collapse">
           <el-collapse-item v-if="combatCoreRows.length" title="战斗属性" name="combat">
-            <el-descriptions :column="2" border size="small">
+            <el-descriptions :column="2" border size="small" class="attr-grid">
               <el-descriptions-item
                 v-for="row in combatCoreRows"
                 :key="row.key"
                 :label="row.label"
+                :span="1"
               >
                 {{ row.value }}
               </el-descriptions-item>
             </el-descriptions>
           </el-collapse-item>
-          <el-collapse-item v-if="resistRows.length" title="元素抗性" name="resist">
-            <el-descriptions :column="2" border size="small">
+          <el-collapse-item v-if="foundationRows.length" title="根基" name="primary">
+            <el-descriptions :column="2" border size="small" class="attr-grid">
               <el-descriptions-item
-                v-for="row in resistRows"
+                v-for="row in foundationRows"
                 :key="row.key"
                 :label="row.label"
+                :span="1"
               >
                 {{ row.value }}
               </el-descriptions-item>
             </el-descriptions>
           </el-collapse-item>
-          <el-collapse-item v-if="primaryRows.length" title="根基" name="primary">
-            <el-descriptions :column="2" border size="small">
+          <el-collapse-item v-if="generationRows.length" title="生产属性" name="life">
+            <el-descriptions :column="2" border size="small" class="attr-grid">
               <el-descriptions-item
-                v-for="row in primaryRows"
+                v-for="row in generationRows"
                 :key="row.key"
                 :label="row.label"
+                :span="1"
               >
                 {{ row.value }}
-              </el-descriptions-item>
-            </el-descriptions>
-          </el-collapse-item>
-          <el-collapse-item v-if="lifeRows.length" title="生活属性" name="life">
-            <el-descriptions :column="2" border size="small">
-              <el-descriptions-item
-                v-for="row in lifeRows"
-                :key="row.key"
-                :label="row.label"
-              >
-                {{ row.value }}
-              </el-descriptions-item>
-            </el-descriptions>
-          </el-collapse-item>
-          <el-collapse-item
-            v-if="combatBreakdown.length"
-            title="属性来源拆解"
-            name="breakdown"
-          >
-            <ul class="attr-breakdown">
-              <li v-for="(row, idx) in combatBreakdown" :key="idx">
-                {{ formatBreakdownLine(row) }}
-              </li>
-            </ul>
-          </el-collapse-item>
-          <el-collapse-item title="其它" name="misc">
-            <el-descriptions :column="1" border size="small">
-              <el-descriptions-item
-                v-if="character.reincarnation_points != null"
-                label="轮回点"
-              >
-                {{ character.reincarnation_points }}
-                <el-text v-if="character.reincarnation_count != null" size="small" type="info">
-                  · 周目 {{ character.reincarnation_count }}
-                </el-text>
-              </el-descriptions-item>
-              <el-descriptions-item label="神通槽">
-                <template v-if="divineSlots.length === 0">无（占位）</template>
-                <span v-else class="divine-slots">
-                  <el-tag
-                    v-for="slot in divineSlots"
-                    :key="slot"
-                    size="small"
-                    type="info"
-                    effect="plain"
-                  >
-                    空槽
-                  </el-tag>
-                </span>
-              </el-descriptions-item>
-              <el-descriptions-item label="阵法等级">
-                Lv.{{ character.array_craft_level ?? 0 }}
               </el-descriptions-item>
             </el-descriptions>
           </el-collapse-item>
@@ -484,19 +642,45 @@ function formatBreakdownLine(row: Record<string, unknown>): string {
 </template>
 
 <style scoped>
-.attr-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
 .attr-hero {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
+}
+
+.attr-hero-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.brief-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.brief-tab {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--el-text-color-secondary);
+  max-width: 9em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brief-tab.on {
+  color: var(--el-text-color-primary);
 }
 
 .attr-progress {
@@ -527,16 +711,12 @@ function formatBreakdownLine(row: Record<string, unknown>): string {
   margin-top: 0.75rem;
 }
 
-.attr-breakdown {
-  margin: 0;
-  padding-left: 1.1rem;
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
+.attr-grid :deep(.el-descriptions__table) {
+  table-layout: fixed;
+  width: 100%;
 }
 
-.divine-slots {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
+.attr-grid :deep(.el-descriptions-item__cell) {
+  width: 25%;
 }
 </style>

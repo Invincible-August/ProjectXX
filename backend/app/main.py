@@ -26,7 +26,7 @@ from app.core.logging_config import setup_logging
 from app.db import models  # noqa: F401 — 导入模型以注册到 metadata
 from app.db.bootstrap import prepare_database
 from app.db.session import engine, AsyncSessionLocal
-from app.schemas.common import AppError, failure
+from app.schemas.common import AppError, failure, player_validation_message
 
 settings = get_settings()
 setup_logging(settings)
@@ -43,6 +43,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """
     await prepare_database(engine)
     logger.info("database schema ready url=%s", settings.database_url)
+    logger.info(
+        "content store mode=%s (CONTENT_STORE_MODE)",
+        settings.content_store_mode,
+    )
 
     # ADM：种子管理员 + 已发布覆盖灌入 OverlayStore（须在 get_game_config 前）
     from app.config_source.runtime import RuntimeConfigReloader
@@ -51,6 +55,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     async with AsyncSessionLocal() as session:
         await AdminAuthService(session).ensure_bootstrap_admin()
+        # yaml_authority：仍可灌入 OverlayStore（后台预览用），但玩法 Bundle 不会合并
         await AdminConfigService(session).load_published_into_store()
 
     RuntimeConfigReloader.reload(reason="boot")
@@ -112,10 +117,10 @@ async def handle_validation_error(
     _request: Request,
     exc: RequestValidationError,
 ) -> JSONResponse:
-    """将请求参数校验失败映射为错误码 40000。"""
+    """将请求参数校验失败映射为错误码 40000（玩家可见中文，禁止 Field required）。"""
     first_error = exc.errors()[0] if exc.errors() else {}
-    detail = first_error.get("msg", "请求参数非法")
+    detail = player_validation_message(first_error)
     return JSONResponse(
         status_code=400,
-        content=failure(40000, str(detail)),
+        content=failure(40000, detail),
     )

@@ -1,15 +1,23 @@
 # =====================================================================
 # 用途：化身解锁、境界功能矩阵、互传折扣、体力/日行动、挂机速率
-# 加载时机：化身系统（凝练 / 双线程挂机 / 传功 / 独战闸 / 探索·任务桩）
+# 加载时机：化身系统（凝练 / 双线程挂机 / 传功 / 编成须含本体 / 探索·任务桩）
 # 后台域：avatar（表格 + JSON 双写；见 admin_field_schema）
 # 定案：永久单化身 max_avatars=1（化身系统设计 v1.0）
 # =====================================================================
 
 unlock_major_realm: jindan        # 解锁所需最低大境界
 max_avatars: 1                    # 永久单化身；校验必须为 1，禁止改为 >1
+max_major_realm: true_immortal    # 常规修为链硬顶；道主/轮回是身份，不进本字段
+avatar_lead_majors: 0             # 默认可比本体高几个大境界；功法/装备可授予叠加
 initial_stat_ratio: 0.5           # 凝练时继承本体属性比例
 material_mod_placeholder: 1.0     # 材料修正占位乘区
 condense_spirit_stone_cost: 1000  # 凝练消耗灵石
+condense_cultivation_cost: 500    # 凝练消耗灵力（本体修为池）
+# 空列表=任意已学功法均可作化身功法（点槽填入，不消耗已学）
+condense_technique_ids: []
+# 媒介：点槽从背包材料填入并消耗
+condense_medium_item_ids: [herb_spirit_grass]
+condense_medium_quantity: 1
 
 # —— 功能解锁（本体大境界序号 ≥ min_major 序号则解锁，含更高境界继承）——
 feature_unlocks:
@@ -37,10 +45,6 @@ feature_unlocks:
     min_major: yuanying
     label_zh: 化身体力
     summary: 元婴起独立体力与日行动
-  solo_battle:
-    min_major: huashen
-    label_zh: 化身独战
-    summary: 编成可不含本体
   friend_assist:
     min_major: huashen
     label_zh: 道友助战
@@ -95,7 +99,6 @@ stamina:
     per_hour: 5
     summary: 每现实小时恢复 5 点（占位）
   action_costs:
-    solo_battle: 10
     assist_battle: 10
     explore_step: 5
     quest_accept: 2

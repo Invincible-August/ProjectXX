@@ -92,7 +92,7 @@ def apply_body_temper_progress(character: Any, gained: int = 0) -> None:
     """
     将淬体进度写入角色（仅累计，不自动晋级）。
 
-    进度封顶为当前层/期 ``progress_required``。
+    允许超过当前档 ``progress_required``；淬体成功时再扣本档门槛，超额保留。
 
     Args:
         character: 角色 ORM。
@@ -104,10 +104,7 @@ def apply_body_temper_progress(character: Any, gained: int = 0) -> None:
     if not cfg.majors:
         return
     _ensure_layer_fields(character, cfg)
-    need = current_progress_required(character)
     progress = int(getattr(character, "body_temper_progress", 0) or 0) + max(0, int(gained or 0))
-    if need > 0:
-        progress = min(progress, need)
     character.body_temper_progress = progress
 
 
@@ -291,7 +288,9 @@ def attempt_quench(
     character.body_temper_stage = str(ready["to_stage"])
     character.body_temper_layer = int(ready["to_layer"])
     character.body_temper_layer_label = str(ready["to_layer_label"])
-    character.body_temper_progress = 0
+    required = int(ready.get("required") or 0)
+    leftover = max(0, int(character.body_temper_progress) - required)
+    character.body_temper_progress = leftover
     return {
         **ready,
         "success": True,

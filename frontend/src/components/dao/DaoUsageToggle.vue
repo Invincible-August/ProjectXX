@@ -34,7 +34,7 @@ function onCraft(v: string | number | boolean): void {
     <div class="row">
       <el-switch
         :model-value="daoStore.preferCraftUseDao"
-        active-text="工坊默认耗道值运用"
+        active-text="工坊默认赋予道韵"
         @change="onCraft"
       />
     </div>

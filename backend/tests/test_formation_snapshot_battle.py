@@ -61,7 +61,7 @@ def _cfg(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_default_presets_and_save(tmp_path: Path) -> None:
-    """默认三槽惰性种子；保存校验；非法占位报 40041。"""
+    """默认五槽惰性种子；保存校验；非法占位报 40041。"""
 
     async def _body() -> None:
         async with open_test_session_factory(tmp_path / "formation.db") as factory:
@@ -75,12 +75,12 @@ def test_default_presets_and_save(tmp_path: Path) -> None:
                 service = FormationService(session)
 
                 data = await service.list_presets(character)
-                assert len(data["presets"]) == 3
+                assert len(data["presets"]) == 5
                 assert data["max_units"] == 3  # 锻体期
-                assert any(b["unit_kind"] == "puppet" for b in data["bench"])
+                assert not any(b["unit_kind"] == "puppet" for b in data["bench"])
                 assert any(f["formation_id"] == "none" for f in data["formations"])
 
-                # 合法保存：本体 + 一个傀儡
+                # 合法保存：仅本体（傀儡须编成板，默认试炼木傀不再可上阵）
                 saved = await service.save_preset(
                     character,
                     0,
@@ -89,12 +89,11 @@ def test_default_presets_and_save(tmp_path: Path) -> None:
                     formation_id="none",
                     units=[
                         {"unit_uid": "main", "unit_kind": "main", "x": 0, "y": 3},
-                        {"unit_uid": "puppet_1", "unit_kind": "puppet", "x": 1, "y": 2},
                     ],
                 )
                 await session.commit()
                 assert saved["name"] == "我的攻阵"
-                assert len(saved["units"]) == 2
+                assert len(saved["units"]) == 1
 
                 # 非法：中立列落子
                 with pytest.raises(AppError) as exc:
@@ -108,7 +107,7 @@ def test_default_presets_and_save(tmp_path: Path) -> None:
                     )
                 assert exc.value.code == 40041
 
-                # 非法：傀儡超持有量（默认 1 个）
+                # 非法：未编成傀儡（含试炼木傀）不可上阵
                 with pytest.raises(AppError) as exc:
                     await service.save_preset(
                         character,

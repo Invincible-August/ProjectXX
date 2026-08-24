@@ -120,4 +120,4 @@ def test_dice_config_loaded() -> None:
     dice = get_game_config().dice
     assert "body_tempering" in dice.realm_bounds
     assert dice.channel_enabled("technique") is True
-    assert dice.channel_enabled("equipment") is False
+    assert dice.channel_enabled("equipment") is True

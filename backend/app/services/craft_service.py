@@ -18,18 +18,41 @@ from app.db.models.character import Character
 from app.db.models.craft_job import CraftJob
 from app.db.models.user import User
 from app.domain.craft_rules import (
+    bump_craft_level,
     compute_efficiency,
     compute_finish_at,
     count_active_jobs,
+    read_craft_levels,
     roll_fail,
 )
-from app.domain.m4_constants import CraftActor, CraftJobStatus
+from app.domain.craft_quality import roll_craft_quality
+from app.domain.reincarnation_rules import parse_growth_attrs
+from app.constants.character import CRAFT_BRANCH_LEVEL_LABEL_ZH, CRAFT_WORKSHOP_BRANCHES
+from app.constants.craft import (
+    CRAFT_QUALITY_LABEL_ZH,
+    ERR_CRAFT_LEVEL,
+    ERR_CRAFT_LEVEL_ZH,
+    ERR_CRAFT_NOT_WORKSHOP,
+    ERR_CRAFT_NOT_WORKSHOP_ZH,
+)
+from app.constants.inventory import (
+    INSPECT_REALM_NONE_ZH,
+    USE_EFFECT_KIND_LABEL_ZH,
+    UseEffectKind,
+    inspect_element_view,
+)
+from app.constants.m4 import CraftActor, CraftJobStatus
 from app.schemas.common import AppError
 from app.services.avatar_service import AvatarService
 from app.services.inventory_service import InventoryService
 from app.services.m4_features import require_craft_enabled
 from app.services.play_gate import PlayGate
-from app.services.realm_config import get_game_config
+from app.services.realm_config import (
+    CraftRecipe,
+    CraftRecipeOutput,
+    ItemInspectDef,
+    get_game_config,
+)
 from app.services.stamina_service import StaminaService
 
 logger = logging.getLogger(__name__)
@@ -54,17 +77,84 @@ class CraftService:
         self._avatar = AvatarService(session)
         self._stamina = StaminaService(session)
 
-    def list_recipes(self, character: Character) -> list[dict[str, Any]]:
-        """
-        配方列表（含锁定原因占位）。
+    @staticmethod
+    def _item_label_zh(item_id: str) -> str:
+        """背包物品中文名；缺配置时回落 id。"""
+        item = get_game_config().inventory.items.get(item_id)
+        return item.name if item is not None else item_id
 
-        参数:
-            character: 当前角色（预留境界/熟练锁；M4 出口暂不使用）。
-        """
-        _ = character  # 预留：后续按境界/熟练度标记 locked
+    @staticmethod
+    def _output_effect_zh(out: CraftRecipeOutput) -> str:
+        """单条产出的玩家可见基础效果。"""
+        grant_array = int(out.grant_array_craft_level or 0)
+        if grant_array:
+            return f"阵法等级 +{grant_array}"
+        if not out.item_id:
+            return ""
+        qty = int(out.quantity or 1)
+        item = get_game_config().inventory.items.get(str(out.item_id))
+        name = item.name if item is not None else str(out.item_id)
+        effect = item.use_effect if item is not None else None
+        if isinstance(effect, dict):
+            kind = str(effect.get("kind") or "")
+            amount = effect.get("amount")
+            kind_zh = USE_EFFECT_KIND_LABEL_ZH.get(kind, "")
+            if kind == UseEffectKind.STAMINA and amount is not None:
+                return f"使用后{kind_zh} {int(amount)}"
+            if kind_zh:
+                return f"使用后{kind_zh}"
+        item_type = str(out.item_type or (item.item_type if item else ""))
+        if item_type == "talisman":
+            return f"产出符箓「{name}」×{qty}"
+        if item_type == "puppet":
+            return f"产出傀儡「{name}」可上阵"
+        return f"产出{name}×{qty}"
+
+    def _recipe_inspect(self, recipe: CraftRecipe, first_out: CraftRecipeOutput | None) -> dict[str, Any]:
+        """Hover condition card from the first output item (or a stable empty frame)."""
+        items = get_game_config().inventory.items
+        item = items.get(str(first_out.item_id)) if first_out and first_out.item_id else None
+        inspect: ItemInspectDef | None = item.inspect if item is not None else None
+        effects = list(inspect.effects) if inspect is not None else []
+        if not effects and first_out is not None:
+            derived = self._output_effect_zh(first_out)
+            if derived:
+                effects = [derived]
+        help_zh = (inspect.help_zh if inspect is not None else "") or (
+            self._output_effect_zh(first_out) if first_out is not None else ""
+        )
+        realm_req = inspect.realm_req_zh if inspect is not None else INSPECT_REALM_NONE_ZH
+        element = inspect_element_view(inspect.element if inspect is not None else None)
+        branch_lv_zh = CRAFT_BRANCH_LEVEL_LABEL_ZH.get(recipe.branch, "制作等级")
+        return {
+            "craft_level_label_zh": branch_lv_zh,
+            "required_craft_level": int(recipe.required_craft_level or 0),
+            "realm_req_zh": realm_req or INSPECT_REALM_NONE_ZH,
+            "help_zh": help_zh,
+            "effects": [
+                {"id": f"e{idx}", "label_zh": tag} for idx, tag in enumerate(effects)
+            ],
+            "element": element,
+        }
+
+    def list_recipes(self, character: Character) -> list[dict[str, Any]]:
+        """配方列表：制作等级不足则 locked；悬停读成品单一属性与功效。"""
         cfg = get_game_config().craft_recipes
+        levels = read_craft_levels(
+            growth_attrs=parse_growth_attrs(getattr(character, "growth_attrs_json", None)),
+            array_craft_level=int(getattr(character, "array_craft_level", 0) or 0),
+        )
         out: list[dict[str, Any]] = []
         for recipe in cfg.recipes.values():
+            if recipe.branch not in CRAFT_WORKSHOP_BRANCHES:
+                continue
+            required = int(recipe.required_craft_level or 0)
+            current = int(levels.get(recipe.branch, 0) or 0)
+            locked = current < required
+            branch_lv_zh = CRAFT_BRANCH_LEVEL_LABEL_ZH.get(recipe.branch, "制作等级")
+            effects = [self._output_effect_zh(o) for o in recipe.outputs]
+            effect_zh = "；".join(part for part in effects if part)
+            first_out = recipe.outputs[0] if recipe.outputs else None
             out.append(
                 {
                     "recipe_id": recipe.recipe_id,
@@ -74,13 +164,25 @@ class CraftService:
                     "fail_chance": recipe.fail_chance,
                     "spirit_stone_cost": recipe.spirit_stone_cost,
                     "stamina_cost": recipe.stamina_cost,
+                    "required_craft_level": required,
+                    "recipe_tier": int(recipe.recipe_tier or 1),
+                    "craft_level": current,
+                    "effect_zh": effect_zh,
+                    "inspect": self._recipe_inspect(recipe, first_out),
                     "materials": [
-                        {"item_id": m.item_id, "quantity": m.quantity}
+                        {
+                            "item_id": m.item_id,
+                            "quantity": m.quantity,
+                            "label_zh": self._item_label_zh(m.item_id),
+                        }
                         for m in recipe.materials
                     ],
-                    "locked": False,
-                    "lock_reason": None,
-                    # 供前端展示「制造业挂机效率」文案，避免写死 1.25
+                    "locked": locked,
+                    "lock_reason": (
+                        f"需要{branch_lv_zh} {required}（当前 {current}）"
+                        if locked
+                        else None
+                    ),
                     "main_crafting_bonus": cfg.main_crafting_bonus,
                 },
             )
@@ -156,6 +258,19 @@ class CraftService:
         recipe = cfg.recipes.get(recipe_id)
         if recipe is None:
             raise AppError(code=40000, message=f"未知配方：{recipe_id}", http_status=404)
+        if recipe.branch not in CRAFT_WORKSHOP_BRANCHES:
+            raise AppError(
+                code=ERR_CRAFT_NOT_WORKSHOP,
+                message=ERR_CRAFT_NOT_WORKSHOP_ZH,
+                http_status=400,
+            )
+
+        levels = read_craft_levels(
+            growth_attrs=parse_growth_attrs(getattr(character, "growth_attrs_json", None)),
+            array_craft_level=int(getattr(character, "array_craft_level", 0) or 0),
+        )
+        if int(levels.get(recipe.branch, 0) or 0) < int(recipe.required_craft_level or 0):
+            raise AppError(code=ERR_CRAFT_LEVEL, message=ERR_CRAFT_LEVEL_ZH, http_status=400)
 
         if actor not in (CraftActor.MAIN, CraftActor.AVATAR):
             raise AppError(code=40000, message="actor 须为 main 或 avatar", http_status=400)
@@ -165,7 +280,7 @@ class CraftService:
             raise AppError(code=40051, message="尚未凝练化身", http_status=400)
         # AVATAR-D01：化身工坊须元婴起 workshop_actor
         if actor == CraftActor.AVATAR:
-            from app.domain.m4_constants import AvatarFeature
+            from app.constants.m4 import AvatarFeature
 
             cap_idx = get_game_config().avatar.capability
             if cap_idx is None:
@@ -208,6 +323,7 @@ class CraftService:
                 character,
                 kind="craft",
                 success=True,
+                actor=actor,
             )
 
         self._stamina.spend(character, "craft", now=now)
@@ -355,28 +471,68 @@ class CraftService:
         else:
             job.status = CraftJobStatus.CLAIMED
             outputs: list[dict[str, Any]] = []
+            growth = parse_growth_attrs(getattr(character, "growth_attrs_json", None))
+            crafter_level = int(
+                read_craft_levels(
+                    growth_attrs=growth,
+                    array_craft_level=int(getattr(character, "array_craft_level", 0) or 0),
+                ).get(recipe.branch, 0)
+                or 0
+            )
+            level_delta = crafter_level - int(recipe.required_craft_level or 0)
+            quality = roll_craft_quality(
+                level_delta,
+                cfg.quality_by_level_delta,
+                rng=rng,
+            )
+            claim_result["quality"] = quality
+            claim_result["quality_label_zh"] = CRAFT_QUALITY_LABEL_ZH.get(quality, quality)
+            grant_lv = int(recipe.grant_craft_level or 0)
             for out in recipe.outputs:
+                grant_lv += int(getattr(out, "grant_craft_level", 0) or 0)
                 if out.grant_array_craft_level > 0:
                     character.array_craft_level = (
                         int(character.array_craft_level) + out.grant_array_craft_level
                     )
                     outputs.append({"grant_array_craft_level": out.grant_array_craft_level})
                 elif out.item_id:
+                    item_type = str(out.item_type or "material")
                     await self._inventory.add_item(
                         character.id,
-                        item_type=str(out.item_type or "material"),
+                        item_type=item_type,
                         item_id=str(out.item_id),
                         quantity=int(out.quantity),
+                        meta={"quality": quality},
                     )
+                    from app.constants.inventory import ITEM_TYPE_PUPPET
+                    from app.services.puppet_service import PuppetService
+
+                    if item_type == ITEM_TYPE_PUPPET:
+                        await PuppetService(self._session).on_craft_granted(
+                            character.id,
+                            item_id=str(out.item_id),
+                            quantity=int(out.quantity),
+                        )
                     outputs.append(
                         {
                             "item_type": out.item_type,
                             "item_id": out.item_id,
                             "quantity": out.quantity,
+                            "quality": quality,
+                            "quality_label_zh": CRAFT_QUALITY_LABEL_ZH.get(quality, quality),
                         },
                     )
+            if grant_lv > 0:
+                growth, new_lv = bump_craft_level(
+                    growth,
+                    branch=recipe.branch,
+                    amount=grant_lv,
+                    array_craft_level=int(character.array_craft_level or 0),
+                )
+                character.growth_attrs_json = json.dumps(growth, ensure_ascii=False)
+                outputs.append({"grant_craft_level": grant_lv, "craft_level": new_lv})
             job.result_json = json.dumps(
-                {"failed": False, "outputs": outputs},
+                {"failed": False, "outputs": outputs, "quality": quality},
                 ensure_ascii=False,
             )
             claim_result["outputs"] = outputs
@@ -389,3 +545,189 @@ class CraftService:
             failed,
         )
         return claim_result
+
+    async def scribe_talisman(
+        self,
+        character: Character,
+        *,
+        template_id: str,
+        quantity: int,
+    ) -> dict[str, Any]:
+        """Paint copies of a private talisman template into the bag."""
+        from app.constants.inventory import ItemType
+        from app.constants.research import ERR_RESEARCH_OWNER, SOURCE_LABEL_CUSTOM_ZH
+        from app.db.models.research import PrivateTalisman
+
+        tal = get_game_config().research.talisman
+        qty = int(quantity)
+        if qty < 1 or qty > int(tal.max_batch):
+            raise AppError(code=40000, message="画符数量不合法", http_status=400)
+        result = await self._session.execute(
+            select(PrivateTalisman).where(PrivateTalisman.template_id == template_id).limit(1),
+        )
+        private = result.scalar_one_or_none()
+        if private is None or int(private.character_id) != int(character.id):
+            raise AppError(ERR_RESEARCH_OWNER, "符箓图纸不属于当前角色", http_status=403)
+        paper_need = int(tal.paper_per_copy) * qty
+        try:
+            await self._inventory.remove_materials(
+                character.id,
+                [{"item_id": tal.paper_item_id, "quantity": paper_need}],
+            )
+        except AppError as exc:
+            if exc.code == 40055:
+                raise AppError(code=40055, message="符纸不足", http_status=400) from exc
+            raise
+        await self._inventory.add_item(
+            character.id,
+            item_type=ItemType.TALISMAN,
+            item_id=template_id,
+            quantity=qty,
+            meta={
+                "template_id": template_id,
+                "effect_id": private.effect_id,
+                "label_zh": private.label_zh,
+                "source": private.source,
+                "source_label_zh": SOURCE_LABEL_CUSTOM_ZH,
+            },
+        )
+        logger.info(
+            "talisman scribed character_id=%s template_id=%s quantity=%s",
+            character.id,
+            template_id,
+            qty,
+        )
+        return {"template_id": template_id, "quantity": qty, "label_zh": private.label_zh}
+
+    async def _loadout_row(self, character: Character):
+        from app.db.models.research import CharacterTalismanLoadout
+
+        result = await self._session.execute(
+            select(CharacterTalismanLoadout).where(
+                CharacterTalismanLoadout.character_id == character.id,
+            ).limit(1),
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            row = CharacterTalismanLoadout(character_id=character.id, slots_json="[]")
+            self._session.add(row)
+            await self._session.flush()
+        return row
+
+    async def list_talisman_preload(self, character: Character) -> dict[str, Any]:
+        """Return preloaded talisman slots for the workshop bar."""
+        from app.db.models.inventory_item import InventoryItem
+
+        tal = get_game_config().research.talisman
+        row = await self._loadout_row(character)
+        raw_ids = [int(x) for x in json.loads(row.slots_json or "[]") if str(x).isdigit() or isinstance(x, int)]
+        slots: list[dict[str, Any]] = []
+        for inv_id in raw_ids:
+            inv = await self._session.get(InventoryItem, inv_id)
+            if inv is None or int(inv.character_id) != int(character.id):
+                continue
+            meta = json.loads(inv.meta_json or "{}")
+            slots.append(
+                {
+                    "inventory_item_id": inv.id,
+                    "item_id": inv.item_id,
+                    "quantity": int(inv.quantity),
+                    "label_zh": meta.get("label_zh") or inv.item_id,
+                    "effect_id": meta.get("effect_id"),
+                },
+            )
+        return {"slots": slots, "max_slots": int(tal.preload_slots)}
+
+    async def set_talisman_preload(
+        self,
+        character: Character,
+        inventory_item_ids: list[int],
+    ) -> dict[str, Any]:
+        """Replace the preload bar; mark selected rows occupancy=deployed."""
+        from app.constants.inventory import ItemType, Occupancy
+        from app.db.models.inventory_item import InventoryItem
+
+        tal = get_game_config().research.talisman
+        ids = [int(x) for x in inventory_item_ids]
+        max_slots = int(tal.preload_slots)
+        if max_slots > 0 and len(ids) > max_slots:
+            raise AppError(code=40000, message="预载栏已满", http_status=400)
+        previous = await self.list_talisman_preload(character)
+        for slot in previous["slots"]:
+            prev = await self._session.get(InventoryItem, int(slot["inventory_item_id"]))
+            if prev is not None:
+                await self._inventory.set_occupancy(prev, Occupancy.NONE)
+        seen: set[int] = set()
+        clean: list[int] = []
+        for inv_id in ids:
+            if inv_id in seen:
+                continue
+            seen.add(inv_id)
+            inv = await self._session.get(InventoryItem, inv_id)
+            if inv is None or int(inv.character_id) != int(character.id):
+                raise AppError(code=40055, message="预载符箓不存在", http_status=400)
+            if str(inv.item_type) != ItemType.TALISMAN:
+                raise AppError(code=40000, message="只能预载符箓", http_status=400)
+            if int(inv.quantity) < 1:
+                raise AppError(code=40055, message="预载符箓数量不足", http_status=400)
+            await self._inventory.set_occupancy(inv, Occupancy.DEPLOYED)
+            clean.append(inv_id)
+        row = await self._loadout_row(character)
+        row.slots_json = json.dumps(clean, ensure_ascii=False)
+        await self._session.flush()
+        return await self.list_talisman_preload(character)
+
+    async def peek_preloaded_talismans(self, character: Character) -> list[dict[str, Any]]:
+        """Battle payload for inject_item_triggers (does not consume)."""
+        from app.constants.research import SOURCE_LABEL_CUSTOM_ZH
+        from app.db.models.inventory_item import InventoryItem
+
+        listed = await self.list_talisman_preload(character)
+        out: list[dict[str, Any]] = []
+        for slot in listed["slots"]:
+            inv = await self._session.get(InventoryItem, int(slot["inventory_item_id"]))
+            if inv is None:
+                continue
+            meta = json.loads(inv.meta_json or "{}")
+            effect_id = str(meta.get("effect_id") or "")
+            effect = get_game_config().talisman_effects.get(effect_id)
+            out.append(
+                {
+                    "inventory_item_id": inv.id,
+                    "label_zh": str(meta.get("label_zh") or (effect.label_zh if effect else inv.item_id)),
+                    "source_label_zh": str(meta.get("source_label_zh") or SOURCE_LABEL_CUSTOM_ZH),
+                    "effect_id": effect_id,
+                    "trigger": effect.trigger if effect else "first_hit",
+                    "kind": effect.kind if effect else "buff",
+                    "stack_group": effect.stack_group if effect else effect_id,
+                    "magnitude": float(effect.magnitude) if effect else 0.0,
+                    "duration_kind": effect.duration_kind if effect else "global",
+                    "duration": int(effect.duration) if effect else 0,
+                    "attr": effect.attr if effect else "phys_atk",
+                    "use_chance": float(effect.use_chance) if effect else 0.0,
+                    "hit_chance": float(effect.hit_chance) if effect else 1.0,
+                },
+            )
+        return out
+
+    async def consume_preloaded_talismans(self, character: Character) -> None:
+        """Deduct one copy per preloaded slot after a battle trigger."""
+        from app.constants.inventory import Occupancy
+        from app.db.models.inventory_item import InventoryItem
+
+        listed = await self.list_talisman_preload(character)
+        kept: list[int] = []
+        for slot in listed["slots"]:
+            inv = await self._session.get(InventoryItem, int(slot["inventory_item_id"]))
+            if inv is None:
+                continue
+            qty = int(inv.quantity) - 1
+            if qty <= 0:
+                await self._session.delete(inv)
+                continue
+            inv.quantity = qty
+            await self._inventory.set_occupancy(inv, Occupancy.DEPLOYED)
+            kept.append(int(inv.id))
+        row = await self._loadout_row(character)
+        row.slots_json = json.dumps(kept, ensure_ascii=False)
+        await self._session.flush()

@@ -100,6 +100,7 @@ class GmService:
         force_jindan: bool | None = None,
         grant_craft_materials: bool | None = None,
         grant_test_pet: bool | None = None,
+        grant_test_equipment: bool | None = None,
         clear_craft_jobs: bool | None = None,
         clear_divine_sense_backlash: bool | None = None,
         force_shichen: str | None = None,
@@ -178,6 +179,7 @@ class GmService:
             force_jindan,
             grant_craft_materials,
             grant_test_pet,
+            grant_test_equipment,
             clear_craft_jobs,
             clear_divine_sense_backlash,
             force_shichen,
@@ -381,6 +383,16 @@ class GmService:
             pet_svc = PetService(self._session)
             if await pet_svc.count_pets(character.id) < get_game_config().pets.hold_cap:
                 await pet_svc.capture_test(character, species_id="test_pet_fox")
+
+        if grant_test_equipment:
+            from app.services.inventory_service import InventoryService
+
+            await InventoryService(self._session).add_item(
+                character.id,
+                item_type="equipment",
+                item_id="iron_sword_t1",
+                quantity=1,
+            )
 
         # --- M5 环境与轮回 ---
         if force_shichen is not None:

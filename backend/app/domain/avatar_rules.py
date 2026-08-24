@@ -10,7 +10,7 @@ import math
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Mapping
 
-from app.domain.m4_constants import (
+from app.constants.m4 import (
     IDLE_DIRECTION_FEATURE,
     AvatarFeature,
     IdleDirection,
@@ -83,10 +83,12 @@ def build_condense_eligibility(
     *,
     character_major: str,
     spirit_stones: int,
+    cultivation_points: int,
     has_avatar: bool,
     unlock_major: str,
     max_avatars: int,
     spirit_stone_cost: int,
+    cultivation_cost: int,
     realms: dict[str, Any],
 ) -> dict[str, Any]:
     """
@@ -95,22 +97,26 @@ def build_condense_eligibility(
     参数:
         character_major: 本体大境界。
         spirit_stones: 当前灵石。
+        cultivation_points: 当前修为池（灵力）。
         has_avatar: 是否已有化身行。
         unlock_major: avatar.yaml 凝练门槛。
         max_avatars: 化身上限（定案为 1）。
-        spirit_stone_cost: 凝练费用。
+        spirit_stone_cost: 凝练灵石费用。
+        cultivation_cost: 凝练灵力费用。
         realms: 境界配置。
 
     返回:
-        含 can_condense / realm_ok / stones_ok / block_* 的字典。
+        含 can_condense / realm_ok / stones_ok / cultivation_ok / block_* 的字典。
     """
     # 境界序比较与 POST /condense 同源（含真仙等更高境）
     realm_ok = realm_meets_unlock(character_major, unlock_major, realms)
     stones_ok = int(spirit_stones) >= int(spirit_stone_cost)
+    cultivation_ok = int(cultivation_points) >= int(cultivation_cost)
     can_do = (
         realm_ok
         and (not has_avatar)
         and stones_ok
+        and cultivation_ok
         and max_avatars >= 1
     )
 
@@ -129,17 +135,54 @@ def build_condense_eligibility(
     elif not stones_ok:
         block_code = 40000
         block_message = f"灵石不足（需 {spirit_stone_cost}）"
+    elif not cultivation_ok:
+        block_code = 40053
+        block_message = f"灵力不足（需 {cultivation_cost}）"
 
     return {
         "can_condense": can_do,
         "realm_ok": realm_ok,
         "has_avatar": has_avatar,
         "stones_ok": stones_ok,
+        "cultivation_ok": cultivation_ok,
         "unlock_major_realm": unlock_major,
         "spirit_stone_cost": int(spirit_stone_cost),
+        "cultivation_cost": int(cultivation_cost),
+        "current_spirit_stones": int(spirit_stones),
+        "current_cultivation": int(cultivation_points),
         "block_code": block_code,
         "block_message": block_message,
     }
+
+
+def scale_attr_block(block: Mapping[str, Any] | None, ratio: float) -> dict[str, Any]:
+    """
+    按比例缩放属性块 ``final`` 中的数值（向下取整；至少 0）。
+
+    参数:
+        block: CombatAttrBlock / LifeAttrBlock 字典。
+        ratio: 乘区（化身初始约为本体 50%）。
+
+    返回:
+        新字典，不修改入参。
+    """
+    src = dict(block or {})
+    final_in = src.get("final") or {}
+    if not isinstance(final_in, Mapping):
+        return src
+    final_out: dict[str, Any] = {}
+    for key, raw in final_in.items():
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+            final_out[key] = raw
+            continue
+        scaled = float(raw) * float(ratio)
+        if isinstance(raw, int) or float(raw).is_integer():
+            final_out[key] = max(0, int(math.floor(scaled)))
+        else:
+            final_out[key] = max(0.0, round(scaled, 4))
+    out = dict(src)
+    out["final"] = final_out
+    return out
 
 
 def build_initial_stats(
@@ -527,6 +570,7 @@ __all__ = [
     "can_condense",
     "build_condense_eligibility",
     "build_initial_stats",
+    "scale_attr_block",
     "validate_transfer_resource",
     "is_allowed_avatar_idle_direction",
     "feature_required_for_idle",

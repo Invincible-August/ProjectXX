@@ -172,11 +172,19 @@ export interface CharacterPublic {
   base_atk: number
   /** 衍生基础生命（= combat.final.hp 别名） */
   base_hp: number
+  /** 当前生命（血）；非战时等于 hp_max */
+  hp_current?: number
+  /** 生命上限 */
+  hp_max?: number
+  /** 当前法力（蓝）；非战时等于 mp_max */
+  mp_current?: number
+  /** 法力上限 */
+  mp_max?: number
   /** ATTR 战斗属性块 */
   combat?: CombatAttrBlock | null
   /** ATTR 生活属性块 */
   life?: LifeAttrBlock | null
-  /** 战斗体力（惰性恢复后）：left/cap/regen_per_minute/next_point_in_seconds */
+  /** 体力（惰性恢复后）：left/cap/regen_per_minute/next_point_in_seconds */
   battle_stamina?: {
     left: number
     cap: number
@@ -188,7 +196,7 @@ export interface CharacterPublic {
   /** 最近跨境品阶键；无跨境为 none */
   breakthrough_grade: string
   breakthrough_grade_name: string
-  /** 由品阶推导的神通槽位数 */
+  /** 可装备神通格数（修为基数 + 跨境品阶加成） */
   divine_ability_slots: number
   /** 会员档：free/tier1/tier2 */
   membership_tier: string
@@ -223,6 +231,12 @@ export interface CharacterPublic {
   divine_sense?: DivineSenseSummary | null
   /** 阵法制造等级 */
   array_craft_level?: number
+  /** 制造业五分支等级（炼丹/炼器/制符/阵法/傀儡制作） */
+  craft_levels?: Array<{
+    branch: string
+    label_zh: string
+    level: number
+  }>
   craft_jobs_summary?: CraftJobsSummary
   inventory_count?: number
   pets_count?: number
@@ -262,6 +276,8 @@ export interface CharacterPublic {
   idle_env?: IdleEnvBundle | null
   /** 灵根环境标签（参与 tag_modifiers） */
   spirit_root_tags?: string[]
+  /** 灵根展示（id + 中文名） */
+  spirit_roots?: Array<{ id: string; label_zh: string }>
   /** 活动互斥快照（修炼/工坊/渡劫等） */
   activity?: ActivitySnapshot | null
   // --- M6 大道与道主 ---

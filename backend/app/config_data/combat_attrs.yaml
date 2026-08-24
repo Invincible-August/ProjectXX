@@ -4,7 +4,7 @@
 # 纪律：M13 只改数字与系数，不改机读键名；公式未开键仅展示
 # =====================================================================
 
-schema_version: 2
+schema_version: 3
 
 defaults:
   speed: 10
@@ -165,6 +165,22 @@ attrs:
     formula_enabled: false
     category: resist
     default: 0
+  resist_ailment:
+    label_zh: 异常抗性
+    help_zh: 异常状态抗性点（中毒/灼烧/溺水/麻痹/睡眠/魅惑/眩晕/昏迷；公式未开仅展示）
+    engine: false
+    panel: true
+    formula_enabled: false
+    category: resist
+    default: 0
+  resist_dark:
+    label_zh: 暗抗
+    help_zh: 诅咒抗性点（降低攻防等战斗属性的效果；公式未开仅展示）
+    engine: false
+    panel: true
+    formula_enabled: false
+    category: resist
+    default: 0
   strength:
     label_zh: 力量
     help_zh: 根基；经 primary_map 映射物攻/物防
@@ -201,7 +217,7 @@ attrs:
     category: primary
     default: 0
   stamina:
-    label_zh: 战斗体力
+    label_zh: 体力
     help_zh: 开战/双修等行动消耗的体力（惰性恢复），非棋盘生命
     engine: false
     panel: true
@@ -298,13 +314,13 @@ entity_profiles:
 
 channels:
   equipment:
-    enabled: false
+    enabled: true
     label_zh: 装备
   pill_buff:
     enabled: false
     label_zh: 丹药时效
   puppet:
-    enabled: false
+    enabled: true
     label_zh: 傀儡养成
   sect_formation:
     enabled: false

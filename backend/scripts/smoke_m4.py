@@ -73,6 +73,7 @@ def main() -> None:
             {
                 "force_jindan": True,
                 "spirit_stones": 10000,
+                "cultivation_points": 5000,
                 "set_stamina": 200,
                 "grant_craft_materials": True,
             },
@@ -81,7 +82,15 @@ def main() -> None:
         "GM 金丹+材料",
     )
 
-    expect(call("POST", "/avatar/condense", {}, token=token), "凝练化身")
+    expect(
+        call(
+            "POST",
+            "/avatar/condense",
+            {"technique_id": "basic_qi_art", "medium_item_id": "herb_spirit_grass"},
+            token=token,
+        ),
+        "凝练化身",
+    )
     expect(call("POST", "/avatar/idle", {"direction": "spirit"}, token=token), "化身修灵")
     expect(call("POST", "/idle/direction", {"direction": "spirit"}, token=token), "本体修灵")
     expect(call("POST", "/idle/sync", {}, token=token), "双线程 sync")

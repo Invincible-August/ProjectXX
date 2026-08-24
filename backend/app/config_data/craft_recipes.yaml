@@ -1,5 +1,5 @@
 # =====================================================================
-# 用途：制造业全局参数与五类配方（炼丹/炼器/制符/阵法/傀儡）
+# 用途：制造业全局参数与四类配方（炼丹/炼器/制符/傀儡；阵法不进工坊）
 # 加载时机：M4 工坊排队、结算、领取；环境 weather craft 乘区可叠加
 # =====================================================================
 
@@ -8,17 +8,25 @@ main_crafting_bonus: 1.25
 # 同一角色同时进行的工坊任务上限
 max_jobs_per_actor: 1
 
+# 领取品质：按 (制作者等级 - required_craft_level) 取最高已达档
+# 高等级制造低门槛已学图纸时，高品质权重大幅提高
+quality_by_level_delta:
+  - min_delta: 0
+    weights: { common: 80, fine: 18, rare: 2 }
+  - min_delta: 1
+    weights: { common: 45, fine: 40, rare: 15 }
+  - min_delta: 3
+    weights: { common: 15, fine: 45, rare: 35, superb: 5 }
+  - min_delta: 5
+    weights: { common: 4, fine: 26, rare: 50, superb: 20 }
+
 # 配方表；后续配方字段同第一条
+# branch / name / duration_seconds / fail_chance / spirit_stone_cost / stamina_cost
+# required_craft_level  对应分支制作等级门槛
+# recipe_tier           图纸品阶（展示；学习完式仍 M8-D06）
+# grant_craft_level     领取成功时该分支等级 +N
+# materials / outputs
 recipes:
-  # —— 字段说明 ——
-  # branch            分支：alchemy/smithing/talisman/array/puppet
-  # name              展示名
-  # duration_seconds  制作耗时（墙钟秒）
-  # fail_chance       失败概率（失败通常不产出）
-  # spirit_stone_cost 灵石消耗
-  # stamina_cost      体力消耗（规则位）
-  # materials         材料列表：item_id + quantity
-  # outputs           产出：物品 或 grant_array_craft_level 等特殊授予
   pill_stamina_minor:
     branch: alchemy
     name: 小体力丹
@@ -26,11 +34,13 @@ recipes:
     fail_chance: 0.05
     spirit_stone_cost: 50
     stamina_cost: 10
+    required_craft_level: 0
+    recipe_tier: 1
+    grant_craft_level: 1
     materials:
       - { item_id: herb_spirit_grass, quantity: 2 }
     outputs:
       - { item_type: consumable, item_id: stamina_pill_minor, quantity: 1 }
-  # 以下配方字段同上
   ore_plate_t1:
     branch: smithing
     name: 一级矿板
@@ -38,10 +48,27 @@ recipes:
     fail_chance: 0.08
     spirit_stone_cost: 80
     stamina_cost: 10
+    required_craft_level: 0
+    recipe_tier: 1
+    grant_craft_level: 1
     materials:
       - { item_id: ore_iron_raw, quantity: 3 }
     outputs:
       - { item_type: material, item_id: ore_plate_t1, quantity: 1 }
+  ore_plate_t2:
+    branch: smithing
+    name: 二级矿板
+    duration_seconds: 140
+    fail_chance: 0.12
+    spirit_stone_cost: 160
+    stamina_cost: 12
+    required_craft_level: 2
+    recipe_tier: 2
+    grant_craft_level: 1
+    materials:
+      - { item_id: ore_iron_raw, quantity: 5 }
+    outputs:
+      - { item_type: material, item_id: ore_plate_t1, quantity: 2 }
 
   talisman_atk_t1:
     branch: talisman
@@ -50,22 +77,13 @@ recipes:
     fail_chance: 0.1
     spirit_stone_cost: 60
     stamina_cost: 10
+    required_craft_level: 0
+    recipe_tier: 1
+    grant_craft_level: 1
     materials:
       - { item_id: talisman_paper, quantity: 2 }
     outputs:
       - { item_type: talisman, item_id: talisman_atk_t1, quantity: 1 }
-
-  array_drill_1:
-    branch: array
-    name: 阵法钻研·一
-    duration_seconds: 120
-    fail_chance: 0.12
-    spirit_stone_cost: 100
-    stamina_cost: 10
-    materials:
-      - { item_id: array_fragment, quantity: 1 }
-    outputs:
-      - { grant_array_craft_level: 1 }   # 提升阵法钻研等级（非物品）
 
   puppet_wood_v1:
     branch: puppet
@@ -74,6 +92,9 @@ recipes:
     fail_chance: 0.07
     spirit_stone_cost: 70
     stamina_cost: 10
+    required_craft_level: 0
+    recipe_tier: 1
+    grant_craft_level: 1
     materials:
       - { item_id: wood_spirit, quantity: 2 }
     outputs:

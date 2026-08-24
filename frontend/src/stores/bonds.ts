@@ -100,7 +100,7 @@ export const useBondsStore = defineStore('bonds', () => {
 
   async function applyByName(targetName: string): Promise<string | null> {
     const name = targetName.trim()
-    if (!name) return '请输入对方道号'
+    if (!name) return '请输入对方道号或 user_id'
     loading.value = true
     try {
       const envelope = await applyCompanion({ target_name: name })

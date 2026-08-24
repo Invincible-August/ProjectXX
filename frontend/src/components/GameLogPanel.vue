@@ -107,7 +107,7 @@ function textType(level: GameLogEntry['level']): '' | 'success' | 'warning' | 'i
 .log-body {
   flex: 1;
   min-height: 0;
-  overflow-x: hidden;
+  overflow-x: auto;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -137,6 +137,6 @@ function textType(level: GameLogEntry['level']): '' | 'success' | 'warning' | 'i
 }
 
 .log-msg {
-  word-break: break-word;
+  white-space: nowrap;
 }
 </style>

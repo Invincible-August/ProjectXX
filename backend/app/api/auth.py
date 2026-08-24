@@ -46,6 +46,7 @@ async def register(
     return success(
         {
             "user_id": result.user_id,
+            "public_uid": result.public_uid,
             "email": result.email,
             "phone": result.phone,
             "display_name": result.display_name,
@@ -123,10 +124,11 @@ async def change_password(
     auth: AuthService = Depends(get_auth_service),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """校验原密码后更新为新密码。"""
+    """校验原密码后更新为新密码；邮箱核验开关与注册共用。"""
     data = await auth.change_password(
         current_user,
         old_password=payload.old_password,
         new_password=payload.new_password,
+        email_ticket=payload.email_ticket,
     )
     return success(data)

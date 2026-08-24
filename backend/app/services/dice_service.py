@@ -224,7 +224,23 @@ class DiceService:
                     ),
                 )
 
-        # item / equipment 通道本期无实例（enabled=false）
+        # equipment channel (DICE-R01)
+        if dice.channel_enabled("equipment"):
+            from app.services.equipment_service import EquipmentService
+
+            _, _, eq_min, eq_max = await EquipmentService(
+                self._session,
+            ).aggregate_equipped_modifiers(character.id)
+            if eq_min or eq_max:
+                contributions.append(
+                    DiceModContribution(
+                        source="equipment",
+                        id="loadout",
+                        label="装备",
+                        min_bonus=eq_min,
+                        max_bonus=eq_max,
+                    ),
+                )
 
         bounds = resolve_bounds(
             purpose=purpose,

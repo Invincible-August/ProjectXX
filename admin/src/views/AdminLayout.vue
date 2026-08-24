@@ -3,48 +3,16 @@
     <aside class="side">
       <div class="side-brand">
         <strong>Project修仙</strong>
-        <span>运营后台</span>
+        <span>GM 运营台</span>
       </div>
 
       <div class="side-nav">
-        <el-menu :default-active="active" :default-openeds="openedMenus" router>
-          <el-menu-item index="/">总览</el-menu-item>
-
-          <el-sub-menu
-            v-for="group in domainGroups"
-            :key="group.category_id"
-            :index="`cat-${group.category_id}`"
-          >
-            <template #title>
-              <span>{{ group.category_title_zh }}</span>
-              <span class="cat-count">{{ groupNavCount(group) }}</span>
-            </template>
-            <!-- 大道与道主：运营动作置顶（立刻开赛 / 剔除道主） -->
-            <el-menu-item
-              v-if="group.category_id === 'dao'"
-              index="/ops/dao-lords"
-            >
-              道主运营
-            </el-menu-item>
-            <el-menu-item
-              v-for="d in group.domains"
-              :key="d.domain_id"
-              :index="`/domains/${d.domain_id}`"
-              :disabled="!d.enabled"
-            >
-              {{ d.title }}
-              <el-tag
-                v-if="d.risk === 'balance'"
-                size="small"
-                type="danger"
-                style="margin-left: 6px"
-              >
-                高危
-              </el-tag>
-            </el-menu-item>
+        <el-menu :default-active="active" :default-openeds="['player']" router>
+          <el-sub-menu index="player">
+            <template #title>玩家管理</template>
+            <el-menu-item index="/players/accounts">账号管理</el-menu-item>
+            <el-menu-item index="/players/characters">角色管理</el-menu-item>
           </el-sub-menu>
-
-          <el-menu-item index="/audit">审计</el-menu-item>
         </el-menu>
       </div>
 
@@ -63,74 +31,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+/**
+ * 运营台布局（整改首版）：侧栏以玩家管理为入口，旧配置域菜单暂下线。
+ */
+import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchDomains } from '../api/config'
-import type { DomainSummary } from '../types/api'
 import { useAdminAuthStore } from '../stores/auth'
-
-interface DomainGroup {
-  category_id: string
-  category_title_zh: string
-  category_order: number
-  domains: DomainSummary[]
-}
 
 const auth = useAdminAuthStore()
 const route = useRoute()
 const router = useRouter()
-const domains = ref<DomainSummary[]>([])
 
 const active = computed(() => route.path)
-
-const domainGroups = computed((): DomainGroup[] => {
-  const map = new Map<string, DomainGroup>()
-  for (const d of domains.value) {
-    const id = d.category_id || 'misc'
-    const title = d.category_title_zh || '其它'
-    const order = d.category_order ?? 90
-    let group = map.get(id)
-    if (!group) {
-      group = {
-        category_id: id,
-        category_title_zh: title,
-        category_order: order,
-        domains: [],
-      }
-      map.set(id, group)
-    }
-    group.domains.push(d)
-  }
-  return [...map.values()].sort((a, b) => a.category_order - b.category_order)
-})
-
-/** 类目下入口数（大道与道主含「道主运营」） */
-function groupNavCount(group: DomainGroup): number {
-  const extra = group.category_id === 'dao' ? 1 : 0
-  return group.domains.length + extra
-}
-
-/** 当前路由所在类目默认展开 */
-const openedMenus = computed(() => {
-  const path = route.path
-  if (path.startsWith('/ops/dao-lords')) return ['cat-dao']
-  if (path.startsWith('/domains/')) {
-    const id = path.split('/')[2]
-    const d = domains.value.find((x) => x.domain_id === id)
-    if (d?.category_id) return [`cat-${d.category_id}`]
-  }
-  // 默认展开大道与道主（含道主运营 + 赛会配置）
-  return ['cat-dao']
-})
-
-onMounted(async () => {
-  try {
-    const data = await fetchDomains()
-    domains.value = data.domains
-  } catch {
-    domains.value = []
-  }
-})
 
 function onLogout() {
   auth.logout()
@@ -141,7 +53,7 @@ function onLogout() {
 <style scoped>
 .layout {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 240px 1fr;
   height: 100vh;
   overflow: hidden;
 }
@@ -194,11 +106,6 @@ function onLogout() {
 :deep(.el-sub-menu .el-menu) {
   background: rgba(0, 0, 0, 0.12);
 }
-.cat-count {
-  margin-left: 8px;
-  opacity: 0.55;
-  font-size: 12px;
-}
 .side-foot {
   flex: 0 0 auto;
   padding: 12px 16px 16px;
@@ -215,20 +122,14 @@ function onLogout() {
   min-height: 0;
   height: 100vh;
   overflow: hidden;
-  background: #f4f7f6;
+  background: #eef3f1;
 }
 .main-scroll {
   height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 24px 28px 40px;
-}
-.main-scroll::-webkit-scrollbar {
-  width: 8px;
-}
-.main-scroll::-webkit-scrollbar-thumb {
-  background: rgba(22, 53, 47, 0.25);
-  border-radius: 4px;
+  overflow: hidden;
+  padding: 20px 24px 16px;
+  display: flex;
+  flex-direction: column;
 }
 @media (max-width: 900px) {
   .layout {

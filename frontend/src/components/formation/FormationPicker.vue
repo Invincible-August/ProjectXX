@@ -20,8 +20,16 @@ const current = computed(() =>
   props.formations.find((f) => f.formation_id === props.modelValue),
 )
 
+const official = computed(() =>
+  props.formations.filter((f) => (f.source || 'official') !== 'custom'),
+)
+const custom = computed(() => props.formations.filter((f) => f.source === 'custom'))
+
 function optionLabel(formation: FormationInfo): string {
   const base = `${formation.name}（Lv.${formation.level}）`
+  if (formation.source === 'custom') {
+    return `${formation.source_label_zh || '自研'} · ${formation.name}`
+  }
   if (formation.unlocked) return base
   const req = formation.required_array_level ?? 0
   if (req > 0) return `${base} 🔒 需阵法${req}级`
@@ -37,13 +45,24 @@ function optionLabel(formation: FormationInfo): string {
       class="formation-picker"
       @update:model-value="(v: string) => emit('update:modelValue', v)"
     >
-      <el-option
-        v-for="formation in formations"
-        :key="formation.formation_id"
-        :value="formation.formation_id"
-        :label="optionLabel(formation)"
-        :disabled="!formation.unlocked"
-      />
+      <el-option-group v-if="official.length" label="官方样本">
+        <el-option
+          v-for="formation in official"
+          :key="formation.formation_id"
+          :value="formation.formation_id"
+          :label="optionLabel(formation)"
+          :disabled="!formation.unlocked"
+        />
+      </el-option-group>
+      <el-option-group v-if="custom.length" label="自研">
+        <el-option
+          v-for="formation in custom"
+          :key="formation.formation_id"
+          :value="formation.formation_id"
+          :label="optionLabel(formation)"
+          :disabled="!formation.unlocked"
+        />
+      </el-option-group>
     </el-select>
     <el-text
       v-if="current && !current.unlocked && (current.required_array_level ?? 0) > 0"

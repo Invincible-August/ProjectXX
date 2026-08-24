@@ -30,6 +30,9 @@ class Character(Base):
     # 全服唯一道号
     name: Mapped[str] = mapped_column(String(16), unique=True, nullable=False, index=True)
 
+    # 软删：运营「删除角色」置 False（非物理删除；对齐账号 is_active）
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
     # 境界：M0 固定锻体一层；后续由突破系统改写
     major_realm: Mapped[str] = mapped_column(
         String(32),
@@ -193,3 +196,7 @@ class Character(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+
+# S1-6：领域 OOP 用 PlayerCharacter；ORM 行推荐别名 CharacterRow（表名/类名暂不迁移）
+CharacterRow = Character

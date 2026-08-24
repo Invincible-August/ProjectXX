@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from app.domain.m4_constants import IDLE_DIRECTION_FEATURE, AvatarFeature, IdleDirection
+from app.constants.m4 import IDLE_DIRECTION_FEATURE, AvatarFeature, IdleDirection
 
 
 @dataclass(frozen=True)

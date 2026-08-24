@@ -449,13 +449,14 @@ sect_buffs:
     defense_bonus: 0.05
     cost_spirit_stones_per_day: 300
 
-# 藏宝阁：禁止放入的机读类型键（图纸类；本轮 inventory 未必已有，入库仍拒）
+# 藏宝阁：禁止入柜的图纸别名（= manual_kind；真背包大类仍是 manual）
 treasury:
   forbidden_deposit_types:
     - forge_blueprint
     - talisman_blueprint
     - alchemy_formula
     - puppet_blueprint
+    - formation_blueprint
   max_pages: 6
   catalog:
     basic_spirit_herb:
@@ -609,7 +610,7 @@ mine_yield:
   tick_seconds: 60
   personal_stones_per_tick: 5
   stamina_per_tick: 2
-  note_zh: 自点击开始起每满 tick_seconds（默认60s）结算一次：个人灵石（受时辰/天气/通道加成）与战斗体力同步扣发；开始后第一段等待不扣体力；宗门库亦按自锚点满段入账
+  note_zh: 自点击开始起每满 tick_seconds（默认60s）结算一次：个人灵石（受时辰/天气/通道加成）与体力同步扣发；开始后第一段等待不扣体力；宗门库亦按自锚点满段入账
 
 # 灵药园：兑换灵植 + 托管种植
 herb_garden:

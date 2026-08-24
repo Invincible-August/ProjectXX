@@ -44,15 +44,41 @@ export interface BoardMeta {
   >
 }
 
-/** 一个布阵预设槽 */
+/** 预设槽数量上限（与后端 `FORMATION_PRESET_SLOT_COUNT` 对齐） */
+export const FORMATION_PRESET_SLOT_MAX = 5
+
+/**
+ * 试炼木傀 uid（与后端 `is_trial_puppet_uid` 对齐）。
+ * `puppet_1` 这类无背包样本；真傀 `puppet_wood_v1_…` 不算。
+ */
+export function isTrialPuppetUid(unitUid: string): boolean {
+  return /^puppet_\d+$/.test(unitUid)
+}
+
+/** 一个阵法预设槽 */
 export interface FormationPreset {
   slot: number
   name: string
   role: 'attack' | 'defense' | 'temp' | string
   formation_id: string
   units: UnitPlacement[]
+  /** 助战虚位；开战时客串化身落入该格 */
+  assist_anchor?: BoardCoord | null
   updated_at: string | null
 }
+
+/** 阵法页助战栏：当前借入的道友化身（无会话为 null） */
+export interface AssistGuestInfo {
+  session_id: number
+  unit_uid: string
+  name: string
+  owner_character_id: number
+  ref_id: number
+}
+
+/** 助战锚点在编辑器中的选中 uid（不进 units） */
+export const ASSIST_ANCHOR_UID = 'assist_anchor'
+export const ASSIST_ANCHOR_KIND = 'assist'
 
 /** 阵法地形格（编辑器预览用） */
 export interface FormationTerrainCell {
@@ -98,6 +124,9 @@ export interface FormationInfo {
   max_units_formation?: number | null
   /** 服务端权威：min(境界, 格数, 阵法) */
   max_units_effective?: number
+  source?: 'official' | 'custom' | string
+  source_label_zh?: string
+  revision?: number
 }
 
 /** 可上阵棋子（Bench 项） */
@@ -119,6 +148,7 @@ export interface PresetsPayload {
   formations: FormationInfo[]
   bench: BenchUnit[]
   max_units: number
+  assist_guest?: AssistGuestInfo | null
 }
 
 /** 防守快照 payload（服务端冻结内容） */

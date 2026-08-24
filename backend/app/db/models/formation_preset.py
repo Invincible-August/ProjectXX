@@ -39,6 +39,8 @@ class FormationPreset(Base):
     formation_id: Mapped[str] = mapped_column(String(64), nullable=False, default="none")
     # 棋子占位 JSON：[{unit_uid, unit_kind, x, y}, ...]（进攻方视角坐标）
     units_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    # 助战锚点 JSON：{"x":int,"y":int}；无会话时棋盘显示「助」虚位
+    assist_anchor_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

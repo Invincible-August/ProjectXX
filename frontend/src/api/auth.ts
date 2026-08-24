@@ -74,6 +74,7 @@ export async function fetchMeApi(): Promise<ApiResponse<AuthMeResult>> {
 export async function changePasswordApi(body: {
   old_password: string
   new_password: string
+  email_ticket?: string
 }): Promise<ApiResponse<{ message?: string }>> {
   const response = await http.post<ApiResponse<{ message?: string }>>(
     '/auth/change-password',

@@ -141,7 +141,7 @@ export const useFriendsStore = defineStore('friends', () => {
   async function applyByName(targetName: string): Promise<string | null> {
     const name = targetName.trim()
     if (!name) {
-      const msg = '请输入对方道号'
+      const msg = '请输入对方道号或 user_id'
       lastError.value = msg
       return msg
     }

@@ -32,6 +32,12 @@ class SettleResult:
     gained_mining_stones: int = 0
     spent_stamina: int = 0
     mining_pool_stones: int = 0
+    # 同一次短缺口双线程 settle 的化身摘要（供大厅 10 周天日志）
+    avatar_ticks: int = 0
+    avatar_gained_cultivation: int = 0
+    avatar_gained_body: int = 0
+    avatar_gained_crafting: int = 0
+    avatar_spent_spirit_stones: int = 0
 
 
 @dataclass(frozen=True)
