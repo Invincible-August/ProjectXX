@@ -115,6 +115,8 @@ technique_craft:
   affix_reroll_cost: [10, 20, 40, 80]
   breakthrough_cost_cultivation: 50
   breakthrough_cost_body: 50
+  print_manual_cost_cultivation: 500
+  print_manual_cost_body: 500
   affix_level_mult: 0.2
   base_stat_per_click: 1
   ranks:

@@ -291,3 +291,13 @@ items:
     bound: true
     inspect:
       help_zh: 镶入研究室草稿，不可直接使用。
+  tech_manual:
+    name: 功法秘籍
+    item_type: manual
+    max_stack: 1
+    bag_allowed: [normal]
+    manual_kind: technique
+    tradable: true
+    bound: false
+    use_effect:
+      kind: tech_manual_learn

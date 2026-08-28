@@ -72,6 +72,7 @@ class UseEffectKind(StrEnum):
     PET_SKILL_BOOK = "pet_skill_book"  # 技能书专管线
     TECH_CARD_BLANK = "tech_card_blank"  # 空白卡 → 类型卡
     TECH_CARD_OPEN_TYPE = "tech_card_open_type"  # 类型卡 → 正式卡
+    TECH_MANUAL_LEARN = "tech_manual_learn"  # 功法秘籍学习
 
 
 class DurationClock(StrEnum):
@@ -126,6 +127,7 @@ USE_EFFECT_KIND_LABEL_ZH: Final[dict[str, str]] = {
     UseEffectKind.PET_SKILL_BOOK: "灵宠技能书",
     UseEffectKind.TECH_CARD_BLANK: "功法空白卡",
     UseEffectKind.TECH_CARD_OPEN_TYPE: "功法类型卡",
+    UseEffectKind.TECH_MANUAL_LEARN: "功法秘籍",
 }
 
 INSTANT_USE_KINDS: Final[frozenset[str]] = frozenset({UseEffectKind.STAMINA})

@@ -1506,6 +1506,8 @@ class TechniqueCraftConfig:
     affix_reroll_cost: tuple[int, ...]
     breakthrough_cost_cultivation: int
     breakthrough_cost_body: int
+    print_manual_cost_cultivation: int
+    print_manual_cost_body: int
     affix_level_mult: float
     base_stat_per_click: float
     ranks: dict[str, TechniqueCraftRankConfig]
@@ -4116,6 +4118,14 @@ def _parse_technique_craft(
         breakthrough_cost_body=int(
             50 if body.get("breakthrough_cost_body") is None
             else body.get("breakthrough_cost_body")
+        ),
+        print_manual_cost_cultivation=int(
+            500 if body.get("print_manual_cost_cultivation") is None
+            else body.get("print_manual_cost_cultivation")
+        ),
+        print_manual_cost_body=int(
+            500 if body.get("print_manual_cost_body") is None
+            else body.get("print_manual_cost_body")
         ),
         affix_level_mult=0.2 if body.get("affix_level_mult") is None else float(body.get("affix_level_mult")),
         base_stat_per_click=(

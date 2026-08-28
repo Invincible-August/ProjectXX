@@ -60,6 +60,24 @@ def test_technique_craft_config_loads() -> None:
     assert len(craft.affixes) >= 6
 
 
+def test_technique_manual_catalog_and_print_cost_load() -> None:
+    from app.constants.inventory import UseEffectKind
+    from app.constants.technique_craft import CARD_MANUAL_ID
+    from app.services.realm_config import clear_game_config_cache, get_game_config
+
+    clear_game_config_cache()
+    cfg = get_game_config()
+    craft = cfg.research.technique_craft
+    assert craft.print_manual_cost_cultivation == 500
+    assert craft.print_manual_cost_body == 500
+    item = cfg.inventory.items[CARD_MANUAL_ID]
+    assert item.item_type == "manual"
+    assert item.manual_kind == "technique"
+    assert item.tradable is True
+    assert item.max_stack == 1
+    assert (item.use_effect or {}).get("kind") == UseEffectKind.TECH_MANUAL_LEARN
+
+
 def test_technique_craft_defaults_when_block_missing() -> None:
     from app.services.realm_config import _parse_research
 

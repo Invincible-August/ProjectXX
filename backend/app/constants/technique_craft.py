@@ -19,6 +19,8 @@ ERR_CRAFT_EMBED: Final[int] = 40221
 ERR_CRAFT_FINALIZE: Final[int] = 40222
 ERR_CRAFT_CULTIVATE: Final[int] = 40223
 ERR_CRAFT_EQUIP_ROLE: Final[int] = 40224
+ERR_CRAFT_MANUAL: Final[int] = 40225
+ERR_CRAFT_LEARN: Final[int] = 40226
 
 DRAFT_PHASE_EMBEDDING: Final[str] = "embedding"
 DRAFT_PHASE_ABANDONED: Final[str] = "abandoned"
@@ -60,6 +62,7 @@ CARD_TYPE_ELEMENT_ID: Final[str] = "tech_card_type_element"
 CARD_TYPE_EFFICACY_ID: Final[str] = "tech_card_type_efficacy"
 CARD_FORMAL_ELEMENT_ID: Final[str] = "tech_card_formal_element"
 CARD_FORMAL_EFFICACY_ID: Final[str] = "tech_card_formal_efficacy"
+CARD_MANUAL_ID: Final[str] = "tech_manual"
 
 WEAPON_LIMITS: Final[tuple[str, ...]] = (
     "sword",
