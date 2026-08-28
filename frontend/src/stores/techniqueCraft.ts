@@ -11,6 +11,7 @@ import {
   embedTechniqueCardApi,
   fetchTechniqueDraftsApi,
   finalizeTechniqueDraftApi,
+  printTechniqueManualApi,
   rerollTechniqueAffixApi,
   rollTechniqueAffixApi,
   setTechniqueConditionsApi,
@@ -27,6 +28,7 @@ import {
   type TechniqueOriginalView,
 } from '../types/techniqueCraft'
 import { useCharacterStore } from './character'
+import { useInventoryStore } from './inventory'
 import { useResearchStore } from './research'
 
 function normalizeDraft(row: TechniqueDraftPublic): TechniqueDraftPublic {
@@ -381,6 +383,22 @@ export const useTechniqueCraftStore = defineStore('techniqueCraft', () => {
     }
   }
 
+  async function printManual(): Promise<string | null> {
+    if (!selectedOriginal.value) return '没有选中的原创功法'
+    loading.value = true
+    try {
+      const envelope = await printTechniqueManualApi(selectedOriginal.value.technique_id)
+      if (envelope.code !== 0 || !envelope.data) {
+        return envelope.message || '制成秘籍失败'
+      }
+      await useCharacterStore().fetchMe()
+      await useInventoryStore().load()
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     drafts,
     selectedDraftId,
@@ -401,5 +419,6 @@ export const useTechniqueCraftStore = defineStore('techniqueCraft', () => {
     upgradeBase,
     upgradeAffix,
     breakthrough,
+    printManual,
   }
 })

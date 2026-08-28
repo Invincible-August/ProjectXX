@@ -313,6 +313,18 @@ async function onBreakthrough(): Promise<void> {
   })
 }
 
+async function onPrintManual(): Promise<void> {
+  await runBusy(async () => {
+    const err = await craftStore.printManual()
+    if (err) {
+      fail(err)
+      return
+    }
+    ElMessage.success('已制成秘籍')
+    emit('log', '已制成秘籍', 'success')
+  })
+}
+
 onMounted(() => {
   void inventoryStore.load()
   void craftStore.loadDrafts()
@@ -589,6 +601,14 @@ onMounted(() => {
               @click="onBase('speed')"
             >
               升级速度（{{ original.base.speed || 0 }}）
+            </el-button>
+            <el-button
+              size="small"
+              :loading="busy"
+              :disabled="writeBlocked"
+              @click="onPrintManual"
+            >
+              制成秘籍
             </el-button>
           </div>
           <div class="actions">

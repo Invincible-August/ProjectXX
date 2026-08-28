@@ -317,3 +317,16 @@ export async function breakthroughTechniqueApi(
     return envelopeFromAxiosError<TechniqueCultivatePublic>(error)
   }
 }
+
+export async function printTechniqueManualApi(
+  techniqueId: string,
+): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      `${TECH}/techniques/${techniqueId}/print-manual`,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<Record<string, unknown>>(error)
+  }
+}
