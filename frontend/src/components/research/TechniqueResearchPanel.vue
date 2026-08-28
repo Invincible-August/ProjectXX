@@ -15,6 +15,7 @@ import {
   TECH_CARD_ALL_IDS,
   TECH_CARD_FORMAL_IDS,
   TECH_CARD_USEABLE_IDS,
+  TECH_MANUAL_ID,
   TECHNIQUE_CRAFT_HELP_ZH,
   WEAPON_LIMIT_OPTIONS,
   affixLabelZh,
@@ -46,6 +47,12 @@ const original = computed(() => craftStore.selectedOriginal)
 
 const craftCards = computed(() =>
   inventoryStore.items.filter((row) => TECH_CARD_ALL_IDS.includes(row.item_id)),
+)
+
+const bagManuals = computed(() =>
+  inventoryStore.items.filter(
+    (row) => row.item_id === TECH_MANUAL_ID || row.meta?.manual_kind === 'technique',
+  ),
 )
 
 const formalCards = computed(() => {
@@ -160,6 +167,20 @@ async function onUseCard(item: InventoryItem): Promise<void> {
     }
     ElMessage.success(`已使用${item.name}`)
     emit('log', `已使用${item.name}`, 'success')
+  })
+}
+
+async function onUseManual(item: InventoryItem): Promise<void> {
+  await runBusy(async () => {
+    const err = await inventoryStore.use(item.item_uid)
+    if (err) {
+      fail(err)
+      return
+    }
+    ElMessage.success(`已使用${item.name}`)
+    emit('log', `已使用${item.name}`, 'success')
+    await researchStore.loadMine()
+    await characterStore.fetchMe()
   })
 }
 
@@ -385,6 +406,31 @@ onMounted(() => {
             :loading="busy"
             :disabled="writeBlocked"
             @click="onUseCard(item)"
+          >
+            使用
+          </el-button>
+        </div>
+      </div>
+    </el-card>
+
+    <el-card shadow="never">
+      <template #header>
+        <el-text tag="b" size="small">背包秘籍</el-text>
+      </template>
+      <el-empty
+        v-if="!bagManuals.length"
+        description="背包暂无功法秘籍"
+        :image-size="48"
+      />
+      <div v-else class="card-list">
+        <div v-for="item in bagManuals" :key="item.item_uid" class="card-row">
+          <el-text size="small">{{ item.name }} ×{{ item.quantity }}</el-text>
+          <el-button
+            type="primary"
+            size="small"
+            :loading="busy"
+            :disabled="writeBlocked"
+            @click="onUseManual(item)"
           >
             使用
           </el-button>

@@ -9,6 +9,8 @@ export const TECH_CARD_TYPE_ELEMENT_ID = 'tech_card_type_element'
 export const TECH_CARD_TYPE_EFFICACY_ID = 'tech_card_type_efficacy'
 export const TECH_CARD_FORMAL_ELEMENT_ID = 'tech_card_formal_element'
 export const TECH_CARD_FORMAL_EFFICACY_ID = 'tech_card_formal_efficacy'
+/** Printed technique manual catalog id (use from lab bag list). */
+export const TECH_MANUAL_ID = 'tech_manual'
 
 export const TECH_CARD_USEABLE_IDS: ReadonlyArray<string> = [
   TECH_CARD_BLANK_ID,
