@@ -1343,8 +1343,6 @@ class InventoryItemDef:
     # M8 R5：manual 细类 / 解锁配方（学习玩法后延，本字段仅管线）
     manual_kind: str | None = None
     unlock_recipe_id: str | None = None
-    # 官方符箓成品挂效果白名单 id（工坊筛选 kind、领取写入 meta.effect_id）
-    talisman_effect_id: str | None = None
     inspect: ItemInspectDef = field(
         default_factory=lambda: ItemInspectDef(
             realm_req_zh=INSPECT_REALM_NONE_ZH,
@@ -3897,11 +3895,6 @@ def _parse_inventory(raw: dict[str, Any]) -> InventoryConfig:
             manual_kind=(str(body["manual_kind"]) if body.get("manual_kind") else None),
             unlock_recipe_id=(
                 str(body["unlock_recipe_id"]) if body.get("unlock_recipe_id") else None
-            ),
-            talisman_effect_id=(
-                str(body["talisman_effect_id"]).strip()
-                if body.get("talisman_effect_id")
-                else None
             ),
             inspect=_parse_item_inspect(body if isinstance(body, dict) else {}),
         )
