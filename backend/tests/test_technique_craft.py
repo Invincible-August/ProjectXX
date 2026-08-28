@@ -15,6 +15,7 @@ from app.constants.technique_craft import (
     CARD_BLANK_ID,
     CARD_FORMAL_EFFICACY_ID,
     CARD_FORMAL_ELEMENT_ID,
+    CARD_MANUAL_ID,
     CARD_TYPE_EFFICACY_ID,
     CARD_TYPE_ELEMENT_ID,
     ERR_CRAFT_CARD,
@@ -22,6 +23,7 @@ from app.constants.technique_craft import (
     ERR_CRAFT_EMBED,
     ERR_CRAFT_EQUIP_ROLE,
     ERR_CRAFT_FINALIZE,
+    ERR_CRAFT_MANUAL,
     element_ids_from_spirit_root_tags,
 )
 from app.db.models.research import PrivateTechnique
@@ -1051,5 +1053,94 @@ def test_affix_upgrade_fail_keeps_level_still_charges(
                 payload = json.loads(private.payload_json or "{}")
                 assert int((payload.get("affixes") or [{}])[0].get("chosen_level") or 0) == level_before
                 assert int(char.cultivation_points) == before - cost
+
+    _run(_body())
+
+
+def test_print_manual_consumes_points_and_grants_unmerged_books(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "print_ok.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "printok@test.com", "印制测")
+                svc = TechniqueCraftService(session)
+                tech_id = await _finalize_spell_attack(session, char, svc)
+                craft = get_game_config().research.technique_craft
+                cost = int(craft.print_manual_cost_cultivation)
+                char.cultivation_points = cost * 4
+                await session.commit()
+                await session.refresh(char)
+                private = await _load_private(session, tech_id)
+                payload_before = str(private.payload_json)
+                before = int(char.cultivation_points)
+
+                first = await svc.print_manual(char, tech_id)
+                await session.commit()
+                second = await svc.print_manual(char, tech_id)
+                await session.commit()
+                await session.refresh(char)
+
+                assert int(char.cultivation_points) == before - 2 * cost
+                private = await _load_private(session, tech_id)
+                assert str(private.payload_json) == payload_before
+
+                rows = list(
+                    (
+                        await session.execute(
+                            select(InventoryItem).where(
+                                InventoryItem.character_id == char.id,
+                                InventoryItem.item_id == CARD_MANUAL_ID,
+                                InventoryItem.quantity > 0,
+                            )
+                        )
+                    ).scalars()
+                )
+                assert len(rows) == 2
+                for row in rows:
+                    assert row.item_type == "manual"
+                    meta = json.loads(row.meta_json or "{}")
+                    assert meta["manual_kind"] == "technique"
+                    assert meta["origin_technique_id"] == tech_id
+                    assert int(meta["author_character_id"]) == int(char.id)
+                    assert meta["label_zh"] == "玄铁吐纳残篇"
+                    assert "payload" in meta
+                    assert "stats" in meta
+                    assert "affix_ids" in meta
+                    assert "major_rank" in meta
+                assert first["item_id"] == CARD_MANUAL_ID
+                assert second["item_id"] == CARD_MANUAL_ID
+
+    _run(_body())
+
+
+def test_print_manual_rejected_for_non_author(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "print_na.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "printna@test.com", "非作者测")
+                svc = TechniqueCraftService(session)
+                tech_id = await _finalize_spell_attack(session, char, svc)
+                private = await _load_private(session, tech_id)
+                private.author_character_id = int(char.id) + 999
+                await session.commit()
+                with pytest.raises(AppError) as exc:
+                    await svc.print_manual(char, tech_id)
+                assert exc.value.code == ERR_CRAFT_MANUAL
+                assert exc.value.message == "仅原创者可制成秘籍"
 
     _run(_body())

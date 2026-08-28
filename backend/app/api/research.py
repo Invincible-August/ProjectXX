@@ -349,3 +349,16 @@ async def technique_breakthrough(
     character = await _prepare_research_write(gate, current_user)
     data = await service.breakthrough(character, technique_id)
     return success(data)
+
+
+@router.post("/technique/techniques/{technique_id}/print-manual", response_model=None)
+async def technique_print_manual(
+    technique_id: str,
+    gate: PlayGate = Depends(get_play_gate),
+    service: TechniqueCraftService = Depends(get_technique_craft_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Print the current original-technique snapshot as an unstacked inventory manual."""
+    character = await _prepare_research_write(gate, current_user)
+    data = await service.print_manual(character, technique_id)
+    return success(data)

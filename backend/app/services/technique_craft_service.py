@@ -2,14 +2,16 @@
 Technique self-research drafts (功法自研 P1).
 
 Create / list / abandon / embed / conditions / affix roll-choose-reroll / finalize /
-cultivate (base upgrade, affix upgrade, breakthrough).
+cultivate (base upgrade, affix upgrade, breakthrough) / print manual.
 Creating a draft does not consume cards. Embed always consumes the formal card.
 Finalize writes PrivateTechnique + CharacterTechnique and leaves the draft list.
 Cultivate mutates PrivateTechnique.payload_json, not the draft row.
+Print copies the current payload into an unstacked inventory manual.
 """
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import secrets
@@ -31,6 +33,7 @@ from app.constants.technique import TECHNIQUE_SOURCE_RESEARCH, normalize_techniq
 from app.constants.technique_craft import (
     CARD_FORMAL_EFFICACY_ID,
     CARD_FORMAL_ELEMENT_ID,
+    CARD_MANUAL_ID,
     DRAFT_PHASE_ABANDONED,
     DRAFT_PHASE_EMBEDDING,
     DRAFT_PHASE_FINALIZED,
@@ -38,6 +41,7 @@ from app.constants.technique_craft import (
     ERR_CRAFT_CULTIVATE,
     ERR_CRAFT_EMBED,
     ERR_CRAFT_FINALIZE,
+    ERR_CRAFT_MANUAL,
     SPELL_EFFICACIES,
     WEAPON_LIMITS,
 )
@@ -68,7 +72,7 @@ logger = logging.getLogger(__name__)
 
 
 class TechniqueCraftService:
-    """Multi-draft technique craft: create, list, abandon, embed, conditions, affixes, finalize, cultivate."""
+    """Multi-draft technique craft: create, list, abandon, embed, conditions, affixes, finalize, cultivate, print."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -754,6 +758,95 @@ class TechniqueCraftService:
             nxt,
         )
         return self._cultivate_public(private, payload)
+
+    async def print_manual(
+        self,
+        character: Character,
+        technique_id: str,
+    ) -> dict[str, Any]:
+        """
+        Spend print cost and grant one unstacked technique manual of the current snapshot.
+
+        Only the original research author may print. The private technique row is
+        not mutated. Non-empty ``meta`` forces a new inventory row (no stacking).
+
+        Args:
+            character: Acting original author.
+            technique_id: Learned custom technique id.
+
+        Returns:
+            dict[str, Any]: ``item_id`` plus the snapshot written into inventory meta.
+
+        Raises:
+            AppError: 40225 if not the original author / not research; 40200 if poor.
+        """
+        try:
+            private, payload = await self._require_cultivable(character, technique_id)
+        except AppError as exc:
+            if exc.code == ERR_CRAFT_CULTIVATE:
+                raise AppError(ERR_CRAFT_MANUAL, "仅原创者可制成秘籍", http_status=400) from exc
+            raise
+        efficacy = str(payload.get("efficacy") or "")
+        craft = get_game_config().research.technique_craft
+        cost = (
+            craft.print_manual_cost_cultivation
+            if efficacy in SPELL_EFFICACIES
+            else craft.print_manual_cost_body
+        )
+        self._deduct_reroll_cost(character, efficacy, int(cost))
+        snapshot = self._manual_snapshot(private, payload)
+        inv = InventoryService(self._session)
+        await inv.add_item(
+            character.id,
+            item_type="manual",
+            item_id=CARD_MANUAL_ID,
+            quantity=1,
+            meta=snapshot,
+        )
+        await self._session.flush()
+        logger.info(
+            "technique craft print-manual character_id=%s technique_id=%s cost=%s",
+            character.id,
+            technique_id,
+            cost,
+        )
+        return {"item_id": CARD_MANUAL_ID, "snapshot": snapshot}
+
+    @staticmethod
+    def _manual_snapshot(
+        private: PrivateTechnique,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Current technique snapshot for inventory meta. Does not mutate ``payload``."""
+        frozen = copy.deepcopy(payload)
+        author = getattr(private, "author_character_id", None)
+        if author is None:
+            author = private.character_id
+        try:
+            affix_ids = json.loads(private.affix_ids_json or "[]")
+        except json.JSONDecodeError:
+            affix_ids = []
+        if not isinstance(affix_ids, list):
+            affix_ids = []
+        if frozen.get("efficacy"):
+            stats = payload_attr_grants(frozen)
+        else:
+            try:
+                stats = json.loads(private.stats_json or "{}")
+            except json.JSONDecodeError:
+                stats = {}
+            if not isinstance(stats, dict):
+                stats = {}
+        return {
+            "manual_kind": "technique",
+            "origin_technique_id": str(private.technique_id),
+            "author_character_id": int(author),
+            "label_zh": str(private.label_zh or ""),
+            "major_rank": str(private.major_rank or ""),
+            "payload": frozen,
+            "stats": stats,
+            "affix_ids": affix_ids,
+        }
 
     async def _require_cultivable(
         self,
