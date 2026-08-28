@@ -6,7 +6,7 @@
 
 ## Commits
 
-- (filled after git commit)
+- `79e0d7d` Add launch conditions and affix roll/choose/reroll for technique drafts.
 
 ## Summary
 

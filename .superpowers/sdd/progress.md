@@ -44,4 +44,4 @@ Minors deferred:
 - Peek qty=0 uses 40000 vs remove_one_by_uid 40055
 - Uses InventoryService._parse_row_meta private helper
 
-## Task 5: complete
+## Task 5: complete (commit 79e0d7d)
