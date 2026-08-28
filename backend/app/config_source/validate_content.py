@@ -15,7 +15,7 @@ from app.constants.combat_attrs import (
     CONSTITUTION_BASE_ATTR_KEYS,
     CONSTITUTION_LEGACY_EFFECT_KEYS,
 )
-from app.constants.research import TALISMAN_KINDS, TALISMAN_TRIGGERS
+from app.constants.research import TALISMAN_TRIGGERS
 from app.constants.technique_craft import AFFIX_ROLES, EFFICACY_IDS
 
 logger = logging.getLogger(__name__)
@@ -75,11 +75,6 @@ def validate_talisman_effects_raw(raw: Mapping[str, Any] | None) -> None:
         if trigger not in TALISMAN_TRIGGERS:
             raise ContentValidationError(
                 f"{prefix}.trigger={trigger!r} 不在白名单 {sorted(TALISMAN_TRIGGERS)}",
-            )
-        kind = str(body.get("kind") or "buff").strip()
-        if kind not in TALISMAN_KINDS:
-            raise ContentValidationError(
-                f"{prefix}.kind={kind!r} 须为 {sorted(TALISMAN_KINDS)}",
             )
 
 
@@ -196,11 +191,6 @@ def validate_loaded_bundle(bundle: Any) -> None:
         if trigger not in TALISMAN_TRIGGERS:
             raise ContentValidationError(
                 f"talisman_effects.{effect_id}.trigger={trigger!r} 不在白名单",
-            )
-        kind = str(getattr(effect, "kind", "") or "buff")
-        if kind not in TALISMAN_KINDS:
-            raise ContentValidationError(
-                f"talisman_effects.{effect_id}.kind={kind!r} 须为 {sorted(TALISMAN_KINDS)}",
             )
     logger.debug("content sample tables validated")
 

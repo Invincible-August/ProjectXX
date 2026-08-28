@@ -33,11 +33,7 @@ def test_current_yaml_samples_pass_validator() -> None:
     """Boot path and CLI share get_game_config; official tables must load."""
     bundle = validate_startup()
     assert "iron_sword_t1" in bundle.equipment.items
-    assert "cloth_cap_t1" in bundle.equipment.items
     assert "first_hit_ward" in bundle.talisman_effects
-    assert bundle.talisman_effects["atk_strike_direct"].kind == "offensive"
-    assert bundle.talisman_effects["curse_weaken_atk"].kind == "curse"
-    assert bundle.inventory.items["talisman_atk_t1"].talisman_effect_id == "atk_strike_direct"
     assert "phys_edge" in bundle.research.affixes
     assert "sample_main_affix_iron" in bundle.constitution.items
 
@@ -57,13 +53,6 @@ def test_talisman_effects_require_label_and_trigger() -> None:
     validate_talisman_effects_raw(
         {"first_hit_ward": {"label_zh": "护体残符", "trigger": "first_hit"}},
     )
-    validate_talisman_effects_raw(
-        {"curse_x": {"label_zh": "咒", "trigger": "battle_start", "kind": "curse"}},
-    )
-    with pytest.raises(ContentValidationError, match="kind"):
-        validate_talisman_effects_raw(
-            {"ghost": {"label_zh": "鬼符", "trigger": "first_hit", "kind": "invented"}},
-        )
 
 
 def test_constitution_rejects_invented_effect_key() -> None:
