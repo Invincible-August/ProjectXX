@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 import secrets
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from app.constants.technique_craft import (
@@ -13,6 +13,7 @@ from app.constants.technique_craft import (
     MARTIAL_EFFICACIES,
     SPELL_EFFICACIES,
 )
+from app.services.realm_config import get_game_config
 
 
 def roll_elements(pool: Sequence[str], rng: Any = None) -> list[str]:
@@ -208,4 +209,145 @@ def roll_three(pool: Sequence[str], rng: Any = None) -> list[str]:
         chosen.append(str(picker.choice(items)))
     picker.shuffle(chosen)
     return chosen
+
+
+def roll_affix_upgrade_success(fail_rate: float, rng: Any = None) -> bool:
+    """Whether an affix upgrade succeeds. Same draw rules as embed."""
+    return roll_embed_success(fail_rate, rng)
+
+
+def roll_breakthrough_success(fail_rate: float, rng: Any = None) -> bool:
+    """Whether a rank breakthrough succeeds. Same draw rules as embed."""
+    return roll_embed_success(fail_rate, rng)
+
+
+def upgrade_points_for_base_level(n: int) -> int:
+    """
+    Upgrade points granted when the Nth (1-based) base click succeeds.
+
+    Reads ``technique_craft.base_bonus_points``; index is ``min(n-1, len-1)``.
+    """
+    table = get_game_config().research.technique_craft.base_bonus_points
+    if n < 1 or not table:
+        return 0
+    return int(table[min(n - 1, len(table) - 1)])
+
+
+def upgrade_points_for_affix_level(n: int) -> int:
+    """Upgrade points granted when an affix reaches 1-based level ``n``."""
+    table = get_game_config().research.technique_craft.affix_upgrade_points
+    if n < 1 or not table:
+        return 0
+    return int(table[min(n - 1, len(table) - 1)])
+
+
+def _major_heights(realms: Mapping[str, Any] | None = None) -> dict[str, int]:
+    """Height along realms.yaml ``next_major`` chain (root = 0)."""
+    from app.domain.avatar_rules import major_realm_order
+
+    source = realms if realms is not None else get_game_config().realms
+    return {str(rid): i for i, rid in enumerate(major_realm_order(source))}
+
+
+def next_rank_id(current_rank: str) -> str | None:
+    """Next major id from realms.yaml, or None at the end of the chain."""
+    major = get_game_config().realms.get(str(current_rank))
+    if major is None:
+        return None
+    nxt = getattr(major, "next_major", None)
+    return str(nxt) if nxt else None
+
+
+def rank_cap(character_major: str, rank_ids: Iterable[str]) -> str:
+    """
+    Highest configured craft rank whose height ≤ the character's major realm.
+
+    Args:
+        character_major: Character ``major_realm`` id.
+        rank_ids: Keys of ``technique_craft.ranks``.
+    """
+    heights = _major_heights()
+    char_h = heights.get(str(character_major), -1)
+    best = ""
+    best_h = -1
+    for rid in rank_ids:
+        key = str(rid)
+        height = heights.get(key, -1)
+        if height < 0 or height > char_h:
+            continue
+        if height >= best_h:
+            best = key
+            best_h = height
+    return best or "body_tempering"
+
+
+def can_breakthrough(
+    current_rank: str,
+    upgrade_points: int,
+    character_major: str,
+    ranks: Mapping[str, Any],
+) -> bool:
+    """
+    True when next rank exists in ``ranks``, height ≤ character, and points meet the gate.
+
+    Next id comes from realms.yaml ``next_major``, not from iterating rank keys.
+    """
+    nxt = next_rank_id(current_rank)
+    if not nxt or nxt not in ranks:
+        return False
+    heights = _major_heights()
+    if heights.get(nxt, 10**9) > heights.get(str(character_major), -1):
+        return False
+    body = ranks[nxt]
+    required = int(getattr(body, "upgrade_points_required", 0) or 0)
+    if isinstance(body, Mapping):
+        required = int(body.get("upgrade_points_required") or 0)
+    return int(upgrade_points) >= required
+
+
+def payload_attr_grants(payload: Mapping[str, Any]) -> dict[str, float]:
+    """
+    Combat ATTR from cultivated payload: base clicks mapped by efficacy, plus scaled affixes.
+
+    Base attack/defense/speed map to magic_* for ``SPELL_EFFICACIES`` and phys_* for
+    ``MARTIAL_EFFICACIES``. Affix catalog stats scale by ``1 + affix_level_mult * chosen_level``.
+    """
+    craft = get_game_config().research.technique_craft
+    per_click = float(craft.base_stat_per_click)
+    level_mult = float(craft.affix_level_mult)
+    efficacy = str(payload.get("efficacy") or "")
+    if efficacy in SPELL_EFFICACIES:
+        atk_key, def_key = "magic_atk", "magic_def"
+    else:
+        atk_key, def_key = "phys_atk", "phys_def"
+    base_raw = payload.get("base") or {}
+    base = dict(base_raw) if isinstance(base_raw, Mapping) else {}
+    totals: dict[str, float] = {}
+
+    def _add(key: str, amount: float) -> None:
+        if abs(amount) <= 1e-12:
+            return
+        totals[key] = totals.get(key, 0.0) + amount
+
+    _add(atk_key, int(base.get("attack") or 0) * per_click)
+    _add(def_key, int(base.get("defense") or 0) * per_click)
+    _add("speed", int(base.get("speed") or 0) * per_click)
+
+    catalog = craft.affixes
+    slots = payload.get("affixes") or []
+    if isinstance(slots, Sequence) and not isinstance(slots, (str, bytes)):
+        for cell in slots:
+            if not isinstance(cell, Mapping):
+                continue
+            aid = str(cell.get("chosen_id") or "").strip()
+            if not aid:
+                continue
+            body = catalog.get(aid)
+            stats = getattr(body, "stats", None) if body is not None else None
+            if not stats:
+                continue
+            scale = 1.0 + level_mult * int(cell.get("chosen_level") or 0)
+            for key, raw in stats.items():
+                _add(str(key), float(raw or 0) * scale)
+    return totals
 

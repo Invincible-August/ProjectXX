@@ -39,6 +39,18 @@ class TechniqueFinalizeRequest(BaseModel):
     label_zh: str = Field(..., min_length=2, max_length=16)
 
 
+class TechniqueBaseUpgradeRequest(BaseModel):
+    """POST /cave/lab/technique/techniques/{id}/base-upgrade body."""
+
+    stat: str = Field(..., min_length=1, max_length=16)
+
+
+class TechniqueAffixUpgradeRequest(BaseModel):
+    """POST /cave/lab/technique/techniques/{id}/affix-upgrade body."""
+
+    slot: int = Field(..., ge=0)
+
+
 class TechniqueDraftPublic(BaseModel):
     """Public draft payload returned by create/list/embed."""
 

@@ -55,6 +55,7 @@ from app.domain.formation_blueprint import (
     validate_blueprint,
 )
 from app.domain.research_schema import is_valid_zh_label, pick_affix_ids, sum_affix_stats
+from app.domain.technique_craft import payload_attr_grants
 from app.schemas.common import AppError
 from app.services.dice_service import DiceService
 from app.services.inventory_service import InventoryService
@@ -798,6 +799,10 @@ class ResearchService:
         author_id = getattr(row, "author_character_id", None)
         if author_id is None:
             author_id = row.character_id
+        if payload.get("efficacy"):
+            stats = payload_attr_grants(payload)
+        else:
+            stats = json.loads(row.stats_json or "{}")
         return {
             "id": row.technique_id,
             "source": row.source,
@@ -806,7 +811,7 @@ class ResearchService:
             "revision": row.revision,
             "kind": RESEARCH_KIND_TECHNIQUE,
             "track": row.track,
-            "stats": json.loads(row.stats_json or "{}"),
+            "stats": stats,
             "affix_ids": json.loads(row.affix_ids_json or "[]"),
             "efficacy": payload.get("efficacy") or None,
             "author_character_id": int(author_id) if author_id is not None else None,

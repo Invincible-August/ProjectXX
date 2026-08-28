@@ -18,6 +18,7 @@ from app.constants.technique_craft import (
     CARD_TYPE_EFFICACY_ID,
     CARD_TYPE_ELEMENT_ID,
     ERR_CRAFT_CARD,
+    ERR_CRAFT_CULTIVATE,
     ERR_CRAFT_EMBED,
     ERR_CRAFT_EQUIP_ROLE,
     ERR_CRAFT_FINALIZE,
@@ -823,5 +824,214 @@ def test_equip_idle_spirit_as_main_ok(
                     s for s in page["loadout"]["slots"] if s["slot_type"] == TECHNIQUE_SLOT_MAIN
                 ]
                 assert mains[0]["technique_id"] == tech_id
+
+    _run(_body())
+
+
+async def _finalize_spell_attack(session, char, svc) -> str:
+    """Embed, choose affix, finalize a spell_attack original. Returns technique_id."""
+    draft_id, _pick = await _ready_chosen_draft(
+        session, char, svc, elements=["metal"], efficacy="spell_attack"
+    )
+    out = await svc.finalize_draft(char, draft_id, label_zh="玄铁吐纳残篇")
+    await session.commit()
+    return str((out.get("private") or {}).get("id") or out.get("technique_id") or "")
+
+
+async def _load_private(session, tech_id: str) -> PrivateTechnique:
+    return (
+        await session.execute(
+            select(PrivateTechnique).where(PrivateTechnique.technique_id == tech_id)
+        )
+    ).scalar_one()
+
+
+def test_two_attack_upgrades_second_costs_more(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nth base upgrade uses cost index N-1; second attack click is more expensive."""
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "base_up.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "baseup@test.com", "基础加成测")
+                svc = TechniqueCraftService(session)
+                tech_id = await _finalize_spell_attack(session, char, svc)
+                await session.refresh(char)
+                craft = get_game_config().research.technique_craft
+                before = int(char.cultivation_points)
+
+                first = await svc.upgrade_base(char, tech_id, stat="attack")
+                await session.commit()
+                await session.refresh(char)
+                after_first = int(char.cultivation_points)
+                first_cost = before - after_first
+
+                second = await svc.upgrade_base(char, tech_id, stat="attack")
+                await session.commit()
+                await session.refresh(char)
+                second_cost = after_first - int(char.cultivation_points)
+
+                assert first_cost == int(craft.spirit_upgrade_cost[0])
+                assert second_cost == int(craft.spirit_upgrade_cost[1])
+                assert second_cost > first_cost
+
+                private = await _load_private(session, tech_id)
+                payload = json.loads(private.payload_json or "{}")
+                assert int((payload.get("base") or {}).get("attack") or 0) == 2
+                expected_pts = int(craft.base_bonus_points[0]) + int(craft.base_bonus_points[1])
+                assert int(payload.get("upgrade_points") or 0) == expected_pts
+                listed = await TechniqueService(session).list_my_techniques(char)
+                custom = next((t for t in listed if t["id"] == tech_id), None)
+                assert custom is not None
+                per = float(craft.base_stat_per_click)
+                affix_stats = float(craft.affixes["sa_edge"].stats.get("magic_atk") or 0)
+                # chosen_level stays 0; ATTR = clicks * per + affix * (1 + mult * level)
+                assert custom["stats"].get("magic_atk") == pytest.approx(
+                    2 * per + affix_stats * (1.0 + float(craft.affix_level_mult) * 0)
+                )
+                assert first["base"]["attack"] == 1
+                assert second["base"]["attack"] == 2
+
+    _run(_body())
+
+
+def test_breakthrough_fail_keeps_points_and_rank(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_breakthrough_success",
+        lambda *_a, **_k: False,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "bt_fail.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "btfail@test.com", "突破失败测")
+                svc = TechniqueCraftService(session)
+                tech_id = await _finalize_spell_attack(session, char, svc)
+                char.major_realm = "qi_refining"
+                private = await _load_private(session, tech_id)
+                payload = json.loads(private.payload_json or "{}")
+                payload["upgrade_points"] = 100
+                private.payload_json = json.dumps(payload, ensure_ascii=False)
+                await session.commit()
+                await session.refresh(char)
+                craft = get_game_config().research.technique_craft
+                before_pts = int(payload["upgrade_points"])
+                before_rank = str(private.major_rank)
+                before_cult = int(char.cultivation_points)
+
+                await svc.breakthrough(char, tech_id)
+                await session.commit()
+                await session.refresh(char)
+                private = await _load_private(session, tech_id)
+                payload = json.loads(private.payload_json or "{}")
+                assert str(private.major_rank) == before_rank == "body_tempering"
+                assert int(payload.get("upgrade_points") or 0) == before_pts
+                assert int(char.cultivation_points) == before_cult - int(
+                    craft.breakthrough_cost_cultivation
+                )
+
+    _run(_body())
+
+
+def test_breakthrough_success_raises_rank_keeps_points(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_breakthrough_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "bt_ok.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "btok@test.com", "突破成功测")
+                svc = TechniqueCraftService(session)
+                tech_id = await _finalize_spell_attack(session, char, svc)
+                char.major_realm = "qi_refining"
+                private = await _load_private(session, tech_id)
+                payload = json.loads(private.payload_json or "{}")
+                payload["upgrade_points"] = 100
+                private.payload_json = json.dumps(payload, ensure_ascii=False)
+                await session.commit()
+                await session.refresh(char)
+                before_pts = int(payload["upgrade_points"])
+
+                out = await svc.breakthrough(char, tech_id)
+                await session.commit()
+                private = await _load_private(session, tech_id)
+                payload = json.loads(private.payload_json or "{}")
+                assert str(private.major_rank) == "qi_refining"
+                assert out["major_rank"] == "qi_refining"
+                assert int(payload.get("upgrade_points") or 0) == before_pts
+                assert len(payload.get("affixes") or []) >= 2
+
+                char.major_realm = "body_tempering"
+                await session.commit()
+                with pytest.raises(AppError) as exc:
+                    await svc.breakthrough(char, tech_id)
+                assert exc.value.code == ERR_CRAFT_CULTIVATE
+
+    _run(_body())
+
+
+def test_affix_upgrade_fail_keeps_level_still_charges(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_affix_upgrade_success",
+        lambda *_a, **_k: False,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "affix_fail.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "affixfail@test.com", "词条失败测")
+                svc = TechniqueCraftService(session)
+                tech_id = await _finalize_spell_attack(session, char, svc)
+                await session.refresh(char)
+                craft = get_game_config().research.technique_craft
+                cost = int(craft.affix_upgrade_cost[0])
+                before = int(char.cultivation_points)
+                private = await _load_private(session, tech_id)
+                level_before = int(
+                    (json.loads(private.payload_json or "{}").get("affixes") or [{}])[0].get(
+                        "chosen_level"
+                    )
+                    or 0
+                )
+
+                await svc.upgrade_affix(char, tech_id, slot=0)
+                await session.commit()
+                await session.refresh(char)
+                private = await _load_private(session, tech_id)
+                payload = json.loads(private.payload_json or "{}")
+                assert int((payload.get("affixes") or [{}])[0].get("chosen_level") or 0) == level_before
+                assert int(char.cultivation_points) == before - cost
 
     _run(_body())

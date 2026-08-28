@@ -1,9 +1,11 @@
 """
 Technique self-research drafts (功法自研 P1).
 
-Create / list / abandon / embed / conditions / affix roll-choose-reroll / finalize.
+Create / list / abandon / embed / conditions / affix roll-choose-reroll / finalize /
+cultivate (base upgrade, affix upgrade, breakthrough).
 Creating a draft does not consume cards. Embed always consumes the formal card.
 Finalize writes PrivateTechnique + CharacterTechnique and leaves the draft list.
+Cultivate mutates PrivateTechnique.payload_json, not the draft row.
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ from app.constants.research import (
     PRIVATE_ID_PREFIX,
     RESEARCH_SOURCE_CUSTOM,
 )
-from app.constants.technique import TECHNIQUE_SOURCE_RESEARCH
+from app.constants.technique import TECHNIQUE_SOURCE_RESEARCH, normalize_technique_source
 from app.constants.technique_craft import (
     CARD_FORMAL_EFFICACY_ID,
     CARD_FORMAL_ELEMENT_ID,
@@ -33,6 +35,7 @@ from app.constants.technique_craft import (
     DRAFT_PHASE_EMBEDDING,
     DRAFT_PHASE_FINALIZED,
     ERR_CRAFT_CARD,
+    ERR_CRAFT_CULTIVATE,
     ERR_CRAFT_EMBED,
     ERR_CRAFT_FINALIZE,
     SPELL_EFFICACIES,
@@ -43,8 +46,19 @@ from app.db.models.inventory_item import InventoryItem
 from app.db.models.research import PrivateTechnique
 from app.db.models.technique import CharacterTechnique
 from app.db.models.technique_craft import TechniqueResearchDraft
-from app.domain.research_schema import is_valid_zh_label, sum_affix_stats
-from app.domain.technique_craft import filter_affixes, roll_embed_success, roll_three
+from app.domain.research_schema import is_valid_zh_label
+from app.domain.technique_craft import (
+    can_breakthrough,
+    filter_affixes,
+    next_rank_id,
+    payload_attr_grants,
+    roll_affix_upgrade_success,
+    roll_breakthrough_success,
+    roll_embed_success,
+    roll_three,
+    upgrade_points_for_affix_level,
+    upgrade_points_for_base_level,
+)
 from app.schemas.common import AppError
 from app.schemas.technique_craft import TechniqueDraftPublic
 from app.services.inventory_service import InventoryService
@@ -54,7 +68,7 @@ logger = logging.getLogger(__name__)
 
 
 class TechniqueCraftService:
-    """Multi-draft technique craft: create, list, abandon, embed, conditions, affixes, finalize."""
+    """Multi-draft technique craft: create, list, abandon, embed, conditions, affixes, finalize, cultivate."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -399,13 +413,18 @@ class TechniqueCraftService:
         }
 
     @staticmethod
-    def _affix_slot_count(row: TechniqueResearchDraft) -> int:
+    def _rank_affix_slots(major_rank: str) -> int:
         """Column count from ``ranks[major_rank].affix_slots`` (body_tempering default 1)."""
         ranks = get_game_config().research.technique_craft.ranks
-        rank = ranks.get(str(row.major_rank)) or ranks.get("body_tempering")
+        rank = ranks.get(str(major_rank)) or ranks.get("body_tempering")
         if rank is None:
             return 1
         return max(1, int(rank.affix_slots or 1))
+
+    @staticmethod
+    def _affix_slot_count(row: TechniqueResearchDraft) -> int:
+        """Column count for a draft's current major rank."""
+        return TechniqueCraftService._rank_affix_slots(str(row.major_rank or "body_tempering"))
 
     def _load_affix_slots(self, row: TechniqueResearchDraft) -> list[dict[str, Any]]:
         """Parse ``affixes_json`` and pad to the rank's column count."""
@@ -509,7 +528,6 @@ class TechniqueCraftService:
             raise AppError(ERR_CRAFT_FINALIZE, "请使用二至十六字中文名称", http_status=400)
 
         cfg = get_game_config()
-        stats = sum_affix_stats(chosen_ids, cfg.research.technique_craft.affixes)
         base_raw = json.loads(row.base_json or "{}")
         payload = {
             "elements": elements,
@@ -520,6 +538,7 @@ class TechniqueCraftService:
             "affixes": slots,
             "upgrade_points": int(row.upgrade_points or 0),
         }
+        stats = payload_attr_grants(payload)
         slug = secrets.token_hex(4)
         technique_id = f"{PRIVATE_ID_PREFIX}:technique:{character.id}:{slug}"
         efficacy = str(row.efficacy)
@@ -571,6 +590,253 @@ class TechniqueCraftService:
         out["private"] = ResearchService._private_public(private)
         out["technique_id"] = technique_id
         return out
+
+    async def upgrade_base(
+        self,
+        character: Character,
+        technique_id: str,
+        stat: str,
+    ) -> dict[str, Any]:
+        """
+        Spend one base-upgrade click on attack, defense, or speed.
+
+        Cost index is ``min(total_upgrades, len(cost)-1)`` for the whole
+        technique, independent of which stat is chosen. Writes payload_json.
+
+        Args:
+            character: Acting original author.
+            technique_id: Learned custom technique id.
+            stat: ``attack``, ``defense``, or ``speed``.
+
+        Returns:
+            dict[str, Any]: Cultivated public payload.
+
+        Raises:
+            AppError: 40223 not cultivable / illegal stat / cap; 40200 poor.
+        """
+        private, payload = await self._require_cultivable(character, technique_id)
+        key = str(stat or "").strip()
+        if key not in ("attack", "defense", "speed"):
+            raise AppError(ERR_CRAFT_CULTIVATE, "基础加成立项非法", http_status=400)
+        craft = get_game_config().research.technique_craft
+        base_raw = payload.get("base") or {}
+        base = dict(base_raw) if isinstance(base_raw, dict) else {}
+        total = (
+            int(base.get("attack") or 0)
+            + int(base.get("defense") or 0)
+            + int(base.get("speed") or 0)
+        )
+        rank = craft.ranks.get(str(private.major_rank)) or craft.ranks.get("body_tempering")
+        cap = int(rank.base_upgrade_cap) if rank is not None else 0
+        if total + 1 > cap:
+            raise AppError(ERR_CRAFT_CULTIVATE, "基础加成次数已达当前阶上限", http_status=400)
+        efficacy = str(payload.get("efficacy") or "")
+        costs = craft.spirit_upgrade_cost if efficacy in SPELL_EFFICACIES else craft.body_upgrade_cost
+        cost = self._table_cost(costs, total)
+        self._deduct_reroll_cost(character, efficacy, cost)
+        base[key] = int(base.get(key) or 0) + 1
+        payload["base"] = base
+        new_level = total + 1
+        payload["upgrade_points"] = int(payload.get("upgrade_points") or 0) + (
+            upgrade_points_for_base_level(new_level)
+        )
+        self._persist_payload(private, payload)
+        await self._session.flush()
+        logger.info(
+            "technique craft base-upgrade character_id=%s technique_id=%s stat=%s cost=%s",
+            character.id,
+            technique_id,
+            key,
+            cost,
+        )
+        return self._cultivate_public(private, payload)
+
+    async def upgrade_affix(
+        self,
+        character: Character,
+        technique_id: str,
+        slot: int,
+    ) -> dict[str, Any]:
+        """
+        Pay affix-upgrade cost, then roll ``affix_upgrade_fail_rate``.
+
+        Failure still charges; ``chosen_level`` stays. Success increments
+        level and adds ``affix_upgrade_points``.
+
+        Args:
+            character: Acting original author.
+            technique_id: Learned custom technique id.
+            slot: 0-based affix column.
+
+        Returns:
+            dict[str, Any]: Cultivated public payload.
+        """
+        private, payload = await self._require_cultivable(character, technique_id)
+        slots = self._payload_affix_slots(payload, str(private.major_rank or "body_tempering"))
+        cell = self._require_slot(slots, slot)
+        if not str(cell.get("chosen_id") or "").strip():
+            raise AppError(ERR_CRAFT_CULTIVATE, "该栏尚未确认词条", http_status=400)
+        craft = get_game_config().research.technique_craft
+        level = int(cell.get("chosen_level") or 0)
+        cost = self._table_cost(craft.affix_upgrade_cost, level)
+        efficacy = str(payload.get("efficacy") or "")
+        self._deduct_reroll_cost(character, efficacy, cost)
+        ok = bool(roll_affix_upgrade_success(float(craft.affix_upgrade_fail_rate)))
+        if ok:
+            new_level = level + 1
+            cell["chosen_level"] = new_level
+            cell["upgrade_count"] = int(cell.get("upgrade_count") or 0) + 1
+            payload["upgrade_points"] = int(payload.get("upgrade_points") or 0) + (
+                upgrade_points_for_affix_level(new_level)
+            )
+        payload["affixes"] = slots
+        self._persist_payload(private, payload)
+        await self._session.flush()
+        logger.info(
+            "technique craft affix-upgrade character_id=%s technique_id=%s slot=%s success=%s cost=%s",
+            character.id,
+            technique_id,
+            slot,
+            ok,
+            cost,
+        )
+        return self._cultivate_public(private, payload)
+
+    async def breakthrough(
+        self,
+        character: Character,
+        technique_id: str,
+    ) -> dict[str, Any]:
+        """
+        Spend breakthrough resources and roll ``breakthrough_fail_rate``.
+
+        Illegal next rank (missing from ranks, or height above the character)
+        raises 40223 before charging. Failure deducts only the resource cost.
+        Success raises ``major_rank`` and keeps ``upgrade_points``.
+
+        Args:
+            character: Acting original author.
+            technique_id: Learned custom technique id.
+
+        Returns:
+            dict[str, Any]: Cultivated public payload.
+
+        Raises:
+            AppError: 40223 illegal breakthrough; 40200 poor.
+        """
+        private, payload = await self._require_cultivable(character, technique_id)
+        craft = get_game_config().research.technique_craft
+        current = str(private.major_rank or "body_tempering")
+        points = int(payload.get("upgrade_points") or 0)
+        if not can_breakthrough(current, points, str(character.major_realm or ""), craft.ranks):
+            raise AppError(ERR_CRAFT_CULTIVATE, "无法突破当前功法阶", http_status=400)
+        nxt = next_rank_id(current)
+        if not nxt:
+            raise AppError(ERR_CRAFT_CULTIVATE, "无法突破当前功法阶", http_status=400)
+        efficacy = str(payload.get("efficacy") or "")
+        cost = int(
+            craft.breakthrough_cost_cultivation
+            if efficacy in SPELL_EFFICACIES
+            else craft.breakthrough_cost_body
+        )
+        self._deduct_reroll_cost(character, efficacy, cost)
+        ok = bool(roll_breakthrough_success(float(craft.breakthrough_fail_rate)))
+        if ok:
+            private.major_rank = nxt
+            payload["affixes"] = self._payload_affix_slots(payload, nxt)
+        self._persist_payload(private, payload)
+        await self._session.flush()
+        logger.info(
+            "technique craft breakthrough character_id=%s technique_id=%s success=%s next=%s",
+            character.id,
+            technique_id,
+            ok,
+            nxt,
+        )
+        return self._cultivate_public(private, payload)
+
+    async def _require_cultivable(
+        self,
+        character: Character,
+        technique_id: str,
+    ) -> tuple[PrivateTechnique, dict[str, Any]]:
+        """Load the author's research technique or raise 40223."""
+        learned = await self._session.execute(
+            select(CharacterTechnique)
+            .where(
+                CharacterTechnique.character_id == character.id,
+                CharacterTechnique.technique_id == technique_id,
+            )
+            .limit(1)
+        )
+        row = learned.scalar_one_or_none()
+        if row is None or normalize_technique_source(getattr(row, "source", None)) != (
+            TECHNIQUE_SOURCE_RESEARCH
+        ):
+            raise AppError(ERR_CRAFT_CULTIVATE, "仅原创功法可培养", http_status=400)
+        private_row = await self._session.execute(
+            select(PrivateTechnique)
+            .where(PrivateTechnique.technique_id == technique_id)
+            .limit(1)
+        )
+        private = private_row.scalar_one_or_none()
+        if private is None:
+            raise AppError(ERR_CRAFT_CULTIVATE, "仅原创功法可培养", http_status=400)
+        author = getattr(private, "author_character_id", None)
+        if author is None:
+            author = private.character_id
+        if int(author) != int(character.id):
+            raise AppError(ERR_CRAFT_CULTIVATE, "仅原创者可培养", http_status=400)
+        try:
+            raw = json.loads(private.payload_json or "{}")
+        except json.JSONDecodeError:
+            raw = {}
+        payload = dict(raw) if isinstance(raw, dict) else {}
+        return private, payload
+
+    def _payload_affix_slots(self, payload: dict[str, Any], major_rank: str) -> list[dict[str, Any]]:
+        """Parse payload affixes and pad empty columns when the rank gains slots."""
+        raw = payload.get("affixes") or []
+        slots: list[dict[str, Any]] = []
+        if isinstance(raw, list):
+            for item in raw:
+                if isinstance(item, dict):
+                    cell = dict(self._empty_affix_slot())
+                    cell.update(item)
+                    slots.append(cell)
+        n = self._rank_affix_slots(major_rank)
+        while len(slots) < n:
+            slots.append(self._empty_affix_slot())
+        return slots
+
+    @staticmethod
+    def _table_cost(table: tuple[int, ...] | list[int], index: int) -> int:
+        """Cost at ``min(index, len-1)``; empty table is free."""
+        seq = tuple(int(x) for x in table)
+        if not seq:
+            return 0
+        return int(seq[min(max(index, 0), len(seq) - 1)])
+
+    @staticmethod
+    def _persist_payload(private: PrivateTechnique, payload: dict[str, Any]) -> None:
+        """Write payload_json and recompute stats_json grants. Does not touch drafts."""
+        private.payload_json = json.dumps(payload, ensure_ascii=False)
+        private.stats_json = json.dumps(payload_attr_grants(payload), ensure_ascii=False)
+
+    @staticmethod
+    def _cultivate_public(private: PrivateTechnique, payload: dict[str, Any]) -> dict[str, Any]:
+        """Public cultivate result for HTTP / tests."""
+        base_raw = payload.get("base") or {}
+        base = dict(base_raw) if isinstance(base_raw, dict) else {}
+        affixes = list(payload.get("affixes") or [])
+        return {
+            "technique_id": private.technique_id,
+            "major_rank": str(private.major_rank or ""),
+            "upgrade_points": int(payload.get("upgrade_points") or 0),
+            "base": base,
+            "affixes": affixes,
+            "stats": payload_attr_grants(payload),
+        }
 
     async def _load_embed_card(
         self,

@@ -35,6 +35,7 @@ from app.constants.technique_craft import ERR_CRAFT_EQUIP_ROLE, IDLE_EFFICACIES
 from app.db.models.character import Character
 from app.db.models.technique import CharacterTechnique, CharacterTechniqueSlot
 from app.db.models.avatar_loadout import AvatarTechniqueSlot
+from app.domain.technique_craft import payload_attr_grants
 from app.schemas.common import AppError
 from app.services.realm_config import get_game_config
 
@@ -175,10 +176,14 @@ class TechniqueService:
                 if level < int(private.max_level) and 0 <= level < len(costs):
                     next_cost = int(costs[level])
                 stats = {}
-                try:
-                    stats = json.loads(private.stats_json or "{}")
-                except json.JSONDecodeError:
-                    stats = {}
+                payload = TechniqueService._private_payload(private)
+                if payload.get("efficacy"):
+                    stats = payload_attr_grants(payload)
+                else:
+                    try:
+                        stats = json.loads(private.stats_json or "{}")
+                    except json.JSONDecodeError:
+                        stats = {}
                 items.append(
                     {
                         "id": tech_id,

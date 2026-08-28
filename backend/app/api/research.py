@@ -20,6 +20,8 @@ from app.schemas.research import (
 from app.schemas.technique_craft import (
     TechniqueAffixChooseRequest,
     TechniqueAffixSlotRequest,
+    TechniqueAffixUpgradeRequest,
+    TechniqueBaseUpgradeRequest,
     TechniqueConditionsRequest,
     TechniqueEmbedRequest,
     TechniqueFinalizeRequest,
@@ -305,4 +307,45 @@ async def technique_finalize_draft(
     """Name and freeze a ready draft onto the learned list."""
     character = await _prepare_research_write(gate, current_user)
     data = await service.finalize_draft(character, draft_id, payload.label_zh)
+    return success(data)
+
+
+@router.post("/technique/techniques/{technique_id}/base-upgrade", response_model=None)
+async def technique_upgrade_base(
+    technique_id: str,
+    payload: TechniqueBaseUpgradeRequest,
+    gate: PlayGate = Depends(get_play_gate),
+    service: TechniqueCraftService = Depends(get_technique_craft_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Spend one base-upgrade click (attack / defense / speed) on an original technique."""
+    character = await _prepare_research_write(gate, current_user)
+    data = await service.upgrade_base(character, technique_id, payload.stat)
+    return success(data)
+
+
+@router.post("/technique/techniques/{technique_id}/affix-upgrade", response_model=None)
+async def technique_upgrade_affix(
+    technique_id: str,
+    payload: TechniqueAffixUpgradeRequest,
+    gate: PlayGate = Depends(get_play_gate),
+    service: TechniqueCraftService = Depends(get_technique_craft_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Pay and roll an affix upgrade; failure still charges."""
+    character = await _prepare_research_write(gate, current_user)
+    data = await service.upgrade_affix(character, technique_id, payload.slot)
+    return success(data)
+
+
+@router.post("/technique/techniques/{technique_id}/breakthrough", response_model=None)
+async def technique_breakthrough(
+    technique_id: str,
+    gate: PlayGate = Depends(get_play_gate),
+    service: TechniqueCraftService = Depends(get_technique_craft_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Spend breakthrough resources and roll rank-up; points are never deducted."""
+    character = await _prepare_research_write(gate, current_user)
+    data = await service.breakthrough(character, technique_id)
     return success(data)
