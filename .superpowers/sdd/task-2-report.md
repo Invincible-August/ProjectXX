@@ -4,6 +4,10 @@
 
 **DONE**
 
+## Commits
+
+- `be0600f` Add technique-craft inventory cards and two-step never-fail use.
+
 ## Summary
 
 Added five technique-craft cards to the inventory catalog, made `add_item(..., meta=...)` always insert a new row, and wired `use_item` so blank → type and type → formal never fail (except empty spirit-root pool → `AppError(40220)` without consuming the card).
