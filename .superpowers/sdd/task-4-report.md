@@ -6,7 +6,7 @@
 
 ## Commits
 
-- Add fail-able embed of formal technique cards onto drafts.
+- `2d6d275` Add fail-able embed of formal technique cards onto drafts.
 
 ## Summary
 
