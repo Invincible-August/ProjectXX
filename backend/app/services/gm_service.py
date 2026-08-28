@@ -376,6 +376,14 @@ class GmService:
                     item_id=item_id,
                     quantity=qty,
                 )
+            from app.constants.technique_craft import CARD_BLANK_ID
+
+            await inv.add_item(
+                character.id,
+                item_type="consumable",
+                item_id=CARD_BLANK_ID,
+                quantity=10,
+            )
 
         if grant_test_pet:
             from app.services.pet_service import PetService

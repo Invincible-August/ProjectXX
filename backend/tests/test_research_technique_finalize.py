@@ -1,6 +1,6 @@
 """
 M8 功法自研定稿：新草稿路径写入已学列表后可装备。
-旧 R2 材料会话用例已删除；technique kind 拒绝见 test_technique_craft。
+旧 R2 非法材料会话已改为 technique kind create_session → 40201。
 """
 
 from __future__ import annotations
@@ -17,10 +17,12 @@ from app.db.models import User
 from app.db.models.inventory_item import InventoryItem
 from app.schemas.auth import RegisterRequest
 from app.schemas.character import CreateCharacterRequest
+from app.schemas.common import AppError
 from app.services import auth_service, character_service
 from app.services.character_service import CharacterService
 from app.services.inventory_service import InventoryService
 from app.services.realm_config import clear_game_config_cache, get_game_config
+from app.services.research_service import ResearchService
 from app.services.technique_craft_service import TechniqueCraftService
 from app.services.technique_service import TechniqueService
 from tests.async_db import open_test_session_factory, run_async as _run
@@ -69,6 +71,27 @@ def test_research_config_loads() -> None:
     cfg = get_game_config()
     assert "phys_edge" in cfg.research.affixes
     assert cfg.research.technique.min_materials >= 1
+
+
+def test_create_session_technique_kind_rejected(tmp_path: Path) -> None:
+    """Old material-session create for technique kind is 40201, not an illegal-material path."""
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "oldtech.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "oldtech-fin@test.com", "旧会话拒")
+                svc = ResearchService(session)
+                with pytest.raises(AppError) as exc:
+                    await svc.create_session(
+                        char,
+                        kind="technique",
+                        materials=[{"item_id": "herb_spirit_grass", "quantity": 1}],
+                        spends={"cultivation_points": 20},
+                    )
+                assert exc.value.code == 40201
+                assert "草稿" in exc.value.message
+
+    _run(_body())
 
 
 async def _grant_formal(session, char, item_id: str, meta: dict) -> str:
