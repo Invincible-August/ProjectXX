@@ -6,7 +6,7 @@
 
 ## Commits
 
-Filled after `git commit` in this task (see git log on `feat/technique-research-p1`).
+- `ffe36dc` Add technique-craft protocol constants, YAML parse, and content checks.
 
 ## Summary
 
