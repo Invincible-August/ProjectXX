@@ -1381,3 +1381,60 @@ def test_use_manual_learns_frozen_copy_and_consumes_book(
                 assert await _manual_qty(session, uid) == 0
 
     _run(_body())
+
+
+def test_copied_technique_cannot_upgrade_or_print(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Learned copies are listed as chance, not cultivable, and cannot upgrade or reprint."""
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "copy_ro.db") as factory:
+            async with factory() as session:
+                author = await _prepare_researcher(session, "copyroa@test.com", "只读甲")
+                learner = await _prepare_researcher(session, "copyrob@test.com", "只读乙")
+                svc = TechniqueCraftService(session)
+                tech_id = await _finalize_spell_attack(session, author, svc)
+                craft = get_game_config().research.technique_craft
+                author.cultivation_points = int(craft.print_manual_cost_cultivation) * 2
+                await session.commit()
+                printed = await svc.print_manual(author, tech_id)
+                await session.commit()
+                snapshot = printed["snapshot"]
+                learner.major_realm = str(snapshot.get("major_rank") or "qi_refining")
+                uid = await _grant_manual(session, learner.id, snapshot)
+                await session.commit()
+                await InventoryService(session).use_item(learner, item_uid=uid)
+                await session.commit()
+
+                author_listed = await TechniqueService(session).list_my_techniques(author)
+                original = next((t for t in author_listed if t["id"] == tech_id), None)
+                assert original is not None
+                assert original["source"] == "research"
+                assert original["cultivable"] is True
+
+                listed = await TechniqueService(session).list_my_techniques(learner)
+                copies = [
+                    row
+                    for row in listed
+                    if str(row.get("author_character_id") or 0) == str(author.id)
+                ]
+                assert len(copies) == 1
+                copy_item = copies[0]
+                assert copy_item["source"] == "chance"
+                assert copy_item["cultivable"] is False
+
+                with pytest.raises(AppError) as up_exc:
+                    await svc.upgrade_base(learner, str(copy_item["id"]), stat="attack")
+                assert up_exc.value.code == ERR_CRAFT_CULTIVATE
+
+                with pytest.raises(AppError) as print_exc:
+                    await svc.print_manual(learner, str(copy_item["id"]))
+                assert print_exc.value.code == ERR_CRAFT_MANUAL
+
+    _run(_body())

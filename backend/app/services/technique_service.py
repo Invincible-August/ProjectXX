@@ -169,8 +169,15 @@ class TechniqueService:
                 missing_ids,
             )
             levels = {str(row.technique_id): int(row.level) for row in rows}
+            sources = {
+                str(row.technique_id): normalize_technique_source(
+                    getattr(row, "source", None)
+                )
+                for row in rows
+            }
             for tech_id, private in privates.items():
                 level = levels.get(tech_id, 1)
+                source = sources.get(tech_id, TECHNIQUE_SOURCE_RESEARCH)
                 next_cost = None
                 costs = cfg.research.technique.cost_per_level
                 if level < int(private.max_level) and 0 <= level < len(costs):
@@ -184,6 +191,10 @@ class TechniqueService:
                         stats = json.loads(private.stats_json or "{}")
                     except json.JSONDecodeError:
                         stats = {}
+                author_id = int(
+                    getattr(private, "author_character_id", None)
+                    or private.character_id
+                )
                 items.append(
                     {
                         "id": tech_id,
@@ -192,10 +203,8 @@ class TechniqueService:
                         "max_level": int(private.max_level),
                         "track": private.track,
                         "next_cost": next_cost,
-                        "source": TECHNIQUE_SOURCE_RESEARCH,
-                        "source_label_zh": technique_source_label_zh(
-                            TECHNIQUE_SOURCE_RESEARCH,
-                        ),
+                        "source": source,
+                        "source_label_zh": technique_source_label_zh(source),
                         "elements": [
                             element_view(eid)
                             for eid in (
@@ -208,15 +217,9 @@ class TechniqueService:
                         "skills_art": [],
                         "stats": stats,
                         "efficacy": TechniqueService._private_efficacy_of(private),
-                        "author_character_id": int(
-                            getattr(private, "author_character_id", None)
-                            or private.character_id
-                        ),
-                        "cultivable": int(
-                            getattr(private, "author_character_id", None)
-                            or private.character_id
-                        )
-                        == int(character.id),
+                        "author_character_id": author_id,
+                        "cultivable": author_id == int(character.id)
+                        and source == TECHNIQUE_SOURCE_RESEARCH,
                     },
                 )
         return items
