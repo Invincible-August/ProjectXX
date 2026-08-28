@@ -249,6 +249,21 @@ def _major_heights(realms: Mapping[str, Any] | None = None) -> dict[str, int]:
     return {str(rid): i for i, rid in enumerate(major_realm_order(source))}
 
 
+def learner_meets_manual_rank(learner_major: str, snapshot_rank: str) -> bool:
+    """
+    True iff the learner's major-realm height is at least the snapshot rank.
+
+    Unknown realm ids are fail-closed (False). Heights come from the
+    ``realms.yaml`` ``next_major`` chain via ``major_realm_order``.
+    """
+    heights = _major_heights()
+    learner_height = heights.get(str(learner_major))
+    rank_height = heights.get(str(snapshot_rank))
+    if learner_height is None or rank_height is None:
+        return False
+    return int(learner_height) >= int(rank_height)
+
+
 def next_rank_id(current_rank: str) -> str | None:
     """Next major id from realms.yaml, or None at the end of the chain."""
     major = get_game_config().realms.get(str(current_rank))

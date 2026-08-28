@@ -7,6 +7,7 @@ Creating a draft does not consume cards. Embed always consumes the formal card.
 Finalize writes PrivateTechnique + CharacterTechnique and leaves the draft list.
 Cultivate mutates PrivateTechnique.payload_json, not the draft row.
 Print copies the current payload into an unstacked inventory manual.
+Learn copies a frozen snapshot onto the reader (source=chance) then consumes the book.
 """
 
 from __future__ import annotations
@@ -29,7 +30,11 @@ from app.constants.research import (
     PRIVATE_ID_PREFIX,
     RESEARCH_SOURCE_CUSTOM,
 )
-from app.constants.technique import TECHNIQUE_SOURCE_RESEARCH, normalize_technique_source
+from app.constants.technique import (
+    TECHNIQUE_SOURCE_CHANCE,
+    TECHNIQUE_SOURCE_RESEARCH,
+    normalize_technique_source,
+)
 from app.constants.technique_craft import (
     CARD_FORMAL_EFFICACY_ID,
     CARD_FORMAL_ELEMENT_ID,
@@ -41,6 +46,7 @@ from app.constants.technique_craft import (
     ERR_CRAFT_CULTIVATE,
     ERR_CRAFT_EMBED,
     ERR_CRAFT_FINALIZE,
+    ERR_CRAFT_LEARN,
     ERR_CRAFT_MANUAL,
     SPELL_EFFICACIES,
     WEAPON_LIMITS,
@@ -54,6 +60,7 @@ from app.domain.research_schema import is_valid_zh_label
 from app.domain.technique_craft import (
     can_breakthrough,
     filter_affixes,
+    learner_meets_manual_rank,
     next_rank_id,
     payload_attr_grants,
     roll_affix_upgrade_success,
@@ -72,7 +79,7 @@ logger = logging.getLogger(__name__)
 
 
 class TechniqueCraftService:
-    """Multi-draft technique craft: create, list, abandon, embed, conditions, affixes, finalize, cultivate, print."""
+    """Multi-draft technique craft: create, list, abandon, embed, conditions, affixes, finalize, cultivate, print, learn."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -811,6 +818,147 @@ class TechniqueCraftService:
             cost,
         )
         return {"item_id": CARD_MANUAL_ID, "snapshot": snapshot}
+
+    async def learn_from_manual_meta(
+        self,
+        character: Character,
+        meta: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """
+        Grant a frozen copy of a printed technique snapshot. Does not consume the book.
+
+        ``author_character_id`` stays the original researcher. Numeric stats are
+        copied verbatim. ``origin_technique_id`` is written onto the copy payload
+        so a second learn of the same origin fail-closes.
+
+        Args:
+            character: Learner (must not be the snapshot author).
+            meta: Inventory row snapshot, or None if the row has no/invalid JSON.
+
+        Returns:
+            dict[str, Any]: ``technique_id`` of the new private copy.
+
+        Raises:
+            AppError: 40225 if the learner is the author; 40226 if the snapshot
+                is unusable, already learned, or below rank.
+        """
+        snapshot = self._require_manual_snapshot(meta)
+        origin = str(snapshot["origin_technique_id"])
+        author_id = int(snapshot["author_character_id"])
+        if int(character.id) == author_id:
+            raise AppError(ERR_CRAFT_MANUAL, "不可学习自己的秘籍", http_status=400)
+        if await self._already_learned_origin(character, origin):
+            raise AppError(ERR_CRAFT_LEARN, "已习得该功法", http_status=400)
+        if not learner_meets_manual_rank(
+            str(character.major_realm or ""),
+            str(snapshot["major_rank"]),
+        ):
+            raise AppError(ERR_CRAFT_LEARN, "境界不足", http_status=400)
+
+        frozen = copy.deepcopy(snapshot["payload"])
+        frozen["origin_technique_id"] = origin
+        stats = copy.deepcopy(snapshot["stats"])
+        affix_ids = list(snapshot["affix_ids"])
+        efficacy = str(frozen.get("efficacy") or "")
+        cfg = get_game_config()
+        technique_id = f"{PRIVATE_ID_PREFIX}:technique:{character.id}:{secrets.token_hex(4)}"
+        private = PrivateTechnique(
+            character_id=int(character.id),
+            technique_id=technique_id,
+            label_zh=str(snapshot["label_zh"] or ""),
+            revision=1,
+            schema_version=cfg.research.schema_version,
+            affix_ids_json=json.dumps(affix_ids, ensure_ascii=False),
+            stats_json=json.dumps(stats, ensure_ascii=False),
+            payload_json=json.dumps(frozen, ensure_ascii=False),
+            major_rank=str(snapshot["major_rank"]),
+            author_character_id=author_id,
+            track="spirit" if efficacy in SPELL_EFFICACIES else "body",
+            max_level=int(cfg.research.technique.max_level),
+            source=RESEARCH_SOURCE_CUSTOM,
+        )
+        self._session.add(private)
+        self._session.add(
+            CharacterTechnique(
+                character_id=int(character.id),
+                technique_id=technique_id,
+                level=1,
+                source=TECHNIQUE_SOURCE_CHANCE,
+            )
+        )
+        await self._session.flush()
+        logger.info(
+            "technique craft learn-manual character_id=%s origin=%s copy=%s",
+            character.id,
+            origin,
+            technique_id,
+        )
+        return {"technique_id": technique_id}
+
+    @staticmethod
+    def _require_manual_snapshot(meta: dict[str, Any] | None) -> dict[str, Any]:
+        """Parse a printed-manual meta dict or raise 40226."""
+        if not isinstance(meta, dict):
+            raise AppError(ERR_CRAFT_LEARN, "秘籍无效", http_status=400)
+        if str(meta.get("manual_kind") or "") != "technique":
+            raise AppError(ERR_CRAFT_LEARN, "秘籍无效", http_status=400)
+        origin = str(meta.get("origin_technique_id") or "").strip()
+        if not origin:
+            raise AppError(ERR_CRAFT_LEARN, "秘籍无效", http_status=400)
+        try:
+            author_id = int(meta["author_character_id"])
+        except (KeyError, TypeError, ValueError):
+            raise AppError(ERR_CRAFT_LEARN, "秘籍无效", http_status=400) from None
+        major_rank = str(meta.get("major_rank") or "").strip()
+        if not major_rank:
+            raise AppError(ERR_CRAFT_LEARN, "秘籍无效", http_status=400)
+        payload = meta.get("payload")
+        if not isinstance(payload, dict):
+            raise AppError(ERR_CRAFT_LEARN, "秘籍无效", http_status=400)
+        stats = meta.get("stats")
+        if not isinstance(stats, dict):
+            raise AppError(ERR_CRAFT_LEARN, "秘籍无效", http_status=400)
+        affix_ids = meta.get("affix_ids")
+        if not isinstance(affix_ids, list):
+            raise AppError(ERR_CRAFT_LEARN, "秘籍无效", http_status=400)
+        return {
+            "origin_technique_id": origin,
+            "author_character_id": author_id,
+            "label_zh": str(meta.get("label_zh") or ""),
+            "major_rank": major_rank,
+            "payload": payload,
+            "stats": stats,
+            "affix_ids": affix_ids,
+        }
+
+    async def _already_learned_origin(self, character: Character, origin: str) -> bool:
+        """True if the learner already has this origin as id or payload origin."""
+        learned = await self._session.execute(
+            select(CharacterTechnique.id)
+            .where(
+                CharacterTechnique.character_id == character.id,
+                CharacterTechnique.technique_id == origin,
+            )
+            .limit(1)
+        )
+        if learned.scalar_one_or_none() is not None:
+            return True
+        privates = (
+            await self._session.execute(
+                select(PrivateTechnique).where(
+                    PrivateTechnique.character_id == character.id,
+                )
+            )
+        ).scalars().all()
+        for row in privates:
+            try:
+                body = json.loads(row.payload_json or "{}")
+            except json.JSONDecodeError:
+                continue
+            copied = str(body.get("origin_technique_id") or "") if isinstance(body, dict) else ""
+            if copied == origin:
+                return True
+        return False
 
     @staticmethod
     def _manual_snapshot(

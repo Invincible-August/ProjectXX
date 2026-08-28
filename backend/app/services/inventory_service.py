@@ -672,6 +672,38 @@ class InventoryService:
             )
             return applied
 
+        if effect_kind == UseEffectKind.TECH_MANUAL_LEARN:
+            if occupancy != Occupancy.NONE:
+                raise AppError(
+                    code=ERR_ITEM_OCCUPIED,
+                    message="占用中的物品不可使用",
+                    http_status=400,
+                )
+            if int(quantity) != 1:
+                raise AppError(code=40055, message="物品数量不足", http_status=400)
+            from app.services.technique_craft_service import TechniqueCraftService
+
+            meta = self._parse_row_meta(row)
+            learned = await TechniqueCraftService(self._session).learn_from_manual_meta(
+                character,
+                meta,
+            )
+            applied.update(learned)
+            new_qty, _ = apply_remove(int(row.quantity), 1)
+            if new_qty <= 0:
+                await self._session.delete(row)
+            else:
+                row.quantity = new_qty
+            await self._session.flush()
+            logger.info(
+                "inventory use character_id=%s item=%s qty=%s kind=%s",
+                character.id,
+                applied["item_id"],
+                quantity,
+                effect_kind,
+            )
+            return applied
+
         if isinstance(item, ConsumableItem):
             plan = item.on_use({"quantity": quantity}) or {}
             for effect in plan.get("effects") or []:

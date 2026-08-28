@@ -23,6 +23,7 @@ from app.constants.technique_craft import (
     ERR_CRAFT_EMBED,
     ERR_CRAFT_EQUIP_ROLE,
     ERR_CRAFT_FINALIZE,
+    ERR_CRAFT_LEARN,
     ERR_CRAFT_MANUAL,
     element_ids_from_spirit_root_tags,
 )
@@ -50,6 +51,16 @@ def test_mixed_root_expands_to_five_elements() -> None:
 
 def test_metal_root_only_metal() -> None:
     assert element_ids_from_spirit_root_tags(["metal_root"]) == ["metal"]
+
+
+def test_learner_meets_manual_rank_qi_refining_needs_qi_refining() -> None:
+    from app.domain.technique_craft import learner_meets_manual_rank
+
+    assert learner_meets_manual_rank("qi_refining", "body_tempering") is True
+    assert learner_meets_manual_rank("body_tempering", "qi_refining") is False
+    assert learner_meets_manual_rank("qi_refining", "qi_refining") is True
+    assert learner_meets_manual_rank("unknown_major", "body_tempering") is False
+    assert learner_meets_manual_rank("body_tempering", "unknown_rank") is False
 
 
 def test_technique_craft_config_loads() -> None:
@@ -866,6 +877,43 @@ async def _load_private(session, tech_id: str) -> PrivateTechnique:
     ).scalar_one()
 
 
+async def _grant_manual(session, character_id: int, meta: dict) -> str:
+    """Insert one unstacked tech_manual and return its item_uid."""
+    inv = InventoryService(session)
+    await inv.add_item(
+        character_id,
+        item_type="manual",
+        item_id=CARD_MANUAL_ID,
+        quantity=1,
+        meta=meta,
+    )
+    await session.flush()
+    row = (
+        await session.execute(
+            select(InventoryItem)
+            .where(
+                InventoryItem.character_id == character_id,
+                InventoryItem.item_id == CARD_MANUAL_ID,
+                InventoryItem.quantity > 0,
+            )
+            .order_by(InventoryItem.id.desc())
+            .limit(1)
+        )
+    ).scalar_one()
+    return str(row.item_uid)
+
+
+async def _manual_qty(session, item_uid: str) -> int:
+    row = (
+        await session.execute(
+            select(InventoryItem).where(InventoryItem.item_uid == item_uid)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return 0
+    return int(row.quantity)
+
+
 def test_two_attack_upgrades_second_costs_more(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1142,5 +1190,194 @@ def test_print_manual_rejected_for_non_author(
                     await svc.print_manual(char, tech_id)
                 assert exc.value.code == ERR_CRAFT_MANUAL
                 assert exc.value.message == "仅原创者可制成秘籍"
+
+    _run(_body())
+
+
+def test_use_manual_author_cannot_learn_own_book(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "learn_self.db") as factory:
+            async with factory() as session:
+                author = await _prepare_researcher(session, "learnself@test.com", "自学拒")
+                svc = TechniqueCraftService(session)
+                tech_id = await _finalize_spell_attack(session, author, svc)
+                craft = get_game_config().research.technique_craft
+                author.cultivation_points = int(craft.print_manual_cost_cultivation) * 2
+                await session.commit()
+                printed = await svc.print_manual(author, tech_id)
+                await session.commit()
+                uid = (
+                    await session.execute(
+                        select(InventoryItem.item_uid).where(
+                            InventoryItem.character_id == author.id,
+                            InventoryItem.item_id == CARD_MANUAL_ID,
+                            InventoryItem.quantity > 0,
+                        )
+                    )
+                ).scalar_one()
+                inv = InventoryService(session)
+                with pytest.raises(AppError) as exc:
+                    await inv.use_item(author, item_uid=str(uid))
+                assert exc.value.code == ERR_CRAFT_MANUAL
+                assert exc.value.message == "不可学习自己的秘籍"
+                assert printed["snapshot"]["origin_technique_id"] == tech_id
+                assert await _manual_qty(session, str(uid)) == 1
+
+    _run(_body())
+
+
+def test_use_manual_same_origin_twice_does_not_consume(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "learn_dup.db") as factory:
+            async with factory() as session:
+                author = await _prepare_researcher(session, "learndupa@test.com", "印书甲")
+                learner = await _prepare_researcher(session, "learndupb@test.com", "学书乙")
+                svc = TechniqueCraftService(session)
+                tech_id = await _finalize_spell_attack(session, author, svc)
+                craft = get_game_config().research.technique_craft
+                author.cultivation_points = int(craft.print_manual_cost_cultivation) * 2
+                learner.major_realm = "qi_refining"
+                await session.commit()
+                printed = await svc.print_manual(author, tech_id)
+                await session.commit()
+                snapshot = printed["snapshot"]
+                first_uid = await _grant_manual(session, learner.id, snapshot)
+                second_uid = await _grant_manual(session, learner.id, snapshot)
+                await session.commit()
+                inv = InventoryService(session)
+                await inv.use_item(learner, item_uid=first_uid)
+                await session.commit()
+                with pytest.raises(AppError) as exc:
+                    await inv.use_item(learner, item_uid=second_uid)
+                assert exc.value.code == ERR_CRAFT_LEARN
+                assert exc.value.message == "已习得该功法"
+                assert await _manual_qty(session, second_uid) == 1
+
+    _run(_body())
+
+
+def test_use_manual_below_rank_does_not_consume(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "learn_rank.db") as factory:
+            async with factory() as session:
+                author = await _prepare_researcher(session, "learnranka@test.com", "印书丙")
+                learner = await _prepare_researcher(session, "learnrankb@test.com", "学书丁")
+                learner.major_realm = "body_tempering"
+                await session.commit()
+                snapshot = {
+                    "manual_kind": "technique",
+                    "origin_technique_id": "custom:technique:9:deadbeef",
+                    "author_character_id": int(author.id),
+                    "label_zh": "高阶残篇",
+                    "major_rank": "qi_refining",
+                    "payload": {"efficacy": "spell_attack", "elements": ["metal"]},
+                    "stats": {"magic_atk": 1.0},
+                    "affix_ids": [],
+                }
+                uid = await _grant_manual(session, learner.id, snapshot)
+                await session.commit()
+                inv = InventoryService(session)
+                with pytest.raises(AppError) as exc:
+                    await inv.use_item(learner, item_uid=uid)
+                assert exc.value.code == ERR_CRAFT_LEARN
+                assert await _manual_qty(session, uid) == 1
+
+    _run(_body())
+
+
+def test_use_manual_learns_frozen_copy_and_consumes_book(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "learn_ok.db") as factory:
+            async with factory() as session:
+                author = await _prepare_researcher(session, "learnoka@test.com", "印书戊")
+                learner = await _prepare_researcher(session, "learnokb@test.com", "学书己")
+                svc = TechniqueCraftService(session)
+                tech_id = await _finalize_spell_attack(session, author, svc)
+                craft = get_game_config().research.technique_craft
+                author.cultivation_points = int(craft.print_manual_cost_cultivation) * 2
+                await session.commit()
+                private = await _load_private(session, tech_id)
+                payload_before = str(private.payload_json)
+                printed = await svc.print_manual(author, tech_id)
+                await session.commit()
+                snapshot = printed["snapshot"]
+                learner.major_realm = str(snapshot.get("major_rank") or "qi_refining")
+                uid = await _grant_manual(session, learner.id, snapshot)
+                await session.commit()
+
+                inv = InventoryService(session)
+                await inv.use_item(learner, item_uid=uid)
+                await session.commit()
+
+                listed = await TechniqueService(session).list_my_techniques(learner)
+                copies = [
+                    row
+                    for row in listed
+                    if str(row.get("author_character_id") or 0) == str(author.id)
+                    and row.get("cultivable") is False
+                ]
+                assert len(copies) == 1
+                copy_item = copies[0]
+                learned = (
+                    await session.execute(
+                        select(CharacterTechnique).where(
+                            CharacterTechnique.character_id == learner.id,
+                            CharacterTechnique.technique_id == copy_item["id"],
+                        )
+                    )
+                ).scalar_one()
+                assert learned.source == "chance"
+                assert copy_item["cultivable"] is False
+
+                b_private = await _load_private(session, str(copy_item["id"]))
+                assert int(b_private.character_id) == int(learner.id)
+                assert int(b_private.author_character_id) == int(author.id)
+                assert str(b_private.label_zh) == str(snapshot["label_zh"])
+                assert str(b_private.major_rank) == str(snapshot["major_rank"])
+                expected_payload = json.loads(json.dumps(snapshot["payload"]))
+                expected_payload["origin_technique_id"] = snapshot["origin_technique_id"]
+                assert json.loads(b_private.payload_json) == expected_payload
+                assert json.loads(b_private.stats_json) == json.loads(
+                    json.dumps(snapshot["stats"])
+                )
+                assert json.loads(json.dumps(copy_item.get("stats") or {})) == json.loads(
+                    json.dumps(snapshot["stats"])
+                )
+
+                author_private = await _load_private(session, tech_id)
+                assert str(author_private.payload_json) == payload_before
+                assert await _manual_qty(session, uid) == 0
 
     _run(_body())
