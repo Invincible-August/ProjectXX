@@ -1,96 +1,82 @@
-# Task 4 报告：verification service（发码 / 确认 / ticket）
+# Task 4 Report: 镶嵌正式卡（可失败）
 
-## 完成情况
+## Status
 
-- [x] **Step 1：实现 service + schemas**
-  - `backend/app/services/verification/service.py`
-  - `backend/app/schemas/verification.py`
-- [x] **Step 2：DEBUG 下 send/confirm 冒烟**（直接调服务函数 + `AsyncSession`，未挂 HTTP）
+**DONE**
 
-## API 表面（服务层）
+## Commits
 
-| 函数 | 行为 |
-| --- | --- |
-| `send_sms(session, phone)` | 间隔检查 → 写 challenge（code bcrypt）→ `send_sms_code` |
-| `confirm_sms(session, phone, code) -> ticket` | 验码 → 同行签发 `token_urlsafe(32)` |
-| `send_email` / `confirm_email` | 同上，channel=`email` |
-| `submit_id(...)` | DEBUG 直接发票；正式调 `verify_identity`；target=`hash_id_card` |
-| `assert_register_tickets(...)` | 正式缺材料 `40017`；票无效 `40012`；**不**标 consumed |
-| `get_modes() -> dict` | debug / id_verify_mode / 各 provider |
+- Add fail-able embed of formal technique cards onto drafts.
 
-## 错误码
+## Summary
 
-| code | 场景 |
-| --- | --- |
-| `40010` | 验证码错误或过期 |
-| `40011` | 发送间隔未到 |
-| `40012` | ticket 无效/过期/不匹配/已消费 |
-| `40014` | 正式模式身份证格式失败（经 Provider） |
-| `40017` | 正式模式缺核验材料 |
-| `50100` | Provider 未配置（经工厂透传） |
+Added `roll_embed_success`, `TechniqueCraftService.embed_card`, and `POST /cave/lab/technique/drafts/{id}/embed`. Formal element/efficacy cards can be embedded into an owned draft. Validation errors do not consume the card; after validation the card is always `remove_one_by_uid`, then the YAML `embed_fail_rate` roll either writes+locks the slot or leaves other draft fields unchanged.
 
-## 冒烟结果
+Did not implement conditions, affix roll, finalize, or frontend.
 
-DEBUG=`true`，固定码 `000000`，独立临时 SQLite：
+## What was implemented
 
-| 步骤 | 结果 |
-| --- | --- |
-| `get_modes` | OK（含 `id_verify_mode=format`） |
-| `send_sms` → 再发 | `40011` |
-| 错码 `111111` | `40010` |
-| `confirm_sms('000000')` | ticket 长度 43 |
-| `send_email` / `confirm_email` | OK |
-| `submit_id` | OK |
-| `assert_register_tickets`（三票） | OK |
-| 伪造 sms_ticket | `40012` |
+- `roll_embed_success(fail_rate)`: uniform `[0,1)` draw `< fail_rate` fails; rate `<=0` always succeeds, `>=1` always fails.
+- Element card: draft `elements` must still be empty; success writes `elements_json` (that is the lock).
+- Efficacy card: `efficacy` must still be empty; success writes `efficacy`.
+- Errors: not owner `40207` (`ERR_RESEARCH_OWNER` via `_require_draft`); wrong card type / empty formal meta `40220` (`ERR_CRAFT_CARD`); slot already filled `40221` (`ERR_CRAFT_EMBED`). No new codes.
+- Route uses `_prepare_research_write`. Body `{ "item_uid": "..." }`. Response is the public draft payload.
 
-结论：**SMOKE PASS**
+## TDD Evidence
 
-## 涉及文件
+### RED (Step 1)
 
-| 路径 | 说明 |
-| --- | --- |
-| `backend/app/services/verification/service.py` | 编排服务 |
-| `backend/app/schemas/verification.py` | 请求/响应 Schema（供 Task 5 复用） |
-| `README.md` / `CHANGELOG.md` | 文档同步 |
+**Command:**
 
-## 未做（留给后续）
-
-- HTTP 路由（Task 5）
-- 注册消费 ticket / 登录超级密码（Task 6）
-- `git commit`（按约束未执行）
-
-## 顾虑
-
-- `assert_register_tickets` 故意不写 `consumed_at`，避免注册失败废票；Task 6 成功落库后需标记消费。
-- DEBUG 下 `confirm` 额外接受 `debug_verify_code`（`compare_digest`），即使与库内哈希不一致也可通。
-- `submit_id` 在 DEBUG 时 payload.mode=`debug_skip`；正式为实际 `id_verify_mode`。
-
----
-
-## Task 4 Review 修复：`id_card` 规范化一致（2026-07-28）
-
-### 问题
-
-Review Important finding：`IdSubmitRequest` Schema 会将证件号 `strip` 且末位 `x→X`，但 `submit_id` / `assert_register_tickets` 原先仅 `strip()`，可能导致「已签发 `id_ticket` 但注册比对 target 不匹配 → `40012`」。
-
-### 修复
-
-| 文件 | 变更 |
-| --- | --- |
-| `backend/app/services/verification/id_card_util.py` | 新增 `normalize_id_card()`；`hash_id_card` / `mask_id_card` 哈希/脱敏前先规范化 |
-| `backend/app/services/verification/service.py` | `submit_id`、`assert_register_tickets` 调用 `normalize_id_card`，与 Schema 规则对齐 |
-| `backend/tests/test_id_format.py` | 新增 2 条规范化/哈希一致性断言 |
-
-### 测试结果
-
-```
-pytest tests/test_id_format.py -v  →  13 passed
+```powershell
+cd backend; .\.venv\Scripts\python.exe -m pytest tests/test_technique_craft.py -k "embed_fail_consumes or embed_success_locks or embed_second_element" -q
 ```
 
-新增用例：
+**Result:** FAIL as expected (`embed_card` missing).
 
-- `test_normalize_id_card_strip_and_uppercase_x` — PASSED
-- `test_hash_id_card_treats_lowercase_x_as_uppercase` — PASSED
+```
+AttributeError: 'TechniqueCraftService' object has no attribute 'embed_card'
+3 failed, 11 deselected in 6.83s
+```
 
-结论：**FIX VERIFIED**（未执行 git commit）
+### GREEN (Step 2)
+
+**Command (brief):**
+
+```powershell
+cd backend; .\.venv\Scripts\python.exe -m pytest tests/test_technique_craft.py -k embed -q
+```
+
+**Result:** PASS — `3 passed, 11 deselected in 6.65s`
+
+**Extra:** full `tests/test_technique_craft.py`: `14 passed in 20.39s`
+
+## Files changed
+
+| File | Action |
+| --- | --- |
+| `backend/app/domain/technique_craft.py` | Modified — `roll_embed_success` |
+| `backend/app/services/technique_craft_service.py` | Modified — `embed_card` |
+| `backend/app/schemas/technique_craft.py` | Modified — `TechniqueEmbedRequest` |
+| `backend/app/api/research.py` | Modified — `POST .../drafts/{id}/embed` |
+| `backend/tests/test_technique_craft.py` | Modified — three brief embed tests |
+| `.superpowers/sdd/task-4-report.md` | This report |
+
+Did not `git add -A`. Did not push. README/CHANGELOG left alone (docs deferred to Task 9). Did not implement Task 5+.
+
+## Self-review
+
+- TDD: RED on missing `embed_card`, then domain + service + route, then GREEN.
+- Slot lock is “field already filled”; second card of that kind is `40221` and is not deducted.
+- Fail path consumes the card and leaves `elements` / `efficacy` / other columns as they were.
+- Tests monkeypatch `technique_craft_service.roll_embed_success` True/False (`raising=False` so RED could patch before the symbol existed).
+- Reused `ERR_RESEARCH_OWNER` (40207), `ERR_CRAFT_CARD` (40220), `ERR_CRAFT_EMBED` (40221).
+- Writes reuse `_prepare_research_write`.
+
+## Concerns
+
+1. Named tests only cover element cards. Efficacy write/lock is implemented but not in the three brief tests.
+2. 40207 / 40220 have no new embed-specific pytest (40207 is existing `_require_draft`; 40220 is wrong type / empty meta).
+3. No HTTP-level pytest for the new route; coverage is service-level plus PlayGate wiring by convention.
+4. Formal card with missing `elements`/`efficacy` meta is treated as 40220 and is not consumed.
+5. Peek-then-`remove_one_by_uid` is same-session; qty-0 rows raise 40000 before deduct (inventory would use 40055).

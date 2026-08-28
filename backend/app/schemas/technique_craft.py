@@ -7,8 +7,14 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class TechniqueEmbedRequest(BaseModel):
+    """POST /cave/lab/technique/drafts/{id}/embed body."""
+
+    item_uid: str = Field(..., min_length=1, max_length=64)
+
+
 class TechniqueDraftPublic(BaseModel):
-    """Public draft payload returned by create/list."""
+    """Public draft payload returned by create/list/embed."""
 
     id: int
     phase: str

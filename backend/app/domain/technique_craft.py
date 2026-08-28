@@ -1,8 +1,9 @@
-"""Technique-craft card rolls: elements from a spirit-root pool, weighted efficacy."""
+"""Technique-craft card rolls: elements, efficacy, and embed success."""
 
 from __future__ import annotations
 
 import random
+import secrets
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -54,3 +55,29 @@ def roll_efficacy(weights: Mapping[str, float], rng: Any = None) -> str:
     if hasattr(picker, "choices"):
         return str(picker.choices(keys, weights=vals, k=1)[0])
     return keys[0]
+
+
+def roll_embed_success(fail_rate: float, rng: Any = None) -> bool:
+    """
+    Whether a formal-card embed succeeds.
+
+    A uniform draw in ``[0, 1)`` strictly below ``fail_rate`` fails.
+    Rate ``<= 0`` always succeeds; ``>= 1`` always fails.
+
+    Args:
+        fail_rate: ``technique_craft.embed_fail_rate`` from YAML.
+        rng: Optional source with ``random()`` (tests inject).
+
+    Returns:
+        bool: True to write the card onto the draft; False to consume only.
+    """
+    rate = float(fail_rate)
+    if rate <= 0:
+        return True
+    if rate >= 1:
+        return False
+    if rng is not None:
+        draw = float(rng.random())
+    else:
+        draw = secrets.randbelow(10000) / 10000.0
+    return draw >= rate

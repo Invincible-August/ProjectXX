@@ -1,5 +1,5 @@
 """
-功法自研 P1：协议常量、YAML 解析、卡片使用、草稿创建/列表/放弃。
+功法自研 P1：协议常量、YAML 解析、卡片使用、草稿创建/列表/放弃、正式卡镶嵌。
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from app.constants.technique_craft import (
     CARD_TYPE_EFFICACY_ID,
     CARD_TYPE_ELEMENT_ID,
     ERR_CRAFT_CARD,
+    ERR_CRAFT_EMBED,
     element_ids_from_spirit_root_tags,
 )
 from app.core.config import get_settings
@@ -333,5 +334,138 @@ def test_leftover_technique_session_writes_rejected(tmp_path: Path) -> None:
                     )
                 assert fin_exc.value.code == 40201
                 assert fin_exc.value.message == "请改用功法自研草稿接口"
+
+    _run(_body())
+
+
+async def _grant_formal_element(session, char, elements: list[str]) -> str:
+    """Insert one formal element card and return its item_uid."""
+    inv = InventoryService(session)
+    await inv.add_item(
+        char.id,
+        item_type="consumable",
+        item_id=CARD_FORMAL_ELEMENT_ID,
+        quantity=1,
+        meta={"elements": elements},
+    )
+    await session.flush()
+    row = (
+        await session.execute(
+            select(InventoryItem)
+            .where(
+                InventoryItem.character_id == char.id,
+                InventoryItem.item_id == CARD_FORMAL_ELEMENT_ID,
+                InventoryItem.quantity > 0,
+            )
+            .order_by(InventoryItem.id.desc())
+            .limit(1)
+        )
+    ).scalar_one()
+    return str(row.item_uid)
+
+
+async def _formal_element_left(session, char_id: int) -> list[InventoryItem]:
+    return list(
+        (
+            await session.execute(
+                select(InventoryItem).where(
+                    InventoryItem.character_id == char_id,
+                    InventoryItem.item_id == CARD_FORMAL_ELEMENT_ID,
+                    InventoryItem.quantity > 0,
+                )
+            )
+        ).scalars()
+    )
+
+
+def test_embed_fail_consumes_card_keeps_draft(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: False,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "embed_fail.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "embedfail@test.com", "镶嵌失败测")
+                svc = TechniqueCraftService(session)
+                draft = await svc.create_draft(char)
+                uid = await _grant_formal_element(session, char, ["metal", "fire"])
+                await session.commit()
+                out = await svc.embed_card(char, int(draft["id"]), uid)
+                await session.commit()
+                assert out["elements"] == []
+                assert not out["efficacy"]
+                assert out["id"] == draft["id"]
+                assert await _formal_element_left(session, char.id) == []
+                listed = await svc.list_drafts(char)
+                assert len(listed) == 1
+                assert listed[0]["elements"] == []
+                assert listed[0]["efficacy"] in (None, "")
+
+    _run(_body())
+
+
+def test_embed_success_locks_elements(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "embed_ok.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "embedok@test.com", "镶嵌成功测")
+                svc = TechniqueCraftService(session)
+                draft = await svc.create_draft(char)
+                uid = await _grant_formal_element(session, char, ["metal", "fire"])
+                await session.commit()
+                out = await svc.embed_card(char, int(draft["id"]), uid)
+                await session.commit()
+                assert out["elements"] == ["metal", "fire"]
+                assert not out["efficacy"]
+                assert await _formal_element_left(session, char.id) == []
+                listed = await svc.list_drafts(char)
+                assert listed[0]["elements"] == ["metal", "fire"]
+
+    _run(_body())
+
+
+def test_embed_second_element_card_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "embed_lock.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "embedlock@test.com", "二次镶嵌测")
+                svc = TechniqueCraftService(session)
+                draft = await svc.create_draft(char)
+                first_uid = await _grant_formal_element(session, char, ["metal"])
+                await session.commit()
+                await svc.embed_card(char, int(draft["id"]), first_uid)
+                await session.commit()
+                second_uid = await _grant_formal_element(session, char, ["fire"])
+                await session.commit()
+                with pytest.raises(AppError) as exc:
+                    await svc.embed_card(char, int(draft["id"]), second_uid)
+                assert exc.value.code == ERR_CRAFT_EMBED
+                await session.commit()
+                left = await _formal_element_left(session, char.id)
+                assert len(left) == 1
+                assert str(left[0].item_uid) == second_uid
+                listed = await svc.list_drafts(char)
+                assert listed[0]["elements"] == ["metal"]
 
     _run(_body())

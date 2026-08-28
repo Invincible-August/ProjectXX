@@ -17,6 +17,7 @@ from app.schemas.research import (
     ResearchFinalizeRequest,
     ResearchFormationDraftRequest,
 )
+from app.schemas.technique_craft import TechniqueEmbedRequest
 from app.services.play_gate import PlayGate
 from app.services.research_service import ResearchService
 from app.services.technique_craft_service import TechniqueCraftService
@@ -205,3 +206,17 @@ async def technique_abandon_draft(
     character = await _prepare_research_write(gate, current_user)
     await service.abandon_draft(character, draft_id)
     return success({})
+
+
+@router.post("/technique/drafts/{draft_id}/embed", response_model=None)
+async def technique_embed_card(
+    draft_id: int,
+    payload: TechniqueEmbedRequest,
+    gate: PlayGate = Depends(get_play_gate),
+    service: TechniqueCraftService = Depends(get_technique_craft_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Embed a formal element or efficacy card (may fail; card is always consumed)."""
+    character = await _prepare_research_write(gate, current_user)
+    data = await service.embed_card(character, draft_id, payload.item_uid)
+    return success(data)
