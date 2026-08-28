@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.core.deps import get_current_user, get_play_gate, get_research_service
+from app.core.deps import (
+    get_current_user,
+    get_play_gate,
+    get_research_service,
+    get_technique_craft_service,
+)
 from app.db.models import User
 from app.schemas.common import success
 from app.schemas.research import (
@@ -14,6 +19,7 @@ from app.schemas.research import (
 )
 from app.services.play_gate import PlayGate
 from app.services.research_service import ResearchService
+from app.services.technique_craft_service import TechniqueCraftService
 
 router = APIRouter(tags=["cave"])
 
@@ -161,4 +167,41 @@ async def research_submit_review(
     """Review pool placeholder (40210)."""
     character = await _prepare_research_write(gate, current_user)
     await service.submit_review(character, session_id=session_id)
+    return success({})
+
+
+@router.get("/technique/drafts", response_model=None)
+async def technique_list_drafts(
+    gate: PlayGate = Depends(get_play_gate),
+    service: TechniqueCraftService = Depends(get_technique_craft_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Active technique-craft drafts (abandoned omitted)."""
+    character = await gate.require_character(current_user)
+    items = await service.list_drafts(character)
+    return success({"items": items})
+
+
+@router.post("/technique/drafts", response_model=None)
+async def technique_create_draft(
+    gate: PlayGate = Depends(get_play_gate),
+    service: TechniqueCraftService = Depends(get_technique_craft_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Open an empty technique draft. Does not consume cards."""
+    character = await _prepare_research_write(gate, current_user)
+    data = await service.create_draft(character)
+    return success(data)
+
+
+@router.post("/technique/drafts/{draft_id}/abandon", response_model=None)
+async def technique_abandon_draft(
+    draft_id: int,
+    gate: PlayGate = Depends(get_play_gate),
+    service: TechniqueCraftService = Depends(get_technique_craft_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Abandon a draft (phase=abandoned). Embedded cards are not refunded."""
+    character = await _prepare_research_write(gate, current_user)
+    await service.abandon_draft(character, draft_id)
     return success({})

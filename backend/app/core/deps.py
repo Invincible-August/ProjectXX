@@ -28,6 +28,7 @@ from app.services.character_service import CharacterService
 from app.services.constitution_service import ConstitutionService
 from app.services.equipment_service import EquipmentService
 from app.services.research_service import ResearchService
+from app.services.technique_craft_service import TechniqueCraftService
 from app.services.craft_service import CraftService
 from app.services.formation_service import FormationService
 from app.services.gm_service import GmService
@@ -209,6 +210,21 @@ def get_research_service(session: AsyncSession = Depends(get_db)) -> ResearchSer
         ResearchService: Custom technique / formation research sessions.
     """
     return ResearchService(session)
+
+
+def get_technique_craft_service(
+    session: AsyncSession = Depends(get_db),
+) -> TechniqueCraftService:
+    """
+    Provide request-scoped ``TechniqueCraftService``.
+
+    Args:
+        session: Async DB session from ``get_db``.
+
+    Returns:
+        TechniqueCraftService: Multi-draft technique self-research.
+    """
+    return TechniqueCraftService(session)
 
 
 def get_technique_service(session: AsyncSession = Depends(get_db)) -> TechniqueService:

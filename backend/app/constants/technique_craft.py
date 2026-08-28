@@ -20,6 +20,9 @@ ERR_CRAFT_FINALIZE: Final[int] = 40222
 ERR_CRAFT_CULTIVATE: Final[int] = 40223
 ERR_CRAFT_EQUIP_ROLE: Final[int] = 40224
 
+DRAFT_PHASE_EMBEDDING: Final[str] = "embedding"
+DRAFT_PHASE_ABANDONED: Final[str] = "abandoned"
+
 EFFICACY_SPELL_ATTACK: Final[str] = "spell_attack"
 EFFICACY_SPELL_BUFF: Final[str] = "spell_buff"
 EFFICACY_MARTIAL_ATTACK: Final[str] = "martial_attack"

@@ -1,5 +1,5 @@
 """
-功法自研 P1：协议常量、YAML 解析、灵根→元素映射与卡片使用。
+功法自研 P1：协议常量、YAML 解析、卡片使用、草稿创建/列表/放弃。
 """
 
 from __future__ import annotations
@@ -23,6 +23,8 @@ from app.db.models.inventory_item import InventoryItem
 from app.schemas.common import AppError
 from app.services.inventory_service import InventoryService
 from app.services.realm_config import clear_game_config_cache, get_game_config
+from app.services.research_service import ResearchService
+from app.services.technique_craft_service import TechniqueCraftService
 from tests.async_db import open_test_session_factory, run_async as _run
 from tests.test_research_technique_finalize import _prepare_researcher
 
@@ -240,5 +242,51 @@ def test_element_type_card_empty_pool_does_not_consume(tmp_path: Path) -> None:
                     )
                 ).scalar_one()
                 assert int(left.quantity) == 1
+
+    _run(_body())
+
+
+def test_create_two_drafts_independent(tmp_path: Path) -> None:
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "drafts.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "drafts@test.com", "草稿测")
+                svc = TechniqueCraftService(session)
+                first = await svc.create_draft(char)
+                second = await svc.create_draft(char)
+                await session.commit()
+                listed = await svc.list_drafts(char)
+                assert len(listed) == 2
+                ids = {row["id"] for row in listed}
+                assert ids == {first["id"], second["id"]}
+                for row in listed:
+                    assert row["phase"] == "embedding"
+                    assert row["can_finalize"] is False
+                    assert row["elements"] == []
+                    assert not row["efficacy"]
+                await svc.abandon_draft(char, int(first["id"]))
+                await session.commit()
+                remaining = await svc.list_drafts(char)
+                assert len(remaining) == 1
+                assert remaining[0]["id"] == second["id"]
+
+    _run(_body())
+
+
+def test_create_session_technique_kind_rejected(tmp_path: Path) -> None:
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "oldtech.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "oldtech@test.com", "旧会话测")
+                svc = ResearchService(session)
+                with pytest.raises(AppError) as exc:
+                    await svc.create_session(
+                        char,
+                        kind="technique",
+                        materials=[{"item_id": "herb_spirit_grass", "quantity": 2}],
+                        spends={"cultivation_points": 20},
+                    )
+                assert exc.value.code == 40201
+                assert "草稿" in exc.value.message
 
     _run(_body())

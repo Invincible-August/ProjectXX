@@ -37,6 +37,7 @@ from app.db.models.research import (
     PrivateTechnique,
     ResearchSession,
 )
+from app.db.models.technique_craft import TechniqueResearchDraft
 from app.db.models.constitution import ConstitutionItem, ConstitutionSlot
 from app.db.models.defense_snapshot import DefenseSnapshot
 from app.db.models.formation_preset import FormationPreset
@@ -135,6 +136,7 @@ __all__ = [
     "PrivateFormation",
     "PrivateTalisman",
     "CharacterTalismanLoadout",
+    "TechniqueResearchDraft",
     "ConstitutionItem",
     "ConstitutionSlot",
     "DefenseSnapshot",

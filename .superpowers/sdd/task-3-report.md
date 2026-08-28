@@ -1,76 +1,93 @@
-# Task 3 报告：ID / SMS / Email Providers
+# Task 3 Report: 草稿表与创建/列表/放弃
 
-## 完成情况
+## Status
 
-- [x] **Step 1：国标 18 位校验位**（`providers/id_format.py`）
-  - `validate_id_card_format(id_card) -> None`
-  - 正则：前 17 位数字 + 末位 `0-9/Xx`
-  - 地址码粗检：首位不为 `0`
-  - 出生日期：`YYYYMMDD` 合法日历日且不晚于今天
-  - 校验位：GB 11643 权重 `(7,9,10,5,8,4,2,1,6,3,7,9,10,5,8,4,2)`，余数映射 `"10X98765432"`
-  - 失败统一抛 `AppError(40014, ..., http_status=400)`
-- [x] **Step 2：B/C stub**
-  - `id_two_factor.verify_two_factor(*, real_name, id_card)`：`debug` 直接 return；`stub` → 50100「未配置」；其它 → 50100「尚未接入」
-  - `id_real_person.verify_real_person(*, real_name, id_card, face_token=None)`：同上逻辑（实人文案）
-- [x] **Step 3：debug SMS/Email**
-  - `sms_debug.send_code` / `email_debug.send_code`：`logger.info` 提示已发送（不写明文码到 INFO）；仅 `settings.debug` 时 `logger.debug` 打印明文码
-- [x] **Step 4：aliyun / tencent / resend 骨架**
-  - `sms_aliyun`、`sms_tencent`、`email_aliyun`、`email_resend`：签名与 debug 对齐，恒定 `raise AppError(50100, ..., http_status=501)`
-- [x] **Step 5：单元测试**（见下）
-- [x] **工厂 / 工具**
-  - `id_card_util.hash_id_card`：SHA-256(`id_card_hash_salt` + `id_card`)
-  - `id_card_util.mask_id_card`：前 3 + `*` + 后 4
-  - `verify_identity`：按 `id_verify_mode` 路由 `format` / `two_factor` / `real_person`，未知 mode → 50100
-  - `send_sms_code` / `send_email_code`：按 `sms_provider` / `email_provider` 路由，未知 → 50100
+**DONE**
 
-## 测试结果
+## Commits
 
-命令（`backend/.venv`）：
+- *(SHA filled after commit)*
 
-```text
-.\.venv\Scripts\python.exe -m pytest tests/test_id_format.py -v
+## Summary
+
+Added table `technique_research_drafts`, `TechniqueCraftService` (create / list / abandon), and `/cave/lab/technique/drafts` HTTP. Creating a draft does not consume cards. Abandoned drafts stay in the table (`phase=abandoned`) and drop out of `list_drafts`. Old `ResearchService.create_session(kind="technique")` raises `AppError(40201, "请改用功法自研草稿接口")`. Formation/talisman sessions unchanged.
+
+Did not implement embed, conditions, finalize, or frontend.
+
+## What was implemented
+
+- ORM `TechniqueResearchDraft` with columns from the brief; `phase` starts `embedding`; `major_rank` starts as the character’s current `major_realm`.
+- `TechniqueCraftService.create_draft` / `list_drafts` (excludes `phase=abandoned`) / `abandon_draft` (no card refund).
+- Public payload includes `id, phase, elements, efficacy, can_finalize=false` (always false this task).
+- Routes on the existing lab router (PlayGate): `GET/POST /cave/lab/technique/drafts`, `POST /cave/lab/technique/drafts/{id}/abandon`. Writes use `_prepare_research_write`.
+- `ResearchService.create_session(kind="technique")` rejected with existing code `40201` (`ERR_RESEARCH_SESSION`). No new error codes.
+
+## TDD Evidence
+
+### RED (Step 2)
+
+**Command:**
+
+```powershell
+cd backend; .\.venv\Scripts\python.exe -m pytest tests/test_technique_craft.py::test_create_two_drafts_independent -v
 ```
 
-结果：**11 passed**（约 0.10s）
+**Result:** FAIL as expected (service module missing).
 
-| 用例 | 结果 |
+```
+ImportError while importing test module '.../tests/test_technique_craft.py'.
+tests\test_technique_craft.py:27: in <module>
+    from app.services.technique_craft_service import TechniqueCraftService
+E   ModuleNotFoundError: No module named 'app.services.technique_craft_service'
+ERROR tests/test_technique_craft.py
+============================== 1 error in 0.93s ===============================
+```
+
+### GREEN (Step 5)
+
+**Command (brief):**
+
+```powershell
+cd backend; .\.venv\Scripts\python.exe -m pytest tests/test_technique_craft.py::test_create_two_drafts_independent tests/test_research_formation_blueprint.py tests/test_research_talisman_whitelist.py -q
+```
+
+**Result:** PASS — `9 passed in 12.95s`
+
+**Extra:** `test_create_session_technique_kind_rejected` plus the same formation/talisman files: `10 passed`. Full `tests/test_technique_craft.py`: `10 passed`.
+
+## Files changed
+
+| File | Action |
 | --- | --- |
-| `test_id_card_checksum_valid`（合成合法号 `110101199003074477`） | PASSED |
-| `test_id_card_checksum_invalid`（篡改校验位 → 40014） | PASSED |
-| `test_id_card_format_rejects_invalid_inputs` × 6 | PASSED |
-| `test_id_card_checksum_x_suffix`（校验位 X/x） | PASSED |
-| `test_hash_id_card_is_deterministic_and_not_plaintext` | PASSED |
-| `test_mask_id_card_pattern`（`110***********4477`） | PASSED |
+| `backend/app/db/models/technique_craft.py` | Created — `TechniqueResearchDraft` |
+| `backend/app/db/models/__init__.py` | Modified — export new model for `create_all` |
+| `backend/app/services/technique_craft_service.py` | Created — create / list / abandon |
+| `backend/app/schemas/technique_craft.py` | Created — `TechniqueDraftPublic` |
+| `backend/app/api/research.py` | Modified — technique draft routes |
+| `backend/app/core/deps.py` | Modified — `get_technique_craft_service` |
+| `backend/app/services/research_service.py` | Modified — technique `create_session` → 40201 |
+| `backend/app/constants/technique_craft.py` | Modified — `DRAFT_PHASE_EMBEDDING` / `ABANDONED` |
+| `backend/tests/test_technique_craft.py` | Modified — two drafts + old-session 40201 |
+| `.superpowers/sdd/task-3-report.md` | This report |
 
-测试号为满足校验位算法的合成/教学用号，非真实自然人证件。
+Did not `git add -A`. Did not push. README/CHANGELOG left alone (working tree dirty; docs deferred to Task 9). Did not implement Task 4+.
 
-## 涉及文件
+## Self-review
 
-| 路径 | 说明 |
-| --- | --- |
-| `backend/app/services/verification/__init__.py` | 工厂：`verify_identity` / `send_sms_code` / `send_email_code` |
-| `backend/app/services/verification/id_card_util.py` | `hash_id_card` / `mask_id_card` |
-| `backend/app/services/verification/providers/__init__.py` | Provider 子包说明 |
-| `backend/app/services/verification/providers/id_format.py` | A：格式+校验位 |
-| `backend/app/services/verification/providers/id_two_factor.py` | B：stub |
-| `backend/app/services/verification/providers/id_real_person.py` | C：stub + `face_token` |
-| `backend/app/services/verification/providers/sms_debug.py` | 短信 debug |
-| `backend/app/services/verification/providers/sms_aliyun.py` | 短信阿里云骨架 |
-| `backend/app/services/verification/providers/sms_tencent.py` | 短信腾讯云骨架 |
-| `backend/app/services/verification/providers/email_debug.py` | 邮件 debug |
-| `backend/app/services/verification/providers/email_aliyun.py` | 邮件阿里云骨架 |
-| `backend/app/services/verification/providers/email_resend.py` | 邮件 Resend 骨架 |
-| `backend/tests/test_id_format.py` | 格式/哈希/脱敏单测 |
-| `README.md` / `CHANGELOG.md` | 文档同步 |
+- TDD: RED on missing service import, then ORM + service + routes, then GREEN. Extra 40201 test because dual-track create_session is easy to leave open.
+- `create_draft` does not touch inventory. Abandon only flips `phase`; no refund path exists.
+- `list_drafts` filters `phase != abandoned` so abandon reduces list length 2 → 1 as specified.
+- Writes reuse `_prepare_research_write`. GET list only `require_character`.
+- Reused `ERR_RESEARCH_SESSION` (40201) and `ERR_RESEARCH_OWNER` (40207). Did not invent new codes.
+- `can_finalize` is hardcoded `false` until Task 6 has embed + conditions + affix.
+- Production `create_all` picks up the table via `from app.db import models` in `main.py`.
+- Did not implement embed / conditions / finalize / frontend.
+- Did not migrate `test_research_technique_finalize.py` (Task 9).
 
-## 未做（按约束留给后续任务）
+## Concerns
 
-- 验证码 HTTP API、注册/登录改造（Tasks 4–6）
-- 真实厂商 SDK 接入
-- `git commit`（按全局约束未执行）
-
-## 顾虑 / 后续注意事项
-
-- B/C 在 `debug=True` 时跳过真实核验；生产须 `DEBUG=false`，否则二要素/实人会误放行。
-- `verify_identity` 在 `two_factor` / `real_person` 模式**不**自动先跑格式校验；Task 4 `submit_id` 应自行决定是否先调 A。
-- SMS/Email 工厂未知 provider 名抛 50100；与骨架「尚未接入」语义一致，便于配置错误尽早暴露。
+1. `tests/test_research_technique_finalize.py` now fails two cases (`create_session(kind="technique")` is 40201 instead of the old R2 path). Expected; Task 9 rewrites those tests.
+2. Old in-progress technique `research_sessions` rows (if any) can still be fetched/rerolled/finalized via the session APIs. Dual-track until Task 9 cleanup.
+3. No HTTP-level pytest for the new routes; coverage is service-level plus PlayGate wiring by convention.
+4. `_require_draft` 403-before-abandoned can leak that another character’s draft id exists (same as research sessions).
+5. `can_finalize` is always false this task even if later fields were filled by hand in the DB.

@@ -212,7 +212,7 @@ class ResearchService:
         spends: dict[str, int],
         effect_id: str | None = None,
     ) -> dict[str, Any]:
-        """Start a research session: deduct costs, then preview (technique) or draft."""
+        """Start a formation/talisman session. Technique kind is rejected (40201)."""
         if kind == RESEARCH_KIND_FORMATION:
             return await self._create_formation_session(
                 character,
@@ -226,60 +226,13 @@ class ResearchService:
                 spends=spends,
                 effect_id=effect_id,
             )
-        if kind != RESEARCH_KIND_TECHNIQUE:
-            raise AppError(ERR_RESEARCH_VALIDATE, "本期仅开放功法、阵法与符箓自研", http_status=400)
-        cfg = get_game_config().research
-        tech = cfg.technique
-        self._validate_materials(materials, tech.allowed_materials, tech.min_materials)
-        cult_need = int(tech.spend.get("cultivation_points", 0) or 0)
-        body_need = int(tech.spend.get("body_tempering_points", 0) or 0)
-        cult_got = int(spends.get("cultivation_points", cult_need) or 0)
-        body_got = int(spends.get("body_tempering_points", body_need) or 0)
-        if cult_got < cult_need or body_got < body_need:
-            raise AppError(ERR_RESEARCH_MATERIALS, "投入修为或炼体不足", http_status=400)
-        if int(character.cultivation_points or 0) < cult_need:
-            raise AppError(ERR_RESEARCH_MATERIALS, "投入修为或炼体不足", http_status=400)
-        if int(character.body_tempering_points or 0) < body_need:
-            raise AppError(ERR_RESEARCH_MATERIALS, "投入修为或炼体不足", http_status=400)
-
-        inv = InventoryService(self._session)
-        try:
-            await inv.remove_materials(character.id, materials)
-        except AppError as exc:
-            if exc.code == 40055:
-                raise AppError(ERR_RESEARCH_MATERIALS, "非法材料或投入不足", http_status=400) from exc
-            raise
-
-        character.cultivation_points = int(character.cultivation_points or 0) - cult_need
-        character.body_tempering_points = int(character.body_tempering_points or 0) - body_need
-
-        ttl = int(tech.session_ttl_seconds)
-        expires = now_utc() + timedelta(seconds=ttl) if ttl > 0 else None
-        seed = secrets.randbelow(2_147_483_647)
-        row = ResearchSession(
-            character_id=character.id,
-            kind=RESEARCH_KIND_TECHNIQUE,
-            phase=RESEARCH_PHASE_PREVIEWED,
-            materials_json=json.dumps(materials, ensure_ascii=False),
-            spends_json=json.dumps(
-                {"cultivation_points": cult_need, "body_tempering_points": body_need},
-                ensure_ascii=False,
-            ),
-            seed=seed,
-            reroll_count=0,
-            expires_at=expires,
-        )
-        self._session.add(row)
-        await self._session.flush()
-        await self._roll_preview(character, row)
-        await self._session.flush()
-        logger.info(
-            "research session created character_id=%s session_id=%s kind=%s",
-            character.id,
-            row.id,
-            kind,
-        )
-        return self._session_public(row)
+        if kind == RESEARCH_KIND_TECHNIQUE:
+            raise AppError(
+                ERR_RESEARCH_SESSION,
+                "请改用功法自研草稿接口",
+                http_status=400,
+            )
+        raise AppError(ERR_RESEARCH_VALIDATE, "本期仅开放功法、阵法与符箓自研", http_status=400)
 
     async def get_session(self, character: Character, session_id: int) -> dict[str, Any]:
         """Load one session owned by the character."""
