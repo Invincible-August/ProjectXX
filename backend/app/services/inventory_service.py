@@ -17,8 +17,19 @@ from app.constants.inventory import (
     ERR_ITEM_OCCUPIED,
     OCCUPANCY_LABELS_ZH,
     Occupancy,
+    UseEffectKind,
     bag_tab_for,
 )
+from app.constants.technique_craft import (
+    CARD_FORMAL_EFFICACY_ID,
+    CARD_FORMAL_ELEMENT_ID,
+    CARD_TYPE_EFFICACY_ID,
+    CARD_TYPE_ELEMENT_ID,
+    ERR_CRAFT_CARD,
+    element_ids_from_spirit_root_tags,
+)
+from app.domain.env_preview import parse_spirit_root_tags_json
+from app.domain.technique_craft import roll_efficacy, roll_elements
 from app.db.models.character import Character
 from app.db.models.character_equipment import CharacterEquipmentSlot
 from app.db.models.inventory_item import InventoryItem
@@ -372,24 +383,26 @@ class InventoryService:
         inv_cfg = get_game_config().inventory
         max_stack = max_stack_for(item_id, item_type, inv_cfg)
         remaining = quantity
-        result = await self._session.execute(
-            select(InventoryItem)
-            .where(
-                InventoryItem.character_id == character_id,
-                InventoryItem.item_id == item_id,
-                InventoryItem.item_type == item_type,
-                InventoryItem.bag_kind == bag,
+        # meta 非空：正式卡等实例不能并进已有堆，始终新建行
+        if meta is None:
+            result = await self._session.execute(
+                select(InventoryItem)
+                .where(
+                    InventoryItem.character_id == character_id,
+                    InventoryItem.item_id == item_id,
+                    InventoryItem.item_type == item_type,
+                    InventoryItem.bag_kind == bag,
+                )
+                .order_by(InventoryItem.id),
             )
-            .order_by(InventoryItem.id),
-        )
-        rows = list(result.scalars().all())
-        for row in rows:
-            if remaining <= 0:
-                break
-            add = can_add_to_stack(int(row.quantity), remaining, max_stack)
-            if add > 0:
-                row.quantity = int(row.quantity) + add
-                remaining -= add
+            rows = list(result.scalars().all())
+            for row in rows:
+                if remaining <= 0:
+                    break
+                add = can_add_to_stack(int(row.quantity), remaining, max_stack)
+                if add > 0:
+                    row.quantity = int(row.quantity) + add
+                    remaining -= add
         while remaining > 0:
             add = min(remaining, max_stack)
             uid = f"{item_id}_{secrets.token_hex(4)}"
@@ -406,6 +419,54 @@ class InventoryService:
             )
             remaining -= add
         await self._session.flush()
+
+    @staticmethod
+    def _parse_row_meta(row: InventoryItem) -> dict[str, Any] | None:
+        """Parse ``meta_json`` into a dict, or None if absent/invalid."""
+        if not row.meta_json:
+            return None
+        try:
+            parsed = json.loads(row.meta_json)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
+    async def remove_one_by_uid(self, character_id: int, item_uid: str) -> dict[str, Any]:
+        """
+        Deduct one from the stack identified by ``item_uid``.
+
+        Args:
+            character_id: Owner character id.
+            item_uid: Inventory row uid.
+
+        Returns:
+            dict: ``item_id`` and parsed ``meta`` of the deducted row.
+
+        Raises:
+            AppError: 40000 missing row; 40055 quantity already zero.
+        """
+        result = await self._session.execute(
+            select(InventoryItem)
+            .where(
+                InventoryItem.character_id == character_id,
+                InventoryItem.item_uid == item_uid,
+            )
+            .limit(1),
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            raise AppError(code=40000, message="背包物品不存在", http_status=404)
+        if int(row.quantity) < 1:
+            raise AppError(code=40055, message="物品数量不足", http_status=400)
+        item_id = str(row.item_id)
+        meta = self._parse_row_meta(row)
+        new_qty, _ = apply_remove(int(row.quantity), 1)
+        if new_qty <= 0:
+            await self._session.delete(row)
+        else:
+            row.quantity = new_qty
+        await self._session.flush()
+        return {"item_id": item_id, "meta": meta}
 
     async def remove_materials(
         self,
@@ -458,6 +519,98 @@ class InventoryService:
                 row.quantity = new_qty
         await self._session.flush()
 
+    def _element_pool_for(self, character: Character) -> list[str]:
+        """Spirit-root tags → unique technique element ids (may be empty)."""
+        tags = parse_spirit_root_tags_json(
+            getattr(character, "spirit_root_tags_json", None),
+        )
+        return element_ids_from_spirit_root_tags(tags)
+
+    async def _grant_technique_card(
+        self,
+        character_id: int,
+        item_id: str,
+        *,
+        meta: dict[str, Any] | None = None,
+    ) -> None:
+        """Put one converted card into the normal bag."""
+        await self.add_item(
+            character_id,
+            item_type="consumable",
+            item_id=item_id,
+            quantity=1,
+            meta=meta,
+        )
+
+    async def _convert_technique_card(
+        self,
+        character: Character,
+        row: InventoryItem,
+        effect_kind: str,
+        quantity: int,
+    ) -> dict[str, Any]:
+        """
+        Blank → type card; type → formal card. Never fails except empty element pool.
+
+        Empty pool raises 40220 *before* deducting the type card.
+        """
+        source_id = str(row.item_id)
+        item_uid = str(row.item_uid)
+        granted: list[dict[str, Any]] = []
+        craft = get_game_config().research.technique_craft
+
+        if effect_kind == UseEffectKind.TECH_CARD_OPEN_TYPE and source_id == CARD_TYPE_ELEMENT_ID:
+            pool = self._element_pool_for(character)
+            if not pool:
+                raise AppError(
+                    code=ERR_CRAFT_CARD,
+                    message="灵根无法生成属性卡",
+                    http_status=400,
+                )
+
+        for _ in range(quantity):
+            if effect_kind == UseEffectKind.TECH_CARD_BLANK:
+                p_element = float(craft.blank_to_type_p_element)
+                if secrets.randbelow(10000) / 10000 < p_element:
+                    new_id = CARD_TYPE_ELEMENT_ID
+                else:
+                    new_id = CARD_TYPE_EFFICACY_ID
+                await self.remove_one_by_uid(character.id, item_uid)
+                await self._grant_technique_card(character.id, new_id)
+                granted.append({"item_id": new_id})
+            elif effect_kind == UseEffectKind.TECH_CARD_OPEN_TYPE:
+                if source_id == CARD_TYPE_ELEMENT_ID:
+                    elements = roll_elements(self._element_pool_for(character))
+                    meta = {"elements": elements}
+                    await self.remove_one_by_uid(character.id, item_uid)
+                    await self._grant_technique_card(
+                        character.id,
+                        CARD_FORMAL_ELEMENT_ID,
+                        meta=meta,
+                    )
+                    granted.append({"item_id": CARD_FORMAL_ELEMENT_ID, "meta": meta})
+                elif source_id == CARD_TYPE_EFFICACY_ID:
+                    efficacy = roll_efficacy(craft.efficacy_weights)
+                    meta = {"efficacy": efficacy}
+                    await self.remove_one_by_uid(character.id, item_uid)
+                    await self._grant_technique_card(
+                        character.id,
+                        CARD_FORMAL_EFFICACY_ID,
+                        meta=meta,
+                    )
+                    granted.append({"item_id": CARD_FORMAL_EFFICACY_ID, "meta": meta})
+                else:
+                    raise AppError(code=40000, message="该物品不可使用", http_status=400)
+            else:
+                raise AppError(code=40000, message="该物品不可使用", http_status=400)
+
+        out: dict[str, Any] = {"granted": granted}
+        if len(granted) == 1:
+            out["granted_item_id"] = granted[0]["item_id"]
+            if "meta" in granted[0]:
+                out["granted_meta"] = granted[0]["meta"]
+        return out
+
     async def use_item(
         self,
         character: Character,
@@ -491,6 +644,33 @@ class InventoryService:
         occupancy, _slot = self._occupancy_of_row(row, occ_index)
         item = item_from_inventory_row(row, defn, occupancy=occupancy)
         applied: dict[str, Any] = {"item_id": row.item_id, "quantity": quantity}
+
+        use_effect = defn.use_effect if defn is not None else None
+        effect_kind = ""
+        if isinstance(use_effect, dict):
+            effect_kind = str(use_effect.get("kind") or "")
+        if effect_kind in (UseEffectKind.TECH_CARD_BLANK, UseEffectKind.TECH_CARD_OPEN_TYPE):
+            if occupancy != Occupancy.NONE:
+                raise AppError(
+                    code=ERR_ITEM_OCCUPIED,
+                    message="占用中的物品不可使用",
+                    http_status=400,
+                )
+            converted = await self._convert_technique_card(
+                character,
+                row,
+                effect_kind,
+                quantity,
+            )
+            applied.update(converted)
+            logger.info(
+                "inventory use character_id=%s item=%s qty=%s kind=%s",
+                character.id,
+                applied["item_id"],
+                quantity,
+                effect_kind,
+            )
+            return applied
 
         if isinstance(item, ConsumableItem):
             plan = item.on_use({"quantity": quantity}) or {}

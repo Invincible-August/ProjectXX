@@ -1,56 +1,93 @@
-# Task 2 报告：User / VerificationChallenge 模型
+# Task 2 Report: 背包卡片目录与「不失败」的两步使用
 
-## 完成情况
+## Status
 
-- [x] Step 1：扩展 `User`（`backend/app/db/models/user.py`）
-  - 新增字段：`email`（unique, index）、`phone`（unique, index）、`real_name`、
-    `id_card_hash`（index）、`id_card_masked`、`id_verified_level`（默认 `"none"`）、
-    `email_verified`（默认 `False`）、`phone_verified`（默认 `False`）
-  - 全部与 brief 中的类型 / 约束一致；新增字段均加中文注释说明用途
-- [x] Step 2：新建 `VerificationChallenge`（`backend/app/db/models/verification.py`）
-  - 字段：`id`、`channel`、`target`、`code_hash`（nullable）、`ticket`（unique, nullable）、
-    `payload_json`（Text, nullable）、`expires_at`、`consumed_at`（nullable）、`created_at`
-  - 未实现任何验证码生成 / 校验逻辑，仅数据结构（符合"不实现核验 API/Provider"约束）
-- [x] Step 3：导出模型（`backend/app/db/models/__init__.py`）
-  - `__all__ = ["User", "VerificationChallenge"]`
-  - `main.py` 中 `from app.db import models` 保持不变，`Base.metadata.create_all` 能感知新模型
-- [x] Step 4：SQLite 列补丁（`backend/app/main.py`）
-  - 新增 `_USER_TABLE_COLUMN_PATCHES` 清单（8 个新列的列名 + DDL 类型/默认值）
-  - 新增 `_patch_sqlite_missing_user_columns(connection)` 同步函数：
-    `PRAGMA table_info(users)` 读取现有列 → 对缺失列执行 `ALTER TABLE users ADD COLUMN ...`
-  - `lifespan` 中 `create_all` 之后，若 `engine.dialect.name == "sqlite"` 则
-    `await connection.run_sync(_patch_sqlite_missing_user_columns)`
-  - `verification_challenges` 是全新表，`create_all` 直接建出，无需补丁
-- [x] Step 5：冒烟测试（见下）
+**DONE**
 
-## 测试结果
+## Summary
 
-使用项目虚拟环境 `backend/.venv` 执行冒烟脚本（`create_all` + SQLite 列补丁）：
+Added five technique-craft cards to the inventory catalog, made `add_item(..., meta=...)` always insert a new row, and wired `use_item` so blank → type and type → formal never fail (except empty spirit-root pool → `AppError(40220)` without consuming the card).
 
-1. **首次运行**：`verification_challenges` 表被创建（含 3 个索引），`users` 表 8 个新列
-   全部通过 `ALTER TABLE` 成功补齐，日志逐列打印 `sqlite column patched table=users column=...`。
-   最终 `import app.db.models` 得到 `User`、`VerificationChallenge` 均正常。
-2. **二次运行（幂等性验证）**：`PRAGMA table_info(users)` 检测到列已存在，未再执行任何
-   `ALTER TABLE`，无报错，输出 `IDEMPOTENT OK`。
+## What was implemented
 
-结论：模型定义、导出、`create_all` 与 SQLite 补列逻辑均按预期工作，存量 `xiuxian.db`
-可安全升级到新 schema，不需要删库重建。
+- Catalog: `tech_card_blank`, `tech_card_type_element`, `tech_card_type_efficacy` (`tradable: true`, `max_stack: 99`); `tech_card_formal_element` / `tech_card_formal_efficacy` (`tradable: false`, `bound: true`, `max_stack: 1`, no `use_effect` — embed is Task 3+).
+- `UseEffectKind.TECH_CARD_BLANK` / `TECH_CARD_OPEN_TYPE`.
+- `InventoryService.add_item`: if `meta is not None`, skip the stacking loop and always create new rows.
+- `InventoryService.remove_one_by_uid(character_id, item_uid) -> {item_id, meta}`.
+- `use_item`: blank uses `secrets.randbelow(10000)/10000 < blank_to_type_p_element`; type-element uses `roll_elements`; type-efficacy uses `roll_efficacy` over YAML weights. Empty element pool raises `40220` before deduct.
+- `app.domain.technique_craft.roll_elements` / `roll_efficacy`.
 
-## 涉及文件
+Did not implement drafts, embed API, or frontend.
 
-- 修改：`backend/app/db/models/user.py`
-- 新建：`backend/app/db/models/verification.py`
-- 修改：`backend/app/db/models/__init__.py`
-- 修改：`backend/app/main.py`（新增列补丁清单 + `_patch_sqlite_missing_user_columns` + lifespan 调用）
+## TDD Evidence
 
-## 顾虑 / 后续注意事项
+### RED (Step 2)
 
-- SQLite 的 `ALTER TABLE ADD COLUMN` 不支持在事务中动态添加 `UNIQUE` 约束，因此
-  `email`、`phone`（User 上应为 unique）在补丁 DDL 中**未**声明 `UNIQUE`，仅在 ORM 层
-  面（新建库场景）通过 `create_all` 生成唯一索引。若存量库需要唯一性保证，需后续用
-  Alembic 迁移单独补建唯一索引（当前任务范围不含此项，Task 3+ 或专门的迁移任务应关注）。
-- `id_verified_level` 补丁默认值写作 SQLite 字面量 `'none'`，与 ORM 层 `default="none"`
-  语义一致；`email_verified` / `phone_verified` 用 `0` 代表 `False`，与 SQLAlchemy Boolean
-  在 SQLite 上的整数存储方式一致。
-- 未涉及验证码发送、核验校验、`ticket` 签发等业务逻辑，均留给 Task 3+。
-- 未执行 `git commit`（按全局约束）。
+**Command:**
+
+```powershell
+cd backend; .\.venv\Scripts\python.exe -m pytest tests/test_technique_craft.py::test_add_item_with_meta_does_not_merge -v
+```
+
+**Result:** FAIL as expected (stacking still merged two meta rows).
+
+```
+tests/test_technique_craft.py::test_add_item_with_meta_does_not_merge FAILED
+E   assert 1 == 2
+E    +  where 1 = len([<app.db.models.inventory_item.InventoryItem object at ...>])
+FAILED tests/test_technique_craft.py::test_add_item_with_meta_does_not_merge
+============================== 1 failed in 3.11s ==============================
+```
+
+### GREEN (Step 6)
+
+Local dirty `equipment.yaml` added `cloth_cap_t1` etc. that HEAD `inventory.yaml` does not list, so `load_game_config` raised `equipment.cloth_cap_t1: missing inventory item`. Tests were run against HEAD `equipment.yaml` (copied aside, restored after).
+
+**Command:**
+
+```powershell
+cd backend; .\.venv\Scripts\python.exe -m pytest tests/test_technique_craft.py -k "blank_card or formal_element or add_item_with_meta" -q
+```
+
+**Result:** PASS — `3 passed, 5 deselected in 6.84s`
+
+### Extra covering
+
+**Command:**
+
+```powershell
+cd backend; .\.venv\Scripts\python.exe -m pytest tests/test_technique_craft.py tests/test_item_r0.py -q
+```
+
+**Result:** PASS — `20 passed in 10.84s`
+
+(Task 1 mapping/config tests + 4 card tests including empty-pool 40220 + existing item/use_effect tests.)
+
+## Files changed
+
+| File | Action |
+| --- | --- |
+| `backend/app/config_data/inventory.yaml` | Modified — five card items only (HEAD base; dirty local remainder restored after commit) |
+| `backend/app/constants/inventory.py` | Modified — `UseEffectKind` + labels |
+| `backend/app/domain/technique_craft.py` | Created — `roll_elements` / `roll_efficacy` |
+| `backend/app/services/inventory_service.py` | Modified — meta no-merge, `remove_one_by_uid`, two-step `use_item` |
+| `backend/tests/test_technique_craft.py` | Modified — three brief tests + empty-pool 40220 |
+| `.superpowers/sdd/task-2-report.md` | This report |
+
+`inventory.yaml` procedure: copied dirty file to `.superpowers/sdd/inventory.yaml.wip`, checked out HEAD, added only the five cards, staged that. After commit, restored the wip and re-inserted the same five cards so unrelated dirty catalog work is not lost.
+
+## Self-review
+
+- TDD: RED on merge, then catalog + service, then GREEN. Extra empty-pool test because “do not deduct” is easy to get wrong.
+- Reused `_prepare_researcher` via import (brief allowed); did not extract `research_fixtures.py`.
+- Formal cards have empty `use_effect`, so `use_item` still hits `ConsumableItem.on_use` → `40214`「该物品不可使用」. Matches “镶嵌走研究室 API 不走 use”.
+- Blank-to-type uses `secrets` as specified (not injectable). Type-element with `metal_root` is deterministic (`["metal"]`).
+- Did not add `TECH_CARD_*` to `INSTANT_USE_KINDS`; conversion intercepts before pill `on_use`.
+- Did not implement Task 3+ (no draft table, no embed).
+- Did not `git add -A`. Did not push. README/CHANGELOG left alone (working tree dirty; Task 1 deferred docs to Task 9).
+
+## Concerns
+
+- Efficacy type → formal path is implemented but not given its own pytest (blank card randomly produces either type). Empty-pool and metal-root element paths are covered.
+- GREEN locally required isolating HEAD `equipment.yaml`; CI on a clean branch should not need that.
+- `_prepare_researcher` import pulls another test module; fine for now, a shared fixture can wait.

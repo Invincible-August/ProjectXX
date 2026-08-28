@@ -70,6 +70,8 @@ class UseEffectKind(StrEnum):
     DICE_MOD = "dice_mod"  # 时效骰子区间
     GRANT = "grant"  # Ability grants
     PET_SKILL_BOOK = "pet_skill_book"  # 技能书专管线
+    TECH_CARD_BLANK = "tech_card_blank"  # 空白卡 → 类型卡
+    TECH_CARD_OPEN_TYPE = "tech_card_open_type"  # 类型卡 → 正式卡
 
 
 class DurationClock(StrEnum):
@@ -122,6 +124,8 @@ USE_EFFECT_KIND_LABEL_ZH: Final[dict[str, str]] = {
     UseEffectKind.DICE_MOD: "骰子修正",
     UseEffectKind.GRANT: "授予能力",
     UseEffectKind.PET_SKILL_BOOK: "灵宠技能书",
+    UseEffectKind.TECH_CARD_BLANK: "功法空白卡",
+    UseEffectKind.TECH_CARD_OPEN_TYPE: "功法类型卡",
 }
 
 INSTANT_USE_KINDS: Final[frozenset[str]] = frozenset({UseEffectKind.STAMINA})

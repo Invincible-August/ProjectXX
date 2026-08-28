@@ -239,3 +239,55 @@ items:
     bag_allowed: [normal, reincarnation]
     tradable: true
     bound: false
+  # —— 功法自研卡片（空白/类型可交易可堆叠；正式卡绑定不堆叠，镶嵌走研究室）——
+  tech_card_blank:
+    name: 功法空白卡
+    item_type: consumable
+    max_stack: 99
+    bag_allowed: [normal]
+    tradable: true
+    bound: false
+    use_effect:
+      kind: tech_card_blank
+    inspect:
+      help_zh: 使用后随机变成属性类型卡或效能类型卡，不会失败。
+  tech_card_type_element:
+    name: 功法属性类型卡
+    item_type: consumable
+    max_stack: 99
+    bag_allowed: [normal]
+    tradable: true
+    bound: false
+    use_effect:
+      kind: tech_card_open_type
+    inspect:
+      help_zh: 使用后按当前灵根生成属性正式卡，不会失败。
+  tech_card_type_efficacy:
+    name: 功法效能类型卡
+    item_type: consumable
+    max_stack: 99
+    bag_allowed: [normal]
+    tradable: true
+    bound: false
+    use_effect:
+      kind: tech_card_open_type
+    inspect:
+      help_zh: 使用后按权重生成效能正式卡，不会失败。
+  tech_card_formal_element:
+    name: 功法属性正式卡
+    item_type: consumable
+    max_stack: 1
+    bag_allowed: [normal]
+    tradable: false
+    bound: true
+    inspect:
+      help_zh: 镶入研究室草稿，不可直接使用。
+  tech_card_formal_efficacy:
+    name: 功法效能正式卡
+    item_type: consumable
+    max_stack: 1
+    bag_allowed: [normal]
+    tradable: false
+    bound: true
+    inspect:
+      help_zh: 镶入研究室草稿，不可直接使用。

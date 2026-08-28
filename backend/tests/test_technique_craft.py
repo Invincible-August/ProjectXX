@@ -1,11 +1,30 @@
 """
-功法自研 P1：协议常量、YAML 解析与灵根→元素映射。
+功法自研 P1：协议常量、YAML 解析、灵根→元素映射与卡片使用。
 """
 
 from __future__ import annotations
 
-from app.constants.technique_craft import element_ids_from_spirit_root_tags
+import json
+from pathlib import Path
+
+import pytest
+from sqlalchemy import select
+
+from app.constants.technique_craft import (
+    CARD_BLANK_ID,
+    CARD_FORMAL_ELEMENT_ID,
+    CARD_TYPE_EFFICACY_ID,
+    CARD_TYPE_ELEMENT_ID,
+    ERR_CRAFT_CARD,
+    element_ids_from_spirit_root_tags,
+)
+from app.core.config import get_settings
+from app.db.models.inventory_item import InventoryItem
+from app.schemas.common import AppError
+from app.services.inventory_service import InventoryService
 from app.services.realm_config import clear_game_config_cache, get_game_config
+from tests.async_db import open_test_session_factory, run_async as _run
+from tests.test_research_technique_finalize import _prepare_researcher
 
 
 def test_mixed_root_expands_to_five_elements() -> None:
@@ -39,3 +58,187 @@ def test_technique_craft_defaults_when_block_missing() -> None:
     assert "spell_attack" in parsed.technique_craft.efficacy_weights
     assert "body_tempering" in parsed.technique_craft.ranks
     assert len(parsed.technique_craft.affixes) >= 6
+
+
+@pytest.fixture(autouse=True)
+def _cfg(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "debug", True)
+    monkeypatch.setattr(settings, "register_require_phone", False)
+    monkeypatch.setattr(settings, "register_require_real_name", False)
+    monkeypatch.setattr(settings, "register_require_email_code", False)
+    monkeypatch.setattr(settings, "app_env", "development")
+    clear_game_config_cache()
+    yield
+    clear_game_config_cache()
+
+
+def test_add_item_with_meta_does_not_merge(tmp_path: Path) -> None:
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "meta.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "meta@test.com", "元数据测")
+                inv = InventoryService(session)
+                await inv.add_item(
+                    char.id,
+                    item_type="consumable",
+                    item_id=CARD_FORMAL_ELEMENT_ID,
+                    quantity=1,
+                    meta={"elements": ["metal"]},
+                )
+                await inv.add_item(
+                    char.id,
+                    item_type="consumable",
+                    item_id=CARD_FORMAL_ELEMENT_ID,
+                    quantity=1,
+                    meta={"elements": ["fire"]},
+                )
+                await session.commit()
+                rows = list(
+                    (
+                        await session.execute(
+                            select(InventoryItem).where(
+                                InventoryItem.character_id == char.id,
+                                InventoryItem.item_id == CARD_FORMAL_ELEMENT_ID,
+                            )
+                        )
+                    ).scalars()
+                )
+                assert len(rows) == 2
+                metas = {
+                    tuple(json.loads(r.meta_json or "{}").get("elements") or [])
+                    for r in rows
+                }
+                assert metas == {("metal",), ("fire",)}
+
+    _run(_body())
+
+
+def test_blank_card_becomes_type_card(tmp_path: Path) -> None:
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "blank.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "blank@test.com", "空白测")
+                inv = InventoryService(session)
+                await inv.add_item(
+                    char.id,
+                    item_type="consumable",
+                    item_id=CARD_BLANK_ID,
+                    quantity=1,
+                )
+                await session.commit()
+                row = (
+                    await session.execute(
+                        select(InventoryItem).where(
+                            InventoryItem.character_id == char.id,
+                            InventoryItem.item_id == CARD_BLANK_ID,
+                        )
+                    )
+                ).scalar_one()
+                await inv.use_item(char, item_uid=row.item_uid)
+                await session.commit()
+                left = list(
+                    (
+                        await session.execute(
+                            select(InventoryItem).where(
+                                InventoryItem.character_id == char.id,
+                                InventoryItem.item_id == CARD_BLANK_ID,
+                                InventoryItem.quantity > 0,
+                            )
+                        )
+                    ).scalars()
+                )
+                assert left == []
+                type_ids = {
+                    r.item_id
+                    for r in (
+                        await session.execute(
+                            select(InventoryItem).where(
+                                InventoryItem.character_id == char.id,
+                                InventoryItem.quantity > 0,
+                            )
+                        )
+                    ).scalars()
+                }
+                assert CARD_TYPE_ELEMENT_ID in type_ids or CARD_TYPE_EFFICACY_ID in type_ids
+
+    _run(_body())
+
+
+def test_formal_element_card_uses_actor_roots(tmp_path: Path) -> None:
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "formal.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "formal@test.com", "属性测")
+                char.spirit_root_tags_json = json.dumps(["metal_root"])
+                inv = InventoryService(session)
+                await inv.add_item(
+                    char.id,
+                    item_type="consumable",
+                    item_id=CARD_TYPE_ELEMENT_ID,
+                    quantity=1,
+                )
+                await session.commit()
+                row = (
+                    await session.execute(
+                        select(InventoryItem).where(
+                            InventoryItem.character_id == char.id,
+                            InventoryItem.item_id == CARD_TYPE_ELEMENT_ID,
+                        )
+                    )
+                ).scalar_one()
+                await inv.use_item(char, item_uid=row.item_uid)
+                await session.commit()
+                formal = (
+                    await session.execute(
+                        select(InventoryItem).where(
+                            InventoryItem.character_id == char.id,
+                            InventoryItem.item_id == CARD_FORMAL_ELEMENT_ID,
+                            InventoryItem.quantity > 0,
+                        )
+                    )
+                ).scalar_one()
+                meta = json.loads(formal.meta_json or "{}")
+                assert meta["elements"] == ["metal"]
+
+    _run(_body())
+
+
+def test_element_type_card_empty_pool_does_not_consume(tmp_path: Path) -> None:
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "empty.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "empty@test.com", "空灵根测")
+                char.spirit_root_tags_json = json.dumps([])
+                inv = InventoryService(session)
+                await inv.add_item(
+                    char.id,
+                    item_type="consumable",
+                    item_id=CARD_TYPE_ELEMENT_ID,
+                    quantity=1,
+                )
+                await session.commit()
+                row = (
+                    await session.execute(
+                        select(InventoryItem).where(
+                            InventoryItem.character_id == char.id,
+                            InventoryItem.item_id == CARD_TYPE_ELEMENT_ID,
+                        )
+                    )
+                ).scalar_one()
+                with pytest.raises(AppError) as exc:
+                    await inv.use_item(char, item_uid=row.item_uid)
+                assert exc.value.code == ERR_CRAFT_CARD
+                await session.commit()
+                left = (
+                    await session.execute(
+                        select(InventoryItem).where(
+                            InventoryItem.character_id == char.id,
+                            InventoryItem.item_id == CARD_TYPE_ELEMENT_ID,
+                            InventoryItem.quantity > 0,
+                        )
+                    )
+                ).scalar_one()
+                assert int(left.quantity) == 1
+
+    _run(_body())
