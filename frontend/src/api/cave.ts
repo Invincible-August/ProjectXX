@@ -13,6 +13,10 @@ import type {
   ResearchCreateRequest,
   ResearchSessionPublic,
 } from '../types/research'
+import type {
+  TechniqueCultivatePublic,
+  TechniqueDraftPublic,
+} from '../types/techniqueCraft'
 
 const LAB = '/cave/lab'
 
@@ -140,5 +144,176 @@ export async function fetchResearchMineApi(): Promise<
     return response.data
   } catch (error: unknown) {
     return envelopeFromAxiosError<{ items: PrivateContentPublic[] }>(error)
+  }
+}
+
+const TECH = `${LAB}/technique`
+
+export async function fetchTechniqueDraftsApi(): Promise<
+  ApiResponse<{ items: TechniqueDraftPublic[] }>
+> {
+  try {
+    const response = await http.get<ApiResponse<{ items: TechniqueDraftPublic[] }>>(
+      `${TECH}/drafts`,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<{ items: TechniqueDraftPublic[] }>(error)
+  }
+}
+
+export async function createTechniqueDraftApi(): Promise<ApiResponse<TechniqueDraftPublic>> {
+  try {
+    const response = await http.post<ApiResponse<TechniqueDraftPublic>>(`${TECH}/drafts`)
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<TechniqueDraftPublic>(error)
+  }
+}
+
+export async function abandonTechniqueDraftApi(
+  draftId: number,
+): Promise<ApiResponse<Record<string, never>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, never>>>(
+      `${TECH}/drafts/${draftId}/abandon`,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<Record<string, never>>(error)
+  }
+}
+
+export async function embedTechniqueCardApi(
+  draftId: number,
+  itemUid: string,
+): Promise<ApiResponse<TechniqueDraftPublic>> {
+  try {
+    const response = await http.post<ApiResponse<TechniqueDraftPublic>>(
+      `${TECH}/drafts/${draftId}/embed`,
+      { item_uid: itemUid },
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<TechniqueDraftPublic>(error)
+  }
+}
+
+export async function setTechniqueConditionsApi(
+  draftId: number,
+  body: { element_limit?: string | null; weapon_limit?: string | null },
+): Promise<ApiResponse<TechniqueDraftPublic>> {
+  try {
+    const response = await http.post<ApiResponse<TechniqueDraftPublic>>(
+      `${TECH}/drafts/${draftId}/conditions`,
+      body,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<TechniqueDraftPublic>(error)
+  }
+}
+
+export async function rollTechniqueAffixApi(
+  draftId: number,
+  slot: number,
+): Promise<ApiResponse<TechniqueDraftPublic>> {
+  try {
+    const response = await http.post<ApiResponse<TechniqueDraftPublic>>(
+      `${TECH}/drafts/${draftId}/affix/roll`,
+      { slot },
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<TechniqueDraftPublic>(error)
+  }
+}
+
+export async function chooseTechniqueAffixApi(
+  draftId: number,
+  slot: number,
+  affixId: string,
+): Promise<ApiResponse<TechniqueDraftPublic>> {
+  try {
+    const response = await http.post<ApiResponse<TechniqueDraftPublic>>(
+      `${TECH}/drafts/${draftId}/affix/choose`,
+      { slot, affix_id: affixId },
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<TechniqueDraftPublic>(error)
+  }
+}
+
+export async function rerollTechniqueAffixApi(
+  draftId: number,
+  slot: number,
+): Promise<ApiResponse<TechniqueDraftPublic>> {
+  try {
+    const response = await http.post<ApiResponse<TechniqueDraftPublic>>(
+      `${TECH}/drafts/${draftId}/affix/reroll`,
+      { slot },
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<TechniqueDraftPublic>(error)
+  }
+}
+
+export async function finalizeTechniqueDraftApi(
+  draftId: number,
+  labelZh: string,
+): Promise<ApiResponse<TechniqueDraftPublic>> {
+  try {
+    const response = await http.post<ApiResponse<TechniqueDraftPublic>>(
+      `${TECH}/drafts/${draftId}/finalize`,
+      { label_zh: labelZh },
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<TechniqueDraftPublic>(error)
+  }
+}
+
+export async function upgradeTechniqueBaseApi(
+  techniqueId: string,
+  stat: 'attack' | 'defense' | 'speed',
+): Promise<ApiResponse<TechniqueCultivatePublic>> {
+  try {
+    const response = await http.post<ApiResponse<TechniqueCultivatePublic>>(
+      `${TECH}/techniques/${techniqueId}/base-upgrade`,
+      { stat },
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<TechniqueCultivatePublic>(error)
+  }
+}
+
+export async function upgradeTechniqueAffixApi(
+  techniqueId: string,
+  slot: number,
+): Promise<ApiResponse<TechniqueCultivatePublic>> {
+  try {
+    const response = await http.post<ApiResponse<TechniqueCultivatePublic>>(
+      `${TECH}/techniques/${techniqueId}/affix-upgrade`,
+      { slot },
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<TechniqueCultivatePublic>(error)
+  }
+}
+
+export async function breakthroughTechniqueApi(
+  techniqueId: string,
+): Promise<ApiResponse<TechniqueCultivatePublic>> {
+  try {
+    const response = await http.post<ApiResponse<TechniqueCultivatePublic>>(
+      `${TECH}/techniques/${techniqueId}/breakthrough`,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<TechniqueCultivatePublic>(error)
   }
 }

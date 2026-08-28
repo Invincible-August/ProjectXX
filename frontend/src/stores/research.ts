@@ -1,5 +1,7 @@
 /**
- * Research Pinia store (M8 R2 technique).
+ * Research Pinia store (formation / talisman sessions).
+ * Technique self-research lives in `stores/techniqueCraft.ts` and must not
+ * call `create({ kind: 'technique', materials })`.
  */
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
@@ -68,6 +70,9 @@ export const useResearchStore = defineStore('research', () => {
   }
 
   async function create(payload: ResearchCreateRequest): Promise<string | null> {
+    if (payload.kind === 'technique') {
+      return '请改用功法自研草稿接口'
+    }
     loading.value = true
     try {
       const envelope = await createResearchSessionApi(payload)
