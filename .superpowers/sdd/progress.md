@@ -1,16 +1,27 @@
 # SDD Progress Ledger
 
-Plan: docs/superpowers/plans/2026-07-28-verification-super-password.md
-Note: workspace has no git repo — skip commits; review via file lists.
+Plan: docs/superpowers/plans/2026-08-27-technique-research-p1.md
+Branch: feat/technique-research-p1
 
-Task 1: complete (Settings + .env.example; ID_VERIFY_MODE comment fixed; review clean)
-Task 2: complete (User + VerificationChallenge + SQLite ALTER; review clean; minors: UNIQUE on ALTER deferred)
-Task 3: complete (providers + id format tests 11 passed; review clean)
-Task 4: complete (verification service + normalize id_card fix; review clean)
-Task 5: complete (verification API 6 endpoints; smoke PASS; review clean)
-Task 6: complete (register tickets + super password; 7 tests; Important fixes applied)
-Task 7: complete (README/CHANGELOG/M0 §7/spec status; docs synced)
-Final review: merge-ready for DEBUG local (20 passed); see .superpowers/sdd/final-review.md
-Task 4: complete (verification service send/confirm/ticket; smoke PASS; no HTTP)
-Task 5: complete (verification HTTP API 6 endpoints; ASGI smoke PASS; no register/login change)
+## Task 1: complete (commits e62ccb5..ef80509, review clean)
 
+Review: spec yes, quality Approved after two fixes (strip TALISMAN_KINDS import; strip InventoryItemDef.talisman_effect_id).
+
+Minors deferred to whole-branch review:
+- `_parse_int_tuple`: empty list `[]` becomes `()` instead of default
+- `weapon_bonus` stats asserted only in validator, not at parse
+- Parser placeholder weights/affixes use string literals not EFFICACY_IDS constants
+- `task-1-fix2-report.md` recorded SHA `d468cf6` but commit is `ef80509`
+
+## Task 2: complete (commits ef80509..613977d, review clean)
+
+Minors deferred:
+- Efficacy type → formal untested
+- `roll_efficacy` silent fallback if rng has no `choices`
+- empty dict `meta={}` vs `meta is not None` stacking mismatch
+- `_prepare_researcher` imported from another test module
+- No test that formal cards refuse `use_item`
+
+## Task 3: complete (commits 613977d..6fee389)
+
+Draft table + create/list/abandon. Old technique `create_session` → 40201. Formation/talisman tests still green. Embed is Task 4.

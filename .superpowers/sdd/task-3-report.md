@@ -6,7 +6,7 @@
 
 ## Commits
 
-- *(SHA filled after commit)*
+- `6fee389` Add technique-research drafts with create, list, and abandon.
 
 ## Summary
 
