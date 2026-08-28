@@ -17,7 +17,12 @@ from app.schemas.research import (
     ResearchFinalizeRequest,
     ResearchFormationDraftRequest,
 )
-from app.schemas.technique_craft import TechniqueEmbedRequest
+from app.schemas.technique_craft import (
+    TechniqueAffixChooseRequest,
+    TechniqueAffixSlotRequest,
+    TechniqueConditionsRequest,
+    TechniqueEmbedRequest,
+)
 from app.services.play_gate import PlayGate
 from app.services.research_service import ResearchService
 from app.services.technique_craft_service import TechniqueCraftService
@@ -219,4 +224,70 @@ async def technique_embed_card(
     """Embed a formal element or efficacy card (may fail; card is always consumed)."""
     character = await _prepare_research_write(gate, current_user)
     data = await service.embed_card(character, draft_id, payload.item_uid)
+    return success(data)
+
+
+@router.post("/technique/drafts/{draft_id}/conditions", response_model=None)
+async def technique_set_conditions(
+    draft_id: int,
+    payload: TechniqueConditionsRequest,
+    gate: PlayGate = Depends(get_play_gate),
+    service: TechniqueCraftService = Depends(get_technique_craft_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Confirm launch conditions. Both boxes may be empty."""
+    character = await _prepare_research_write(gate, current_user)
+    data = await service.set_conditions(
+        character,
+        draft_id,
+        element_limit=payload.element_limit,
+        weapon_limit=payload.weapon_limit,
+    )
+    return success(data)
+
+
+@router.post("/technique/drafts/{draft_id}/affix/roll", response_model=None)
+async def technique_roll_affix(
+    draft_id: int,
+    payload: TechniqueAffixSlotRequest,
+    gate: PlayGate = Depends(get_play_gate),
+    service: TechniqueCraftService = Depends(get_technique_craft_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Generate three affix options for one slot (no resource cost)."""
+    character = await _prepare_research_write(gate, current_user)
+    data = await service.roll_affix(character, draft_id, payload.slot)
+    return success(data)
+
+
+@router.post("/technique/drafts/{draft_id}/affix/choose", response_model=None)
+async def technique_choose_affix(
+    draft_id: int,
+    payload: TechniqueAffixChooseRequest,
+    gate: PlayGate = Depends(get_play_gate),
+    service: TechniqueCraftService = Depends(get_technique_craft_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Lock one of the three rolled affix options."""
+    character = await _prepare_research_write(gate, current_user)
+    data = await service.choose_affix(
+        character,
+        draft_id,
+        payload.slot,
+        payload.affix_id,
+    )
+    return success(data)
+
+
+@router.post("/technique/drafts/{draft_id}/affix/reroll", response_model=None)
+async def technique_reroll_affix(
+    draft_id: int,
+    payload: TechniqueAffixSlotRequest,
+    gate: PlayGate = Depends(get_play_gate),
+    service: TechniqueCraftService = Depends(get_technique_craft_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Pay reroll cost, clear levels, and draw three new affix options."""
+    character = await _prepare_research_write(gate, current_user)
+    data = await service.reroll_affix(character, draft_id, payload.slot)
     return success(data)

@@ -22,6 +22,26 @@ Minors deferred:
 - `_prepare_researcher` imported from another test module
 - No test that formal cards refuse `use_item`
 
-## Task 3: complete (commits 613977d..6fee389)
+## Task 3: complete (commits 613977d..917f6c9, review clean)
 
-Draft table + create/list/abandon. Old technique `create_session` → 40201. Formation/talisman tests still green. Embed is Task 4.
+After fix: leftover technique reroll/finalize → 40201; list_open_sessions omits technique rows.
+
+Minors deferred:
+- Dead R2 finalize/reroll bodies remain until Task 9
+- get_session still returns leftover technique row by id
+- get_catalog still advertises technique open
+- No HTTP-level draft tests
+- ORM defaults use string literals instead of DRAFT_PHASE_*
+- test_create_two_drafts_independent does not assert inventory/major_rank
+- README/CHANGELOG one-liner deferred to Task 9
+
+## Task 4: complete (commits 917f6c9..fa48aea, review clean)
+
+Minors deferred:
+- Efficacy embed path untested
+- 40207/40220 embed cases untested
+- No HTTP-level embed tests
+- Peek qty=0 uses 40000 vs remove_one_by_uid 40055
+- Uses InventoryService._parse_row_meta private helper
+
+## Task 5: complete

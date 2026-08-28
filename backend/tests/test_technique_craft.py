@@ -1,5 +1,5 @@
 """
-功法自研 P1：协议常量、YAML 解析、卡片使用、草稿创建/列表/放弃、正式卡镶嵌。
+功法自研 P1：协议常量、YAML 解析、卡片使用、草稿创建/列表/放弃、正式卡镶嵌、发动条件与词条。
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 from app.constants.technique_craft import (
     CARD_BLANK_ID,
+    CARD_FORMAL_EFFICACY_ID,
     CARD_FORMAL_ELEMENT_ID,
     CARD_TYPE_EFFICACY_ID,
     CARD_TYPE_ELEMENT_ID,
@@ -19,9 +20,11 @@ from app.constants.technique_craft import (
     ERR_CRAFT_EMBED,
     element_ids_from_spirit_root_tags,
 )
+from app.domain.technique_craft import filter_affixes, roll_three
 from app.core.config import get_settings
 from app.db.models.inventory_item import InventoryItem
 from app.db.models.research import ResearchSession
+from app.db.models.technique_craft import TechniqueResearchDraft
 from app.schemas.common import AppError
 from app.services.inventory_service import InventoryService
 from app.services.realm_config import clear_game_config_cache, get_game_config
@@ -467,5 +470,161 @@ def test_embed_second_element_card_rejected(
                 assert str(left[0].item_uid) == second_uid
                 listed = await svc.list_drafts(char)
                 assert listed[0]["elements"] == ["metal"]
+
+    _run(_body())
+
+
+def test_filter_hides_martial_affix_from_spell() -> None:
+    craft = get_game_config().research.technique_craft
+    got = filter_affixes(craft.affixes, efficacy="spell_attack")
+    ids = {str(getattr(item, "affix_id", item)) for item in got}
+    assert "sa_edge" in ids
+    assert "ma_edge" not in ids
+    assert "mb_ward" not in ids
+    assert "ib_bone" not in ids
+
+
+def test_affix_roll_three_duplicates_when_pool_has_one() -> None:
+    options = roll_three(["sa_edge"])
+    assert len(options) == 3
+    assert options == ["sa_edge", "sa_edge", "sa_edge"]
+
+
+async def _grant_formal_efficacy(session, char, efficacy: str) -> str:
+    """Insert one formal efficacy card and return its item_uid."""
+    inv = InventoryService(session)
+    await inv.add_item(
+        char.id,
+        item_type="consumable",
+        item_id=CARD_FORMAL_EFFICACY_ID,
+        quantity=1,
+        meta={"efficacy": efficacy},
+    )
+    await session.flush()
+    row = (
+        await session.execute(
+            select(InventoryItem)
+            .where(
+                InventoryItem.character_id == char.id,
+                InventoryItem.item_id == CARD_FORMAL_EFFICACY_ID,
+                InventoryItem.quantity > 0,
+            )
+            .order_by(InventoryItem.id.desc())
+            .limit(1)
+        )
+    ).scalar_one()
+    return str(row.item_uid)
+
+
+async def _ready_embedded_draft(session, char, svc, *, elements: list[str], efficacy: str):
+    """Create a draft and embed both formal cards (caller patches embed success)."""
+    draft = await svc.create_draft(char)
+    el_uid = await _grant_formal_element(session, char, elements)
+    await svc.embed_card(char, int(draft["id"]), el_uid)
+    ef_uid = await _grant_formal_efficacy(session, char, efficacy)
+    await svc.embed_card(char, int(draft["id"]), ef_uid)
+    await session.commit()
+    return int(draft["id"])
+
+
+def test_conditions_allow_both_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "cond_empty.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "condempty@test.com", "条件空测")
+                svc = TechniqueCraftService(session)
+                draft_id = await _ready_embedded_draft(
+                    session, char, svc, elements=["metal", "fire"], efficacy="spell_attack"
+                )
+                out = await svc.set_conditions(char, draft_id)
+                await session.commit()
+                assert out["element_limit"] in (None, "")
+                assert out["weapon_limit"] in (None, "")
+                listed = await svc.list_drafts(char)
+                assert listed[0]["element_limit"] in (None, "")
+                assert listed[0]["weapon_limit"] in (None, "")
+
+    _run(_body())
+
+
+def test_choose_affix_sets_chosen_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "choose_affix.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "chooseaffix@test.com", "选词条测")
+                svc = TechniqueCraftService(session)
+                draft_id = await _ready_embedded_draft(
+                    session, char, svc, elements=["metal"], efficacy="spell_attack"
+                )
+                rolled = await svc.roll_affix(char, draft_id, slot=0)
+                await session.commit()
+                slot0 = rolled["affixes"][0]
+                assert len(slot0["options"]) == 3
+                pick = str(slot0["options"][0])
+                chosen = await svc.choose_affix(char, draft_id, slot=0, affix_id=pick)
+                await session.commit()
+                assert chosen["affixes"][0]["chosen_id"] == pick
+
+    _run(_body())
+
+
+def test_reroll_affix_clears_levels_and_deducts_resources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "reroll_affix.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "rerollaffix@test.com", "重随测")
+                svc = TechniqueCraftService(session)
+                draft_id = await _ready_embedded_draft(
+                    session, char, svc, elements=["metal"], efficacy="spell_attack"
+                )
+                rolled = await svc.roll_affix(char, draft_id, slot=0)
+                pick = str(rolled["affixes"][0]["options"][0])
+                await svc.choose_affix(char, draft_id, slot=0, affix_id=pick)
+                await session.commit()
+
+                row = await session.get(TechniqueResearchDraft, draft_id)
+                assert row is not None
+                slots = json.loads(row.affixes_json or "[]")
+                slots[0]["chosen_level"] = 3
+                slots[0]["upgrade_count"] = 2
+                row.affixes_json = json.dumps(slots, ensure_ascii=False)
+                await session.commit()
+                await session.refresh(char)
+
+                cost = int(get_game_config().research.technique_craft.affix_reroll_cost[0])
+                before = int(char.cultivation_points)
+                out = await svc.reroll_affix(char, draft_id, slot=0)
+                await session.commit()
+                await session.refresh(char)
+
+                slot0 = out["affixes"][0]
+                assert len(slot0["options"]) == 3
+                assert int(slot0.get("chosen_level") or 0) == 0
+                assert int(slot0.get("upgrade_count") or 0) == 0
+                assert int(char.cultivation_points) == before - cost
 
     _run(_body())

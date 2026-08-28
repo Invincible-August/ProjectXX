@@ -1,54 +1,83 @@
-# Task 5 报告：verification API 路由
+# Task 5 Report: 发动条件 + 词条三选一/重随
 
-## 完成情况
+## Status
 
-- [x] **Step 1：挂载 `APIRouter(prefix="/verification")`**
-  - `backend/app/api/verification.py`
-  - `backend/app/api/router.py`（`include_router(verification.router)`）
-- [x] **Step 2：联调**（`httpx.ASGITransport` → `app.main:app`，DEBUG 固定码 `000000`）
+**DONE**
 
-## 端点
+## Commits
 
-| 方法 | 路径 | 行为 |
-| --- | --- | --- |
-| GET | `/api/v1/verification/modes` | `get_modes()` → data 含 `id_verify_mode` 等 |
-| POST | `/api/v1/verification/sms/send` | `send_sms`；成功 `data=null` |
-| POST | `/api/v1/verification/sms/confirm` | `confirm_sms` → `data.ticket` |
-| POST | `/api/v1/verification/email/send` | `send_email` |
-| POST | `/api/v1/verification/email/confirm` | `confirm_email` → `data.ticket` |
-| POST | `/api/v1/verification/id/submit` | `submit_id` → `data.ticket` |
+- (filled after git commit)
 
-统一信封：`success()` / `AppError`（与 `auth.py` 一致）。无鉴权。未改 register/login。
+## Summary
 
-## 冒烟结果
+Added launch conditions (`set_conditions`) and affix roll / choose / reroll. Conditions require embedded elements + efficacy; both boxes may be empty. Affix columns = `ranks[major_rank].affix_slots`. Roll is allowed before conditions. Reroll spends `cultivation_points` (spell / idle_spirit) or `body_tempering_points` (martial / idle_body) and clears `chosen_level` / `upgrade_count`.
 
-`httpx` + `ASGITransport(app=app)`，DEBUG=`true`，码 `000000`：
+Did not implement finalize/equip (Task 6).
 
-| 步骤 | 结果 |
+## What was implemented
+
+- `filter_affixes`: keep `efficacy in efficacy_allow`; hide other family via `SPELL_EFFICACIES` / `MARTIAL_EFFICACIES`; drop `role=defense` when efficacy ∈ `ATTACK_EFFICACIES`. Empty `weapon_limit` does not filter weapons.
+- `roll_three`: 3 ids; duplicates when pool < 3 (1-item pool → three identical options).
+- `POST .../conditions` `{element_limit?, weapon_limit?}`
+- `POST .../affix/roll` `{slot}` (free; first generation)
+- `POST .../affix/choose` `{slot, affix_id}`
+- `POST .../affix/reroll` `{slot}` cost `affix_reroll_cost[min(n, len-1)]`
+
+## TDD Evidence
+
+### RED (Step 1)
+
+**Command:**
+
+```powershell
+cd backend; .\.venv\Scripts\python.exe -m pytest tests/test_technique_craft.py -k "affix or conditions or filter" -q
+```
+
+**Result:** FAIL as expected (`filter_affixes` / `roll_three` missing).
+
+```
+ImportError: cannot import name 'filter_affixes' from 'app.domain.technique_craft'
+1 error in 0.63s
+```
+
+### GREEN (Step 3)
+
+**Command (brief):**
+
+```powershell
+cd backend; .\.venv\Scripts\python.exe -m pytest tests/test_technique_craft.py -k "affix or conditions or filter" -q
+```
+
+**Result:** PASS — `5 passed, 14 deselected in 7.54s`
+
+**Extra:** full `tests/test_technique_craft.py`: `19 passed in 25.84s`
+
+## Files changed
+
+| File | Action |
 | --- | --- |
-| GET `/modes` | `code=0`，含 `id_verify_mode=format`、`debug=true` |
-| POST `/sms/send` | `code=0` |
-| POST `/sms/confirm` code=`000000` | `code=0`，`ticket` 长度 43 |
-| POST `/email/send` | `code=0` |
-| POST `/email/confirm` | `code=0`，`ticket` 长度 43 |
-| POST `/id/submit` | `code=0`，`ticket` 长度 43（DEBUG 格式失败仅日志） |
+| `backend/app/domain/technique_craft.py` | Modified — `filter_affixes`, `roll_three` |
+| `backend/app/services/technique_craft_service.py` | Modified — conditions + affix roll/choose/reroll |
+| `backend/app/schemas/technique_craft.py` | Modified — request bodies |
+| `backend/app/api/research.py` | Modified — four lab routes |
+| `backend/tests/test_technique_craft.py` | Modified — filter, roll_three, conditions, choose, reroll |
+| `.superpowers/sdd/task-5-report.md` | This report |
 
-结论：**SMOKE PASS**
+Did not `git add -A`. Did not push. README/CHANGELOG left alone (docs deferred to Task 9). Did not implement Task 6+.
 
-## 涉及文件
+## Self-review
 
-| 路径 | 说明 |
-| --- | --- |
-| `backend/app/api/verification.py` | 新建 6 端点 |
-| `backend/app/api/router.py` | 挂载 verification |
-| `README.md` / `CHANGELOG.md` | 文档同步 |
+- TDD: RED on missing `filter_affixes`, then domain + service + routes, then GREEN.
+- Choose test rolls without calling `set_conditions` (roll-before-conditions).
+- Spell reroll deducts `character.cultivation_points` (same field as `ResearchService`); no new ledger.
+- Writes reuse `_prepare_research_write`.
+- `can_finalize` stays false.
 
-## 未做（留给后续）
+## Concerns
 
-- 注册消费 ticket / 超级密码登录（Task 6）
-- `git commit`（按约束未执行）
-
-## 顾虑
-
-- confirm / id 响应字段统一为 `data.ticket`（Schema `TicketData`）；注册侧字段名为 `sms_ticket` / `email_ticket` / `id_ticket`，由 Task 6 映射。
-- 发送间隔仍走服务层 `40011`；联调同一手机号短时间重发会失败。
+1. No `conditions_confirmed` column yet; empty limits look like the create-draft default. Task 6 needs a boolean.
+2. Martial / idle_body reroll (`body_tempering_points`) is implemented but not in the brief tests.
+3. Illegal `element_limit` / `weapon_limit` / slot index / empty pool: coded (40220 / 40208 / 40221) but untested.
+4. No HTTP-level pytest for the four new routes.
+5. YAML affixes have no `weapon_allow` / `element_allow` / `role=defense`; those extra filters are ready but unused.
+6. Changing conditions after a roll does not redraw existing `options`.

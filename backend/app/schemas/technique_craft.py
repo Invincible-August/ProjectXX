@@ -13,6 +13,26 @@ class TechniqueEmbedRequest(BaseModel):
     item_uid: str = Field(..., min_length=1, max_length=64)
 
 
+class TechniqueConditionsRequest(BaseModel):
+    """POST /cave/lab/technique/drafts/{id}/conditions body."""
+
+    element_limit: str | None = None
+    weapon_limit: str | None = None
+
+
+class TechniqueAffixSlotRequest(BaseModel):
+    """POST .../affix/roll and .../affix/reroll body."""
+
+    slot: int = Field(..., ge=0)
+
+
+class TechniqueAffixChooseRequest(BaseModel):
+    """POST /cave/lab/technique/drafts/{id}/affix/choose body."""
+
+    slot: int = Field(..., ge=0)
+    affix_id: str = Field(..., min_length=1, max_length=64)
+
+
 class TechniqueDraftPublic(BaseModel):
     """Public draft payload returned by create/list/embed."""
 
