@@ -6,7 +6,7 @@
 
 ## Commits
 
-- (pending first SHA) Add original-technique cultivate APIs for base, affix, and rank.
+- `86baa84` Add original-technique cultivate APIs for base, affix, and rank.
 
 ## Summary
 
