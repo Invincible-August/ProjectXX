@@ -168,7 +168,7 @@ class ResearchService:
         return items
 
     async def list_open_sessions(self, character: Character) -> list[dict[str, Any]]:
-        """In-progress sessions (drafting / previewed) for the hall resume button."""
+        """In-progress formation/talisman sessions; leftover technique rows are omitted."""
         result = await self._session.execute(
             select(ResearchSession)
             .where(
@@ -181,6 +181,8 @@ class ResearchService:
         )
         items: list[dict[str, Any]] = []
         for row in result.scalars().all():
+            if row.kind == RESEARCH_KIND_TECHNIQUE:
+                continue
             if row.expires_at is not None and now_utc() > ensure_aware_utc(row.expires_at):
                 row.phase = RESEARCH_PHASE_EXPIRED
                 continue
@@ -240,8 +242,14 @@ class ResearchService:
         return self._session_public(row)
 
     async def reroll_session(self, character: Character, session_id: int) -> dict[str, Any]:
-        """Reroll affixes, consuming extra materials."""
+        """Reroll affixes, consuming extra materials. Technique leftover sessions raise 40201."""
         row = await self._require_session(character, session_id, writable=True)
+        if row.kind == RESEARCH_KIND_TECHNIQUE:
+            raise AppError(
+                ERR_RESEARCH_SESSION,
+                "请改用功法自研草稿接口",
+                http_status=400,
+            )
         if row.kind == RESEARCH_KIND_FORMATION:
             raise AppError(ERR_RESEARCH_VALIDATE, "阵法草案请保存设计，无需重投", http_status=400)
         if row.kind == RESEARCH_KIND_TALISMAN:
@@ -269,8 +277,14 @@ class ResearchService:
         session_id: int,
         label_zh: str,
     ) -> dict[str, Any]:
-        """Freeze preview into a private technique / formation."""
+        """Freeze preview into a private formation/talisman. Technique leftover sessions raise 40201."""
         row = await self._require_session(character, session_id, writable=True)
+        if row.kind == RESEARCH_KIND_TECHNIQUE:
+            raise AppError(
+                ERR_RESEARCH_SESSION,
+                "请改用功法自研草稿接口",
+                http_status=400,
+            )
         if row.kind == RESEARCH_KIND_FORMATION:
             return await self._finalize_formation(character, row, label_zh)
         if row.kind == RESEARCH_KIND_TALISMAN:

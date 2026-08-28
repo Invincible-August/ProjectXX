@@ -20,6 +20,7 @@ from app.constants.technique_craft import (
 )
 from app.core.config import get_settings
 from app.db.models.inventory_item import InventoryItem
+from app.db.models.research import ResearchSession
 from app.schemas.common import AppError
 from app.services.inventory_service import InventoryService
 from app.services.realm_config import clear_game_config_cache, get_game_config
@@ -288,5 +289,49 @@ def test_create_session_technique_kind_rejected(tmp_path: Path) -> None:
                     )
                 assert exc.value.code == 40201
                 assert "草稿" in exc.value.message
+
+    _run(_body())
+
+
+def test_leftover_technique_session_writes_rejected(tmp_path: Path) -> None:
+    """Pre-existing R2 technique sessions cannot reroll/finalize and are omitted from open list."""
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "leftover.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "leftover@test.com", "遗留会话")
+                leftover = ResearchSession(
+                    character_id=char.id,
+                    kind="technique",
+                    phase="previewed",
+                    materials_json='[{"item_id": "herb_spirit_grass", "quantity": 2}]',
+                    spends_json='{"cultivation_points": 20}',
+                    seed=1,
+                    dice_roll=50,
+                    affix_preview_json='[{"id": "phys_edge"}]',
+                    reroll_count=0,
+                    expires_at=None,
+                )
+                session.add(leftover)
+                await session.commit()
+                await session.refresh(leftover)
+
+                svc = ResearchService(session)
+                open_items = await svc.list_open_sessions(char)
+                assert all(row["kind"] != "technique" for row in open_items)
+
+                with pytest.raises(AppError) as reroll_exc:
+                    await svc.reroll_session(char, int(leftover.id))
+                assert reroll_exc.value.code == 40201
+                assert reroll_exc.value.message == "请改用功法自研草稿接口"
+
+                with pytest.raises(AppError) as fin_exc:
+                    await svc.finalize_session(
+                        char,
+                        session_id=int(leftover.id),
+                        label_zh="玄铁吐纳残篇",
+                    )
+                assert fin_exc.value.code == 40201
+                assert fin_exc.value.message == "请改用功法自研草稿接口"
 
     _run(_body())
