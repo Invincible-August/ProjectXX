@@ -1,5 +1,5 @@
 """
-功法自研 P1：协议常量、YAML 解析、卡片使用、草稿创建/列表/放弃、正式卡镶嵌、发动条件与词条。
+功法自研 P1：协议常量、YAML 解析、卡片使用、草稿、镶嵌、条件词条、定稿与装备。
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import select
 
+from app.constants.technique import TECHNIQUE_SLOT_ART, TECHNIQUE_SLOT_MAIN
 from app.constants.technique_craft import (
     CARD_BLANK_ID,
     CARD_FORMAL_EFFICACY_ID,
@@ -18,8 +19,13 @@ from app.constants.technique_craft import (
     CARD_TYPE_ELEMENT_ID,
     ERR_CRAFT_CARD,
     ERR_CRAFT_EMBED,
+    ERR_CRAFT_EQUIP_ROLE,
+    ERR_CRAFT_FINALIZE,
     element_ids_from_spirit_root_tags,
 )
+from app.db.models.research import PrivateTechnique
+from app.db.models.technique import CharacterTechnique
+from app.services.technique_service import TechniqueService
 from app.domain.technique_craft import filter_affixes, roll_three
 from app.core.config import get_settings
 from app.db.models.inventory_item import InventoryItem
@@ -626,5 +632,196 @@ def test_reroll_affix_clears_levels_and_deducts_resources(
                 assert int(slot0.get("chosen_level") or 0) == 0
                 assert int(slot0.get("upgrade_count") or 0) == 0
                 assert int(char.cultivation_points) == before - cost
+
+    _run(_body())
+
+
+async def _ready_chosen_draft(
+    session,
+    char,
+    svc,
+    *,
+    elements: list[str],
+    efficacy: str,
+):
+    """Embed both cards, confirm empty conditions, roll and lock slot 0."""
+    draft_id = await _ready_embedded_draft(
+        session, char, svc, elements=elements, efficacy=efficacy
+    )
+    await svc.set_conditions(char, draft_id)
+    rolled = await svc.roll_affix(char, draft_id, slot=0)
+    pick = str(rolled["affixes"][0]["options"][0])
+    await svc.choose_affix(char, draft_id, slot=0, affix_id=pick)
+    await session.commit()
+    return draft_id, pick
+
+
+def test_finalize_requires_affix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "fin_affix.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "finaffix@test.com", "定稿词条测")
+                svc = TechniqueCraftService(session)
+                draft_id = await _ready_embedded_draft(
+                    session, char, svc, elements=["metal"], efficacy="spell_attack"
+                )
+                await svc.set_conditions(char, draft_id)
+                await session.commit()
+                with pytest.raises(AppError) as exc:
+                    await svc.finalize_draft(char, draft_id, label_zh="玄铁吐纳残篇")
+                assert exc.value.code == ERR_CRAFT_FINALIZE
+
+    _run(_body())
+
+
+def test_finalize_enters_learn_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "fin_learn.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "finlearn@test.com", "定稿已学测")
+                svc = TechniqueCraftService(session)
+                draft_id, pick = await _ready_chosen_draft(
+                    session, char, svc, elements=["metal"], efficacy="spell_attack"
+                )
+                out = await svc.finalize_draft(char, draft_id, label_zh="玄铁吐纳残篇")
+                await session.commit()
+                assert out["phase"] == "finalized"
+                tech_id = str((out.get("private") or {}).get("id") or out.get("technique_id") or "")
+                assert tech_id.startswith("custom:technique:")
+                assert str(char.id) in tech_id
+
+                drafts = await svc.list_drafts(char)
+                assert all(int(row["id"]) != draft_id for row in drafts)
+
+                private = (
+                    await session.execute(
+                        select(PrivateTechnique).where(
+                            PrivateTechnique.technique_id == tech_id,
+                        )
+                    )
+                ).scalar_one()
+                assert int(private.author_character_id) == int(char.id)
+                payload = json.loads(private.payload_json or "{}")
+                assert payload.get("efficacy") == "spell_attack"
+
+                learned = (
+                    await session.execute(
+                        select(CharacterTechnique).where(
+                            CharacterTechnique.character_id == char.id,
+                            CharacterTechnique.technique_id == tech_id,
+                        )
+                    )
+                ).scalar_one()
+                assert learned.source == "research"
+
+                listed = await TechniqueService(session).list_my_techniques(char)
+                custom = next((t for t in listed if t["id"] == tech_id), None)
+                assert custom is not None
+                assert custom["name"] == "玄铁吐纳残篇"
+                assert custom["efficacy"] == "spell_attack"
+                assert custom["author_character_id"] == char.id
+                assert custom["cultivable"] is True
+
+                mine = await ResearchService(session).list_mine(char)
+                mine_tech = next((t for t in mine if t["id"] == tech_id), None)
+                assert mine_tech is not None
+                assert mine_tech["efficacy"] == "spell_attack"
+                assert mine_tech["author_character_id"] == char.id
+                assert mine_tech["cultivable"] is True
+                assert pick in (mine_tech.get("affix_ids") or [])
+
+    _run(_body())
+
+
+def test_equip_attack_spell_as_main_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "equip_atk.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "equipatk@test.com", "主槽拒绝测")
+                svc = TechniqueCraftService(session)
+                draft_id, _pick = await _ready_chosen_draft(
+                    session, char, svc, elements=["metal"], efficacy="spell_attack"
+                )
+                out = await svc.finalize_draft(char, draft_id, label_zh="玄铁吐纳残篇")
+                await session.commit()
+                tech_id = str((out.get("private") or {}).get("id") or out.get("technique_id") or "")
+                tech = TechniqueService(session)
+                with pytest.raises(AppError) as exc:
+                    await tech.equip_technique(
+                        char,
+                        technique_id=tech_id,
+                        slot_type=TECHNIQUE_SLOT_MAIN,
+                        slot_index=0,
+                    )
+                assert exc.value.code == ERR_CRAFT_EQUIP_ROLE
+                assert "主功法" in exc.value.message
+                page = await tech.equip_technique(
+                    char,
+                    technique_id=tech_id,
+                    slot_type=TECHNIQUE_SLOT_ART,
+                    slot_index=0,
+                )
+                arts = [
+                    s for s in page["loadout"]["slots"] if s["slot_type"] == TECHNIQUE_SLOT_ART
+                ]
+                assert arts[0]["technique_id"] == tech_id
+
+    _run(_body())
+
+
+def test_equip_idle_spirit_as_main_ok(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "equip_idle.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "equipidle@test.com", "主槽允许测")
+                svc = TechniqueCraftService(session)
+                draft_id, _pick = await _ready_chosen_draft(
+                    session, char, svc, elements=["metal"], efficacy="idle_spirit"
+                )
+                out = await svc.finalize_draft(char, draft_id, label_zh="玄铁吐纳残篇")
+                await session.commit()
+                tech_id = str((out.get("private") or {}).get("id") or out.get("technique_id") or "")
+                page = await TechniqueService(session).equip_technique(
+                    char,
+                    technique_id=tech_id,
+                    slot_type=TECHNIQUE_SLOT_MAIN,
+                    slot_index=0,
+                )
+                mains = [
+                    s for s in page["loadout"]["slots"] if s["slot_type"] == TECHNIQUE_SLOT_MAIN
+                ]
+                assert mains[0]["technique_id"] == tech_id
 
     _run(_body())

@@ -1,15 +1,16 @@
 """
 Technique self-research drafts (功法自研 P1).
 
-Create / list / abandon / embed / conditions / affix roll-choose-reroll.
-Finalize and equip are later tasks. Creating a draft does not consume cards.
-Embed always consumes the formal card.
+Create / list / abandon / embed / conditions / affix roll-choose-reroll / finalize.
+Creating a draft does not consume cards. Embed always consumes the formal card.
+Finalize writes PrivateTechnique + CharacterTechnique and leaves the draft list.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import secrets
 from typing import Any
 
 from sqlalchemy import select
@@ -17,23 +18,32 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants.research import (
     ERR_RESEARCH_AFFIX_SLOTS,
+    ERR_RESEARCH_FROZEN,
     ERR_RESEARCH_MATERIALS,
     ERR_RESEARCH_OWNER,
     ERR_RESEARCH_SESSION,
+    PRIVATE_ID_PREFIX,
+    RESEARCH_SOURCE_CUSTOM,
 )
+from app.constants.technique import TECHNIQUE_SOURCE_RESEARCH
 from app.constants.technique_craft import (
     CARD_FORMAL_EFFICACY_ID,
     CARD_FORMAL_ELEMENT_ID,
     DRAFT_PHASE_ABANDONED,
     DRAFT_PHASE_EMBEDDING,
+    DRAFT_PHASE_FINALIZED,
     ERR_CRAFT_CARD,
     ERR_CRAFT_EMBED,
+    ERR_CRAFT_FINALIZE,
     SPELL_EFFICACIES,
     WEAPON_LIMITS,
 )
 from app.db.models.character import Character
 from app.db.models.inventory_item import InventoryItem
+from app.db.models.research import PrivateTechnique
+from app.db.models.technique import CharacterTechnique
 from app.db.models.technique_craft import TechniqueResearchDraft
+from app.domain.research_schema import is_valid_zh_label, sum_affix_stats
 from app.domain.technique_craft import filter_affixes, roll_embed_success, roll_three
 from app.schemas.common import AppError
 from app.schemas.technique_craft import TechniqueDraftPublic
@@ -44,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 
 class TechniqueCraftService:
-    """Multi-draft technique craft: create, list, abandon, embed, conditions, affixes."""
+    """Multi-draft technique craft: create, list, abandon, embed, conditions, affixes, finalize."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -71,6 +81,7 @@ class TechniqueCraftService:
             affixes_json="[]",
             upgrade_points=0,
             major_rank=str(character.major_realm or "body_tempering"),
+            conditions_confirmed=False,
         )
         self._session.add(row)
         await self._session.flush()
@@ -95,7 +106,9 @@ class TechniqueCraftService:
             select(TechniqueResearchDraft)
             .where(
                 TechniqueResearchDraft.character_id == character.id,
-                TechniqueResearchDraft.phase != DRAFT_PHASE_ABANDONED,
+                TechniqueResearchDraft.phase.notin_(
+                    (DRAFT_PHASE_ABANDONED, DRAFT_PHASE_FINALIZED),
+                ),
             )
             .order_by(TechniqueResearchDraft.id.asc())
         )
@@ -222,6 +235,7 @@ class TechniqueCraftService:
             raise AppError(ERR_CRAFT_CARD, "装备限制非法", http_status=400)
         row.element_limit = el
         row.weapon_limit = wp
+        row.conditions_confirmed = True
         await self._session.flush()
         logger.info(
             "technique craft conditions character_id=%s draft_id=%s element_limit=%s weapon_limit=%s",
@@ -450,6 +464,114 @@ class TechniqueCraftService:
             raise AppError(ERR_RESEARCH_MATERIALS, "投入修为或炼体不足", http_status=400)
         character.body_tempering_points = pool - need
 
+    async def finalize_draft(
+        self,
+        character: Character,
+        draft_id: int,
+        label_zh: str,
+    ) -> dict[str, Any]:
+        """
+        Freeze a ready draft into a private technique on the learned list.
+
+        Gates: non-empty elements and efficacy, ``conditions_confirmed``, at
+        least one chosen affix that still matches the current pool. Then
+        ``phase=finalized``, insert ``PrivateTechnique`` + ``CharacterTechnique``.
+
+        Args:
+            character: Acting character (becomes ``author_character_id``).
+            draft_id: Draft primary key.
+            label_zh: Player-chosen Chinese name (2–16 chars).
+
+        Returns:
+            dict[str, Any]: Public draft plus ``private`` / ``technique_id``.
+
+        Raises:
+            AppError: 40222 if a gate fails; 40206 if already finalized.
+        """
+        row = await self._require_draft(character, draft_id)
+        elements = self._draft_elements(row)
+        if not elements or not str(row.efficacy or "").strip():
+            raise AppError(ERR_CRAFT_FINALIZE, "须先镶嵌属性与效能", http_status=400)
+        if not bool(getattr(row, "conditions_confirmed", False)):
+            raise AppError(ERR_CRAFT_FINALIZE, "须先确认发动条件", http_status=400)
+        slots = self._load_affix_slots(row)
+        chosen_ids = [
+            str(cell.get("chosen_id") or "").strip()
+            for cell in slots
+            if str(cell.get("chosen_id") or "").strip()
+        ]
+        if not chosen_ids:
+            raise AppError(ERR_CRAFT_FINALIZE, "须至少确认一个词条", http_status=400)
+        pool = set(self._affix_pool_ids(row))
+        if any(cid not in pool for cid in chosen_ids):
+            raise AppError(ERR_CRAFT_FINALIZE, "词条与当前效能或发动条件不符", http_status=400)
+        if not is_valid_zh_label(label_zh):
+            raise AppError(ERR_CRAFT_FINALIZE, "请使用二至十六字中文名称", http_status=400)
+
+        cfg = get_game_config()
+        stats = sum_affix_stats(chosen_ids, cfg.research.technique_craft.affixes)
+        base_raw = json.loads(row.base_json or "{}")
+        payload = {
+            "elements": elements,
+            "efficacy": str(row.efficacy),
+            "element_limit": row.element_limit,
+            "weapon_limit": row.weapon_limit,
+            "base": dict(base_raw) if isinstance(base_raw, dict) else {},
+            "affixes": slots,
+            "upgrade_points": int(row.upgrade_points or 0),
+        }
+        slug = secrets.token_hex(4)
+        technique_id = f"{PRIVATE_ID_PREFIX}:technique:{character.id}:{slug}"
+        efficacy = str(row.efficacy)
+        private = PrivateTechnique(
+            character_id=character.id,
+            technique_id=technique_id,
+            label_zh=label_zh.strip(),
+            revision=1,
+            schema_version=cfg.research.schema_version,
+            affix_ids_json=json.dumps(chosen_ids, ensure_ascii=False),
+            stats_json=json.dumps(stats, ensure_ascii=False),
+            payload_json=json.dumps(payload, ensure_ascii=False),
+            major_rank=str(row.major_rank or "body_tempering"),
+            author_character_id=int(character.id),
+            track="spirit" if efficacy in SPELL_EFFICACIES else "body",
+            max_level=int(cfg.research.technique.max_level),
+            source=RESEARCH_SOURCE_CUSTOM,
+        )
+        self._session.add(private)
+        existing = await self._session.execute(
+            select(CharacterTechnique.id)
+            .where(
+                CharacterTechnique.character_id == character.id,
+                CharacterTechnique.technique_id == technique_id,
+            )
+            .limit(1)
+        )
+        if existing.scalar_one_or_none() is None:
+            self._session.add(
+                CharacterTechnique(
+                    character_id=character.id,
+                    technique_id=technique_id,
+                    level=1,
+                    source=TECHNIQUE_SOURCE_RESEARCH,
+                )
+            )
+        row.phase = DRAFT_PHASE_FINALIZED
+        row.label_zh = label_zh.strip()
+        await self._session.flush()
+        logger.info(
+            "technique craft finalized character_id=%s draft_id=%s technique_id=%s",
+            character.id,
+            row.id,
+            technique_id,
+        )
+        from app.services.research_service import ResearchService
+
+        out = self._draft_public(row)
+        out["private"] = ResearchService._private_public(private)
+        out["technique_id"] = technique_id
+        return out
+
     async def _load_embed_card(
         self,
         character_id: int,
@@ -511,6 +633,8 @@ class TechniqueCraftService:
             raise AppError(ERR_RESEARCH_OWNER, "私有内容不属于当前角色", http_status=403)
         if row.phase == DRAFT_PHASE_ABANDONED:
             raise AppError(ERR_RESEARCH_SESSION, "自研草稿不存在", http_status=404)
+        if row.phase == DRAFT_PHASE_FINALIZED:
+            raise AppError(ERR_RESEARCH_FROZEN, "已定稿不可改，只能另开新研", http_status=400)
         return row
 
     @staticmethod
@@ -520,12 +644,23 @@ class TechniqueCraftService:
         base = dict(base_raw) if isinstance(base_raw, dict) else {}
         affix_raw = json.loads(row.affixes_json or "[]")
         affixes = list(affix_raw) if isinstance(affix_raw, list) else []
+        chosen = any(
+            isinstance(cell, dict) and str(cell.get("chosen_id") or "").strip()
+            for cell in affixes
+        )
+        can_finalize = bool(
+            elements
+            and str(row.efficacy or "").strip()
+            and bool(getattr(row, "conditions_confirmed", False))
+            and chosen
+            and row.phase == DRAFT_PHASE_EMBEDDING
+        )
         return TechniqueDraftPublic(
             id=row.id,
             phase=row.phase,
             elements=elements,
             efficacy=row.efficacy or None,
-            can_finalize=False,
+            can_finalize=can_finalize,
             label_zh=row.label_zh or "",
             major_rank=row.major_rank,
             element_limit=row.element_limit or None,

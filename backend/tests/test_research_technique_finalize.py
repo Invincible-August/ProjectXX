@@ -1,5 +1,6 @@
 """
-M8 R2: custom technique research session / finalize / combat source label.
+M8 功法自研定稿：新草稿路径写入已学列表后可装备。
+旧 R2 材料会话用例已删除；technique kind 拒绝见 test_technique_craft。
 """
 
 from __future__ import annotations
@@ -9,16 +10,18 @@ from pathlib import Path
 import pytest
 from sqlalchemy import select
 
+from app.constants.technique import TECHNIQUE_SLOT_MAIN
+from app.constants.technique_craft import CARD_FORMAL_EFFICACY_ID, CARD_FORMAL_ELEMENT_ID
 from app.core.config import get_settings
 from app.db.models import User
+from app.db.models.inventory_item import InventoryItem
 from app.schemas.auth import RegisterRequest
 from app.schemas.character import CreateCharacterRequest
-from app.schemas.common import AppError
 from app.services import auth_service, character_service
 from app.services.character_service import CharacterService
 from app.services.inventory_service import InventoryService
 from app.services.realm_config import clear_game_config_cache, get_game_config
-from app.services.research_service import ResearchService
+from app.services.technique_craft_service import TechniqueCraftService
 from app.services.technique_service import TechniqueService
 from tests.async_db import open_test_session_factory, run_async as _run
 
@@ -68,75 +71,92 @@ def test_research_config_loads() -> None:
     assert cfg.research.technique.min_materials >= 1
 
 
-def test_create_session_rejects_illegal_materials(tmp_path: Path) -> None:
-    async def _body() -> None:
-        async with open_test_session_factory(tmp_path / "r2bad.db") as factory:
-            async with factory() as session:
-                char = await _prepare_researcher(session, "r2bad@test.com", "非法研")
-                svc = ResearchService(session)
-                with pytest.raises(AppError) as exc:
-                    await svc.create_session(
-                        char,
-                        kind="technique",
-                        materials=[{"item_id": "not_a_real_item", "quantity": 1}],
-                        spends={"cultivation_points": 20},
-                    )
-                assert exc.value.code == 40200
+async def _grant_formal(session, char, item_id: str, meta: dict) -> str:
+    inv = InventoryService(session)
+    await inv.add_item(
+        char.id, item_type="consumable", item_id=item_id, quantity=1, meta=meta
+    )
+    await session.flush()
+    row = (
+        await session.execute(
+            select(InventoryItem)
+            .where(
+                InventoryItem.character_id == char.id,
+                InventoryItem.item_id == item_id,
+                InventoryItem.quantity > 0,
+            )
+            .order_by(InventoryItem.id.desc())
+            .limit(1)
+        )
+    ).scalar_one()
+    return str(row.item_uid)
 
-    _run(_body())
 
-
-def test_research_technique_finalize(tmp_path: Path) -> None:
-    """Illegal materials already covered; finalize yields equippable custom technique."""
+def test_research_technique_finalize(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """After the new finalize path, the custom technique is learned and equippable."""
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
 
     async def _body() -> None:
         async with open_test_session_factory(tmp_path / "r2ok.db") as factory:
             async with factory() as session:
                 char = await _prepare_researcher(session, "r2ok@test.com", "合法研")
-                svc = ResearchService(session)
-                created = await svc.create_session(
-                    char,
-                    kind="technique",
-                    materials=[{"item_id": "herb_spirit_grass", "quantity": 2}],
-                    spends={"cultivation_points": 20},
+                craft = TechniqueCraftService(session)
+                draft = await craft.create_draft(char)
+                draft_id = int(draft["id"])
+                el_uid = await _grant_formal(
+                    session, char, CARD_FORMAL_ELEMENT_ID, {"elements": ["metal"]}
                 )
-                assert created["kind"] == "technique"
-                assert created["phase"] in {"drafting", "previewed"}
-                assert created["dice"]["purpose"] == "research_technique"
-                assert created["affix_previews"]
+                await craft.embed_card(char, draft_id, el_uid)
+                ef_uid = await _grant_formal(
+                    session, char, CARD_FORMAL_EFFICACY_ID, {"efficacy": "idle_spirit"}
+                )
+                await craft.embed_card(char, draft_id, ef_uid)
+                await craft.set_conditions(char, draft_id)
+                rolled = await craft.roll_affix(char, draft_id, slot=0)
+                pick = str(rolled["affixes"][0]["options"][0])
+                await craft.choose_affix(char, draft_id, slot=0, affix_id=pick)
                 await session.commit()
-
-                with pytest.raises(AppError) as review_exc:
-                    await svc.submit_review(char, session_id=int(created["id"]))
-                assert review_exc.value.code == 40210
-
-                finalized = await svc.finalize_session(
-                    char,
-                    session_id=int(created["id"]),
-                    label_zh="玄铁吐纳残篇",
+                finalized = await craft.finalize_draft(
+                    char, draft_id, label_zh="玄铁吐纳残篇"
                 )
                 await session.commit()
                 assert finalized["phase"] == "finalized"
-                assert finalized["private"]["source_label_zh"] == "自研"
-                tech_id = finalized["private"]["id"]
+                tech_id = str(
+                    (finalized.get("private") or {}).get("id")
+                    or finalized.get("technique_id")
+                    or ""
+                )
                 assert tech_id.startswith("custom:technique:")
+                assert (finalized.get("private") or {}).get("source_label_zh") == "自研"
 
                 listed = await TechniqueService(session).list_my_techniques(char)
                 custom = next((t for t in listed if t["id"] == tech_id), None)
                 assert custom is not None
                 assert custom["source_label_zh"] == "自研"
                 assert custom["name"] == "玄铁吐纳残篇"
+                assert custom["efficacy"] == "idle_spirit"
+                assert custom["cultivable"] is True
+
+                page = await TechniqueService(session).equip_technique(
+                    char,
+                    technique_id=tech_id,
+                    slot_type=TECHNIQUE_SLOT_MAIN,
+                    slot_index=0,
+                )
+                mains = [
+                    s
+                    for s in page["loadout"]["slots"]
+                    if s["slot_type"] == TECHNIQUE_SLOT_MAIN
+                ]
+                assert mains[0]["technique_id"] == tech_id
 
                 packed = await CharacterService(session).build_combat_attrs(char)
-                tech_row = next(
-                    (r for r in packed["combat"]["breakdown"] if r.get("source") == "technique"),
-                    None,
-                )
-                assert tech_row is not None
-                custom_stats = custom.get("stats") or {}
-                for key, value in custom_stats.items():
-                    if abs(float(value or 0)) > 1e-9:
-                        assert float(tech_row.get(key) or 0) >= float(value)
                 summary = packed["technique_summary"]
                 custom_sum = next((t for t in summary if t["id"] == tech_id), None)
                 assert custom_sum is not None

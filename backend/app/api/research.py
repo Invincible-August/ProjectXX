@@ -22,6 +22,7 @@ from app.schemas.technique_craft import (
     TechniqueAffixSlotRequest,
     TechniqueConditionsRequest,
     TechniqueEmbedRequest,
+    TechniqueFinalizeRequest,
 )
 from app.services.play_gate import PlayGate
 from app.services.research_service import ResearchService
@@ -290,4 +291,18 @@ async def technique_reroll_affix(
     """Pay reroll cost, clear levels, and draw three new affix options."""
     character = await _prepare_research_write(gate, current_user)
     data = await service.reroll_affix(character, draft_id, payload.slot)
+    return success(data)
+
+
+@router.post("/technique/drafts/{draft_id}/finalize", response_model=None)
+async def technique_finalize_draft(
+    draft_id: int,
+    payload: TechniqueFinalizeRequest,
+    gate: PlayGate = Depends(get_play_gate),
+    service: TechniqueCraftService = Depends(get_technique_craft_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Name and freeze a ready draft onto the learned list."""
+    character = await _prepare_research_write(gate, current_user)
+    data = await service.finalize_draft(character, draft_id, payload.label_zh)
     return success(data)

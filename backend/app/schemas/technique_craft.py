@@ -33,6 +33,12 @@ class TechniqueAffixChooseRequest(BaseModel):
     affix_id: str = Field(..., min_length=1, max_length=64)
 
 
+class TechniqueFinalizeRequest(BaseModel):
+    """POST /cave/lab/technique/drafts/{id}/finalize body."""
+
+    label_zh: str = Field(..., min_length=2, max_length=16)
+
+
 class TechniqueDraftPublic(BaseModel):
     """Public draft payload returned by create/list/embed."""
 

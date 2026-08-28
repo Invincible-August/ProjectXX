@@ -31,6 +31,7 @@ from app.constants.technique import (
     normalize_technique_source,
     technique_source_label_zh,
 )
+from app.constants.technique_craft import ERR_CRAFT_EQUIP_ROLE, IDLE_EFFICACIES
 from app.db.models.character import Character
 from app.db.models.technique import CharacterTechnique, CharacterTechniqueSlot
 from app.db.models.avatar_loadout import AvatarTechniqueSlot
@@ -190,12 +191,27 @@ class TechniqueService:
                         "source_label_zh": technique_source_label_zh(
                             TECHNIQUE_SOURCE_RESEARCH,
                         ),
-                        "elements": [],
+                        "elements": [
+                            element_view(eid)
+                            for eid in (
+                                TechniqueService._private_elements(private)
+                            )
+                        ],
                         "help_zh": "",
                         "learn_requires": {},
                         "skills_main": [],
                         "skills_art": [],
                         "stats": stats,
+                        "efficacy": TechniqueService._private_efficacy_of(private),
+                        "author_character_id": int(
+                            getattr(private, "author_character_id", None)
+                            or private.character_id
+                        ),
+                        "cultivable": int(
+                            getattr(private, "author_character_id", None)
+                            or private.character_id
+                        )
+                        == int(character.id),
                     },
                 )
         return items
@@ -447,12 +463,21 @@ class TechniqueService:
                 )
         tid = str(technique_id or "").strip()
         items = await self.list_my_techniques(character)
-        if not any(str(it["id"]) == tid for it in items):
+        item = next((it for it in items if str(it["id"]) == tid), None)
+        if item is None:
             raise AppError(
                 code=ERR_TECHNIQUE_LOADOUT,
                 message="尚未学会该功法",
                 http_status=400,
             )
+        if role == TECHNIQUE_SLOT_MAIN:
+            efficacy = str(item.get("efficacy") or "").strip()
+            if efficacy and efficacy not in IDLE_EFFICACIES:
+                raise AppError(
+                    code=ERR_CRAFT_EQUIP_ROLE,
+                    message="该功法不能装备为主功法",
+                    http_status=400,
+                )
         other = (
             LOADOUT_ACTOR_AVATAR
             if actor == LOADOUT_ACTOR_MAIN
@@ -596,6 +621,29 @@ class TechniqueService:
         """
         amounts = TechniqueService.compute_technique_combat_amounts(techniques)
         return int(amounts.get("phys_atk", 0)), int(amounts.get("hp", 0))
+
+    @staticmethod
+    def _private_payload(private: Any) -> dict:
+        """Parse ``PrivateTechnique.payload_json``; invalid values become {}."""
+        try:
+            raw = json.loads(getattr(private, "payload_json", None) or "{}")
+        except json.JSONDecodeError:
+            return {}
+        return dict(raw) if isinstance(raw, dict) else {}
+
+    @staticmethod
+    def _private_efficacy_of(private: Any) -> str | None:
+        """Efficacy id stored on a custom technique, or None."""
+        text = str(TechniqueService._private_payload(private).get("efficacy") or "").strip()
+        return text or None
+
+    @staticmethod
+    def _private_elements(private: Any) -> list[str]:
+        """Embedded element ids from custom-technique payload."""
+        raw = TechniqueService._private_payload(private).get("elements") or []
+        if not isinstance(raw, list):
+            return []
+        return [str(x) for x in raw if str(x)]
 
 
 # ---------------------------------------------------------------------------

@@ -784,7 +784,20 @@ class ResearchService:
         }
 
     @staticmethod
+    def _private_payload(row: PrivateTechnique) -> dict[str, Any]:
+        """Parse ``payload_json``; invalid or non-object values become {}."""
+        try:
+            raw = json.loads(getattr(row, "payload_json", None) or "{}")
+        except json.JSONDecodeError:
+            return {}
+        return dict(raw) if isinstance(raw, dict) else {}
+
+    @staticmethod
     def _private_public(row: PrivateTechnique) -> dict[str, Any]:
+        payload = ResearchService._private_payload(row)
+        author_id = getattr(row, "author_character_id", None)
+        if author_id is None:
+            author_id = row.character_id
         return {
             "id": row.technique_id,
             "source": row.source,
@@ -795,6 +808,10 @@ class ResearchService:
             "track": row.track,
             "stats": json.loads(row.stats_json or "{}"),
             "affix_ids": json.loads(row.affix_ids_json or "[]"),
+            "efficacy": payload.get("efficacy") or None,
+            "author_character_id": int(author_id) if author_id is not None else None,
+            "cultivable": int(author_id or 0) == int(row.character_id),
+            "major_rank": getattr(row, "major_rank", None),
         }
 
     @staticmethod

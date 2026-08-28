@@ -113,6 +113,16 @@ _TECHNIQUE_TABLE_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
     ("source", "VARCHAR(16) NOT NULL DEFAULT 'system'"),
 )
 
+_PRIVATE_TECHNIQUE_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
+    ("payload_json", "TEXT NOT NULL DEFAULT '{}'"),
+    ("major_rank", "VARCHAR(32)"),
+    ("author_character_id", "INTEGER"),
+)
+
+_TECHNIQUE_DRAFT_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
+    ("conditions_confirmed", "BOOLEAN NOT NULL DEFAULT 0"),
+)
+
 # avatars 表 AVATAR-D03 体力 / 日行动补列 + 道友助战开关
 _AVATAR_TABLE_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
     ("stamina", "INTEGER NOT NULL DEFAULT 0"),
@@ -154,27 +164,22 @@ def _patch_sqlite_missing_craft_job_columns(connection: Connection) -> None:
 
 
 def _patch_sqlite_missing_technique_columns(connection: Connection) -> None:
-    """为存量 SQLite 补 character_techniques.source。"""
-    existing = {
-        row[1]
-        for row in connection.execute(
-            text("PRAGMA table_info(character_techniques)"),
-        ).fetchall()
-    }
-    if not existing:
-        return
-    for column_name, column_ddl in _TECHNIQUE_TABLE_COLUMN_PATCHES:
-        if column_name in existing:
-            continue
-        connection.execute(
-            text(
-                f"ALTER TABLE character_techniques ADD COLUMN {column_name} {column_ddl}",
-            ),
-        )
-        logger.info(
-            "sqlite column patched table=character_techniques column=%s",
-            column_name,
-        )
+    """为存量 SQLite 补 character_techniques.source 与 private_techniques 扩展列。"""
+    _patch_sqlite_table_columns(
+        connection,
+        table="character_techniques",
+        patches=_TECHNIQUE_TABLE_COLUMN_PATCHES,
+    )
+    _patch_sqlite_table_columns(
+        connection,
+        table="private_techniques",
+        patches=_PRIVATE_TECHNIQUE_COLUMN_PATCHES,
+    )
+    _patch_sqlite_table_columns(
+        connection,
+        table="technique_research_drafts",
+        patches=_TECHNIQUE_DRAFT_COLUMN_PATCHES,
+    )
 
 
 def _patch_sqlite_missing_avatar_columns(connection: Connection) -> None:

@@ -22,6 +22,7 @@ ERR_CRAFT_EQUIP_ROLE: Final[int] = 40224
 
 DRAFT_PHASE_EMBEDDING: Final[str] = "embedding"
 DRAFT_PHASE_ABANDONED: Final[str] = "abandoned"
+DRAFT_PHASE_FINALIZED: Final[str] = "finalized"
 
 EFFICACY_SPELL_ATTACK: Final[str] = "spell_attack"
 EFFICACY_SPELL_BUFF: Final[str] = "spell_buff"
