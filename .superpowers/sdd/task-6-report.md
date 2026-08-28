@@ -6,7 +6,7 @@
 
 ## Commits
 
-- (pending SHA) Add draft finalize, learned-list insert, and main-slot efficacy gate.
+- `ddb7a84` Add draft finalize, learned-list insert, and main-slot efficacy gate.
 
 ## Summary
 
