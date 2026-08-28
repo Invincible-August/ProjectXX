@@ -78,4 +78,4 @@ Staged **only** these three files. Did not `git add -A`. Did not change dirty `c
 
 ## Commits
 
-Recorded after `git commit` (see git log on `feat/technique-research-p1`).
+- `48803e6` Fix Task 1 validator: drop incomplete talisman kind checks.
