@@ -15,7 +15,8 @@ from app.constants.combat_attrs import (
     CONSTITUTION_BASE_ATTR_KEYS,
     CONSTITUTION_LEGACY_EFFECT_KEYS,
 )
-from app.constants.research import TALISMAN_TRIGGERS
+from app.constants.research import TALISMAN_KINDS, TALISMAN_TRIGGERS
+from app.constants.technique_craft import AFFIX_ROLES, EFFICACY_IDS
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,58 @@ def validate_talisman_effects_raw(raw: Mapping[str, Any] | None) -> None:
             raise ContentValidationError(
                 f"{prefix}.trigger={trigger!r} 不在白名单 {sorted(TALISMAN_TRIGGERS)}",
             )
+        kind = str(body.get("kind") or "buff").strip()
+        if kind not in TALISMAN_KINDS:
+            raise ContentValidationError(
+                f"{prefix}.kind={kind!r} 须为 {sorted(TALISMAN_KINDS)}",
+            )
+
+
+def validate_technique_craft(
+    craft: Any,
+    *,
+    major_realm_ids: set[str],
+    attr_keys: set[str],
+) -> None:
+    """
+    Technique-craft affixes must use known efficacies/roles; ranks must be major ids.
+
+    Args:
+        craft: Parsed TechniqueCraftConfig (or mock).
+        major_realm_ids: Keys of realms.yaml ``major_realms``.
+        attr_keys: Registered ATTR keys ∪ aliases.
+
+    Raises:
+        ContentValidationError: Illegal efficacy_allow, role, rank id, or stats key.
+    """
+    if craft is None:
+        return
+    for affix_id, affix in (getattr(craft, "affixes", None) or {}).items():
+        prefix = f"research.technique_craft.affixes.{affix_id}"
+        allow = [str(x) for x in (getattr(affix, "efficacy_allow", ()) or ())]
+        unknown = [x for x in allow if x not in EFFICACY_IDS]
+        if unknown:
+            raise ContentValidationError(
+                f"{prefix}.efficacy_allow={unknown!r} 须 ⊆ {list(EFFICACY_IDS)}",
+            )
+        role = str(getattr(affix, "role", "") or "")
+        if role not in AFFIX_ROLES:
+            raise ContentValidationError(
+                f"{prefix}.role={role!r} 须为 {sorted(AFFIX_ROLES)}",
+            )
+        assert_attr_stats(f"{prefix}.stats", getattr(affix, "stats", None), attr_keys)
+    for rank_id in getattr(craft, "ranks", None) or {}:
+        rid = str(rank_id)
+        if rid not in major_realm_ids:
+            raise ContentValidationError(
+                f"research.technique_craft.ranks.{rid}: 须为 realms.yaml 大境界 id",
+            )
+    for weapon_id, bonus in (getattr(craft, "weapon_bonus", None) or {}).items():
+        assert_attr_stats(
+            f"research.technique_craft.weapon_bonus.{weapon_id}",
+            bonus,
+            attr_keys,
+        )
 
 
 def validate_constitution_tables(
@@ -130,6 +183,11 @@ def validate_loaded_bundle(bundle: Any) -> None:
         assert_attr_stats(f"equipment.{item_id}.stats", item.stats, attr_keys)
     for affix_id, affix in (bundle.research.affixes or {}).items():
         assert_attr_stats(f"research.affixes.{affix_id}.stats", affix.stats, attr_keys)
+    validate_technique_craft(
+        getattr(bundle.research, "technique_craft", None),
+        major_realm_ids={str(k) for k in (getattr(bundle, "realms", None) or {})},
+        attr_keys=attr_keys,
+    )
     validate_constitution_tables(bundle.constitution, attr_keys=attr_keys)
     for effect_id, effect in (bundle.talisman_effects or {}).items():
         if not str(getattr(effect, "label_zh", "") or "").strip():
@@ -138,6 +196,11 @@ def validate_loaded_bundle(bundle: Any) -> None:
         if trigger not in TALISMAN_TRIGGERS:
             raise ContentValidationError(
                 f"talisman_effects.{effect_id}.trigger={trigger!r} 不在白名单",
+            )
+        kind = str(getattr(effect, "kind", "") or "buff")
+        if kind not in TALISMAN_KINDS:
+            raise ContentValidationError(
+                f"talisman_effects.{effect_id}.kind={kind!r} 须为 {sorted(TALISMAN_KINDS)}",
             )
     logger.debug("content sample tables validated")
 

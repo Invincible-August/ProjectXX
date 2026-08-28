@@ -1343,6 +1343,8 @@ class InventoryItemDef:
     # M8 R5：manual 细类 / 解锁配方（学习玩法后延，本字段仅管线）
     manual_kind: str | None = None
     unlock_recipe_id: str | None = None
+    # 官方符箓成品挂效果白名单 id（工坊筛选 kind、领取写入 meta.effect_id）
+    talisman_effect_id: str | None = None
     inspect: ItemInspectDef = field(
         default_factory=lambda: ItemInspectDef(
             realm_req_zh=INSPECT_REALM_NONE_ZH,
@@ -1469,6 +1471,49 @@ class TalismanEffectDef:
 
 
 @dataclass(frozen=True)
+class TechniqueCraftRankConfig:
+    """Per-major-realm rank caps for technique self-research."""
+
+    affix_slots: int
+    base_upgrade_cap: int
+    upgrade_points_required: int
+
+
+@dataclass(frozen=True)
+class TechniqueCraftAffixDef:
+    """Technique-craft affix filtered by efficacy."""
+
+    affix_id: str
+    label_zh: str
+    efficacy_allow: tuple[str, ...]
+    role: str
+    stats: dict[str, float]
+
+
+@dataclass(frozen=True)
+class TechniqueCraftConfig:
+    """research.yaml technique_craft branch (功法卡片自研)."""
+
+    help_zh: str
+    blank_to_type_p_element: float
+    efficacy_weights: dict[str, float]
+    embed_fail_rate: float
+    affix_upgrade_fail_rate: float
+    breakthrough_fail_rate: float
+    base_bonus_points: tuple[int, ...]
+    affix_upgrade_points: tuple[int, ...]
+    spirit_upgrade_cost: tuple[int, ...]
+    body_upgrade_cost: tuple[int, ...]
+    affix_upgrade_cost: tuple[int, ...]
+    affix_reroll_cost: tuple[int, ...]
+    breakthrough_cost_cultivation: int
+    breakthrough_cost_body: int
+    ranks: dict[str, TechniqueCraftRankConfig]
+    weapon_bonus: dict[str, dict[str, float]]
+    affixes: dict[str, TechniqueCraftAffixDef]
+
+
+@dataclass(frozen=True)
 class ResearchConfig:
     """research.yaml aggregate."""
 
@@ -1478,6 +1523,7 @@ class ResearchConfig:
     formation: ResearchFormationConfig
     talisman: ResearchTalismanConfig
     affixes: dict[str, ResearchAffixDef]
+    technique_craft: TechniqueCraftConfig
 
 
 @dataclass(frozen=True)
@@ -3852,6 +3898,11 @@ def _parse_inventory(raw: dict[str, Any]) -> InventoryConfig:
             unlock_recipe_id=(
                 str(body["unlock_recipe_id"]) if body.get("unlock_recipe_id") else None
             ),
+            talisman_effect_id=(
+                str(body["talisman_effect_id"]).strip()
+                if body.get("talisman_effect_id")
+                else None
+            ),
             inspect=_parse_item_inspect(body if isinstance(body, dict) else {}),
         )
     by_type = {
@@ -3929,6 +3980,152 @@ def _parse_talisman_effects(raw: dict[str, Any]) -> dict[str, TalismanEffectDef]
             hit_chance=float(body.get("hit_chance") or 1.0),
         )
     return effects
+
+
+def _parse_int_tuple(raw: Any, default: tuple[int, ...]) -> tuple[int, ...]:
+    """Coerce a YAML list of ints; empty/missing uses ``default``."""
+    if raw is None:
+        return default
+    return tuple(int(x) for x in raw)
+
+
+def _parse_technique_craft(
+    raw: dict[str, Any] | None,
+    *,
+    combat_attrs: CombatAttrsConfig,
+) -> TechniqueCraftConfig:
+    """Parse technique_craft; missing block uses YAML-matching placeholders."""
+    from app.config_source.validate_content import assert_attr_stats, registered_attr_keys
+
+    body = raw if isinstance(raw, dict) else {}
+    weights_src = body.get("efficacy_weights") or {
+        "spell_attack": 1,
+        "spell_buff": 1,
+        "martial_attack": 1,
+        "martial_buff": 1,
+        "idle_spirit": 1,
+        "idle_body": 1,
+    }
+    efficacy_weights = {str(k): float(v) for k, v in weights_src.items()}
+    ranks_src = body.get("ranks") or {
+        "body_tempering": {
+            "affix_slots": 1,
+            "base_upgrade_cap": 3,
+            "upgrade_points_required": 10,
+        },
+        "qi_refining": {
+            "affix_slots": 2,
+            "base_upgrade_cap": 6,
+            "upgrade_points_required": 100,
+        },
+    }
+    ranks: dict[str, TechniqueCraftRankConfig] = {}
+    for rank_id, rank_body in ranks_src.items():
+        rb = rank_body or {}
+        ranks[str(rank_id)] = TechniqueCraftRankConfig(
+            affix_slots=int(rb.get("affix_slots") or 1),
+            base_upgrade_cap=int(rb.get("base_upgrade_cap") or 0),
+            upgrade_points_required=int(rb.get("upgrade_points_required") or 0),
+        )
+    weapon_src = body.get("weapon_bonus") or {
+        "sword": {"phys_atk": 2},
+        "saber": {"phys_atk": 2},
+        "spear": {"phys_atk": 2},
+        "gauntlet": {"phys_atk": 2},
+        "bow": {"phys_atk": 2},
+        "puppet": {"phys_atk": 2},
+        "avatar": {"magic_atk": 2},
+    }
+    weapon_bonus: dict[str, dict[str, float]] = {}
+    for weapon_id, bonus in weapon_src.items():
+        weapon_bonus[str(weapon_id)] = {str(k): float(v) for k, v in (bonus or {}).items()}
+    affixes_src = body.get("affixes") or {
+        "sa_edge": {
+            "label_zh": "法锋",
+            "efficacy_allow": ["spell_attack"],
+            "role": "attack",
+            "stats": {"magic_atk": 3},
+        },
+        "sb_ward": {
+            "label_zh": "法盾",
+            "efficacy_allow": ["spell_buff"],
+            "role": "buff",
+            "stats": {"magic_def": 3},
+        },
+        "ma_edge": {
+            "label_zh": "武锋",
+            "efficacy_allow": ["martial_attack"],
+            "role": "attack",
+            "stats": {"phys_atk": 3},
+        },
+        "mb_ward": {
+            "label_zh": "武御",
+            "efficacy_allow": ["martial_buff"],
+            "role": "buff",
+            "stats": {"phys_def": 3},
+        },
+        "is_flow": {
+            "label_zh": "周天",
+            "efficacy_allow": ["idle_spirit"],
+            "role": "idle",
+            "stats": {"magic_atk": 1},
+        },
+        "ib_bone": {
+            "label_zh": "锻骨",
+            "efficacy_allow": ["idle_body"],
+            "role": "idle",
+            "stats": {"phys_atk": 1},
+        },
+    }
+    attr_keys = registered_attr_keys(combat_attrs)
+    affixes: dict[str, TechniqueCraftAffixDef] = {}
+    for affix_id, affix_body in affixes_src.items():
+        ab = affix_body or {}
+        stats = {str(k): float(v) for k, v in (ab.get("stats") or {}).items()}
+        assert_attr_stats(
+            f"research.technique_craft.affixes.{affix_id}.stats",
+            stats,
+            attr_keys,
+        )
+        affixes[str(affix_id)] = TechniqueCraftAffixDef(
+            affix_id=str(affix_id),
+            label_zh=str(ab.get("label_zh") or affix_id),
+            efficacy_allow=tuple(str(x) for x in (ab.get("efficacy_allow") or [])),
+            role=str(ab.get("role") or ""),
+            stats=stats,
+        )
+    p_el = body.get("blank_to_type_p_element")
+    embed = body.get("embed_fail_rate")
+    affix_fail = body.get("affix_upgrade_fail_rate")
+    bt_fail = body.get("breakthrough_fail_rate")
+    return TechniqueCraftConfig(
+        help_zh=str(
+            body.get("help_zh")
+            or "用空白卡生成属性/效能正式卡，镶入草稿后选发动条件与词条，定稿后可培养。",
+        ),
+        blank_to_type_p_element=0.5 if p_el is None else float(p_el),
+        efficacy_weights=efficacy_weights,
+        embed_fail_rate=0.2 if embed is None else float(embed),
+        affix_upgrade_fail_rate=0.2 if affix_fail is None else float(affix_fail),
+        breakthrough_fail_rate=0.3 if bt_fail is None else float(bt_fail),
+        base_bonus_points=_parse_int_tuple(body.get("base_bonus_points"), (5, 10, 20)),
+        affix_upgrade_points=_parse_int_tuple(body.get("affix_upgrade_points"), (5, 10, 20)),
+        spirit_upgrade_cost=_parse_int_tuple(body.get("spirit_upgrade_cost"), (20, 40, 80, 160)),
+        body_upgrade_cost=_parse_int_tuple(body.get("body_upgrade_cost"), (20, 40, 80, 160)),
+        affix_upgrade_cost=_parse_int_tuple(body.get("affix_upgrade_cost"), (15, 30, 60, 120)),
+        affix_reroll_cost=_parse_int_tuple(body.get("affix_reroll_cost"), (10, 20, 40, 80)),
+        breakthrough_cost_cultivation=int(
+            50 if body.get("breakthrough_cost_cultivation") is None
+            else body.get("breakthrough_cost_cultivation")
+        ),
+        breakthrough_cost_body=int(
+            50 if body.get("breakthrough_cost_body") is None
+            else body.get("breakthrough_cost_body")
+        ),
+        ranks=ranks,
+        weapon_bonus=weapon_bonus,
+        affixes=affixes,
+    )
 
 
 def _parse_research(raw: dict[str, Any], *, combat_attrs: CombatAttrsConfig) -> ResearchConfig:
@@ -4023,6 +4220,10 @@ def _parse_research(raw: dict[str, Any], *, combat_attrs: CombatAttrsConfig) -> 
         preload_slots=int(tal_raw.get("preload_slots") or 1),
         battle_enabled=bool((battle_raw.get("enabled", True))),
     )
+    technique_craft = _parse_technique_craft(
+        raw.get("technique_craft") or {},
+        combat_attrs=combat_attrs,
+    )
     return ResearchConfig(
         schema_version=int(raw.get("schema_version") or 1),
         reincarnation_carry=bool(raw.get("reincarnation_carry", False)),
@@ -4030,6 +4231,7 @@ def _parse_research(raw: dict[str, Any], *, combat_attrs: CombatAttrsConfig) -> 
         formation=formation,
         talisman=talisman,
         affixes=affixes,
+        technique_craft=technique_craft,
     )
 
 

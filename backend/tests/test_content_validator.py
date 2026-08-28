@@ -14,6 +14,7 @@ from app.config_source.validate_content import (
     validate_constitution_tables,
     validate_startup,
     validate_talisman_effects_raw,
+    validate_technique_craft,
 )
 from app.constants.combat_attrs import CONSTITUTION_LEGACY_EFFECT_KEYS
 from app.schemas.common import AppError
@@ -32,7 +33,11 @@ def test_current_yaml_samples_pass_validator() -> None:
     """Boot path and CLI share get_game_config; official tables must load."""
     bundle = validate_startup()
     assert "iron_sword_t1" in bundle.equipment.items
+    assert "cloth_cap_t1" in bundle.equipment.items
     assert "first_hit_ward" in bundle.talisman_effects
+    assert bundle.talisman_effects["atk_strike_direct"].kind == "offensive"
+    assert bundle.talisman_effects["curse_weaken_atk"].kind == "curse"
+    assert bundle.inventory.items["talisman_atk_t1"].talisman_effect_id == "atk_strike_direct"
     assert "phys_edge" in bundle.research.affixes
     assert "sample_main_affix_iron" in bundle.constitution.items
 
@@ -52,6 +57,13 @@ def test_talisman_effects_require_label_and_trigger() -> None:
     validate_talisman_effects_raw(
         {"first_hit_ward": {"label_zh": "护体残符", "trigger": "first_hit"}},
     )
+    validate_talisman_effects_raw(
+        {"curse_x": {"label_zh": "咒", "trigger": "battle_start", "kind": "curse"}},
+    )
+    with pytest.raises(ContentValidationError, match="kind"):
+        validate_talisman_effects_raw(
+            {"ghost": {"label_zh": "鬼符", "trigger": "first_hit", "kind": "invented"}},
+        )
 
 
 def test_constitution_rejects_invented_effect_key() -> None:
@@ -65,6 +77,45 @@ def test_constitution_rejects_invented_effect_key() -> None:
     item.effects = {"hp_bonus": 20}
     assert "hp_bonus" in CONSTITUTION_LEGACY_EFFECT_KEYS
     validate_constitution_tables(constitution, attr_keys={"phys_atk", "hp"})
+
+
+def test_technique_craft_rejects_illegal_affix_and_rank() -> None:
+    affix = MagicMock()
+    affix.efficacy_allow = ["not_an_efficacy"]
+    affix.role = "attack"
+    affix.stats = {"phys_atk": 1}
+    craft = MagicMock()
+    craft.affixes = {"ghost": affix}
+    craft.ranks = {"body_tempering": object()}
+    craft.weapon_bonus = {}
+    with pytest.raises(ContentValidationError, match="efficacy_allow"):
+        validate_technique_craft(
+            craft,
+            major_realm_ids={"body_tempering"},
+            attr_keys={"phys_atk"},
+        )
+    affix.efficacy_allow = ["spell_attack"]
+    affix.role = "invented"
+    with pytest.raises(ContentValidationError, match="role"):
+        validate_technique_craft(
+            craft,
+            major_realm_ids={"body_tempering"},
+            attr_keys={"phys_atk"},
+        )
+    affix.role = "attack"
+    craft.ranks = {"not_a_major": object()}
+    with pytest.raises(ContentValidationError, match="大境界"):
+        validate_technique_craft(
+            craft,
+            major_realm_ids={"body_tempering"},
+            attr_keys={"phys_atk"},
+        )
+    craft.ranks = {"body_tempering": object()}
+    validate_technique_craft(
+        craft,
+        major_realm_ids={"body_tempering"},
+        attr_keys={"phys_atk"},
+    )
 
 
 def test_parse_equipment_rejects_unknown_stats() -> None:

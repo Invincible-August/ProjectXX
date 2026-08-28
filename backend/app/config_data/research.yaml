@@ -92,3 +92,74 @@ affixes:
     help_zh: 占位：略增速度
     stats:
       speed: 1
+
+# 功法卡片自研（P1）：空白卡→类型/正式卡→镶嵌草稿；数值均为占位，禁止在代码 if 分支写死。
+technique_craft:
+  help_zh: 用空白卡生成属性/效能正式卡，镶入草稿后选发动条件与词条，定稿后可培养。
+  blank_to_type_p_element: 0.5
+  efficacy_weights:
+    spell_attack: 1
+    spell_buff: 1
+    martial_attack: 1
+    martial_buff: 1
+    idle_spirit: 1
+    idle_body: 1
+  embed_fail_rate: 0.2
+  affix_upgrade_fail_rate: 0.2
+  breakthrough_fail_rate: 0.3
+  base_bonus_points: [5, 10, 20]
+  affix_upgrade_points: [5, 10, 20]
+  spirit_upgrade_cost: [20, 40, 80, 160]
+  body_upgrade_cost: [20, 40, 80, 160]
+  affix_upgrade_cost: [15, 30, 60, 120]
+  affix_reroll_cost: [10, 20, 40, 80]
+  breakthrough_cost_cultivation: 50
+  breakthrough_cost_body: 50
+  ranks:
+    body_tempering:
+      affix_slots: 1
+      base_upgrade_cap: 3
+      upgrade_points_required: 10
+    qi_refining:
+      affix_slots: 2
+      base_upgrade_cap: 6
+      upgrade_points_required: 100
+  weapon_bonus:
+    sword: { phys_atk: 2 }
+    saber: { phys_atk: 2 }
+    spear: { phys_atk: 2 }
+    gauntlet: { phys_atk: 2 }
+    bow: { phys_atk: 2 }
+    puppet: { phys_atk: 2 }
+    avatar: { magic_atk: 2 }
+  affixes:
+    sa_edge:
+      label_zh: 法锋
+      efficacy_allow: [spell_attack]
+      role: attack
+      stats: { magic_atk: 3 }
+    sb_ward:
+      label_zh: 法盾
+      efficacy_allow: [spell_buff]
+      role: buff
+      stats: { magic_def: 3 }
+    ma_edge:
+      label_zh: 武锋
+      efficacy_allow: [martial_attack]
+      role: attack
+      stats: { phys_atk: 3 }
+    mb_ward:
+      label_zh: 武御
+      efficacy_allow: [martial_buff]
+      role: buff
+      stats: { phys_def: 3 }
+    is_flow:
+      label_zh: 周天
+      efficacy_allow: [idle_spirit]
+      role: idle
+      stats: { magic_atk: 1 }
+    ib_bone:
+      label_zh: 锻骨
+      efficacy_allow: [idle_body]
+      role: idle
+      stats: { phys_atk: 1 }
