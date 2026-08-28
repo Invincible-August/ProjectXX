@@ -18,7 +18,9 @@ import {
   upgradeTechniqueBaseApi,
 } from '../api/cave'
 import {
+  affixSlotsFromIds,
   asAffixSlots,
+  type TechniqueAffixSlot,
   type TechniqueCultivatePublic,
   type TechniqueDraftPublic,
   type TechniqueMineFields,
@@ -36,19 +38,50 @@ function normalizeDraft(row: TechniqueDraftPublic): TechniqueDraftPublic {
   }
 }
 
+function cloneOriginal(view: TechniqueOriginalView): TechniqueOriginalView {
+  return {
+    technique_id: view.technique_id,
+    label_zh: view.label_zh,
+    efficacy: view.efficacy,
+    major_rank: view.major_rank,
+    upgrade_points: view.upgrade_points,
+    base: { ...view.base },
+    affixes: view.affixes.map((slot) => ({
+      ...slot,
+      options: [...slot.options],
+    })),
+    stats: { ...view.stats },
+  }
+}
+
+function hasAffixPayload(affixes: TechniqueAffixSlot[] | undefined): boolean {
+  return Array.isArray(affixes) && affixes.some((slot) => Boolean(slot?.chosen_id))
+}
+
 function mergeCultivate(
   prev: TechniqueOriginalView | null,
   data: TechniqueCultivatePublic,
 ): TechniqueOriginalView {
+  const nextAffixes = asAffixSlots(data.affixes)
+  const keepPrevAffixes = !hasAffixPayload(nextAffixes) && hasAffixPayload(prev?.affixes)
+  const nextBase = data.base && typeof data.base === 'object' ? data.base : {}
+  const keepPrevBase =
+    Object.keys(nextBase).length === 0 && prev?.base && Object.keys(prev.base).length > 0
   return {
-    technique_id: data.technique_id,
+    technique_id: data.technique_id || prev?.technique_id || '',
     label_zh: prev?.label_zh || data.technique_id,
     efficacy: prev?.efficacy ?? null,
-    major_rank: data.major_rank,
-    upgrade_points: Number(data.upgrade_points || 0),
-    base: data.base && typeof data.base === 'object' ? data.base : {},
-    affixes: asAffixSlots(data.affixes),
-    stats: data.stats && typeof data.stats === 'object' ? data.stats : {},
+    major_rank: data.major_rank || prev?.major_rank || 'body_tempering',
+    upgrade_points:
+      data.upgrade_points != null ? Number(data.upgrade_points) : Number(prev?.upgrade_points || 0),
+    base: keepPrevBase ? { ...prev!.base } : nextBase,
+    affixes: keepPrevAffixes ? prev!.affixes.map((slot) => ({ ...slot, options: [...slot.options] })) : nextAffixes,
+    stats:
+      data.stats && typeof data.stats === 'object' && Object.keys(data.stats).length
+        ? data.stats
+        : prev?.stats && typeof prev.stats === 'object'
+          ? { ...prev.stats }
+          : {},
   }
 }
 
@@ -56,11 +89,30 @@ export const useTechniqueCraftStore = defineStore('techniqueCraft', () => {
   const drafts = ref<TechniqueDraftPublic[]>([])
   const selectedDraftId = ref<number | null>(null)
   const selectedOriginal = ref<TechniqueOriginalView | null>(null)
+  /** Last cultivate payload per technique so mine re-select does not wipe hydrate. */
+  const cultivateById = ref<Record<string, TechniqueOriginalView>>({})
   const loading = ref(false)
 
   const selectedDraft = computed(
     () => drafts.value.find((d) => d.id === selectedDraftId.value) ?? null,
   )
+
+  function rememberCultivate(view: TechniqueOriginalView): void {
+    if (!view.technique_id) return
+    cultivateById.value = {
+      ...cultivateById.value,
+      [view.technique_id]: cloneOriginal(view),
+    }
+  }
+
+  function applyCultivate(
+    prev: TechniqueOriginalView | null,
+    data: TechniqueCultivatePublic,
+  ): TechniqueOriginalView {
+    const next = mergeCultivate(prev, data)
+    rememberCultivate(next)
+    return next
+  }
 
   function applyDraft(row: TechniqueDraftPublic): void {
     const normalized = normalizeDraft(row)
@@ -241,6 +293,7 @@ export const useTechniqueCraftStore = defineStore('techniqueCraft', () => {
         affixes: asAffixSlots(envelope.data.affixes?.length ? envelope.data.affixes : draft.affixes),
         stats: {},
       }
+      rememberCultivate(selectedOriginal.value)
       await useResearchStore().loadMine()
       await useCharacterStore().fetchMe()
       return null
@@ -250,19 +303,24 @@ export const useTechniqueCraftStore = defineStore('techniqueCraft', () => {
   }
 
   function selectOriginalFromMine(row: TechniqueMineFields): void {
+    const cached = cultivateById.value[row.id]
+    if (cached) {
+      selectedOriginal.value = {
+        ...cloneOriginal(cached),
+        label_zh: row.label_zh || cached.label_zh,
+        efficacy: row.efficacy ?? cached.efficacy,
+        stats: row.stats && typeof row.stats === 'object' ? row.stats : { ...cached.stats },
+      }
+      return
+    }
     selectedOriginal.value = {
       technique_id: row.id,
       label_zh: row.label_zh,
       efficacy: row.efficacy ?? null,
       major_rank: row.major_rank || 'body_tempering',
-      upgrade_points: selectedOriginal.value?.technique_id === row.id
-        ? selectedOriginal.value.upgrade_points
-        : 0,
-      base: selectedOriginal.value?.technique_id === row.id ? selectedOriginal.value.base : {},
-      affixes:
-        selectedOriginal.value?.technique_id === row.id
-          ? selectedOriginal.value.affixes
-          : asAffixSlots([]),
+      upgrade_points: 0,
+      base: {},
+      affixes: affixSlotsFromIds(row.affix_ids),
       stats: row.stats && typeof row.stats === 'object' ? row.stats : {},
     }
   }
@@ -277,7 +335,7 @@ export const useTechniqueCraftStore = defineStore('techniqueCraft', () => {
       if (envelope.code !== 0 || !envelope.data) {
         return envelope.message || '基础加成失败'
       }
-      selectedOriginal.value = mergeCultivate(selectedOriginal.value, envelope.data)
+      selectedOriginal.value = applyCultivate(selectedOriginal.value, envelope.data)
       await useCharacterStore().fetchMe()
       return null
     } finally {
@@ -296,7 +354,7 @@ export const useTechniqueCraftStore = defineStore('techniqueCraft', () => {
       if (envelope.code !== 0 || !envelope.data) {
         return { error: envelope.message || '词条升级失败', failed: false }
       }
-      selectedOriginal.value = mergeCultivate(selectedOriginal.value, envelope.data)
+      selectedOriginal.value = applyCultivate(selectedOriginal.value, envelope.data)
       await useCharacterStore().fetchMe()
       const afterLevel = selectedOriginal.value.affixes[slot]?.chosen_level ?? 0
       return { error: null, failed: afterLevel === beforeLevel }
@@ -314,7 +372,7 @@ export const useTechniqueCraftStore = defineStore('techniqueCraft', () => {
       if (envelope.code !== 0 || !envelope.data) {
         return { error: envelope.message || '突破失败', failed: false }
       }
-      selectedOriginal.value = mergeCultivate(selectedOriginal.value, envelope.data)
+      selectedOriginal.value = applyCultivate(selectedOriginal.value, envelope.data)
       await useCharacterStore().fetchMe()
       await useResearchStore().loadMine()
       return { error: null, failed: selectedOriginal.value.major_rank === beforeRank }

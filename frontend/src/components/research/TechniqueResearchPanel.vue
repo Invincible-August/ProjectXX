@@ -11,7 +11,7 @@ import { useResearchStore } from '../../stores/research'
 import { useCharacterStore } from '../../stores/character'
 import type { InventoryItem } from '../../types/inventory'
 import {
-  ATTACK_EFFICACIES,
+  IDLE_EFFICACIES,
   TECH_CARD_ALL_IDS,
   TECH_CARD_FORMAL_IDS,
   TECH_CARD_USEABLE_IDS,
@@ -71,7 +71,7 @@ const originalAffixSlots = computed(() => asAffixSlots(original.value?.affixes))
 const showMainEquipHint = computed(() => {
   const efficacy = original.value?.efficacy
   if (!efficacy) return false
-  return !ATTACK_EFFICACIES.has(efficacy)
+  return IDLE_EFFICACIES.has(efficacy)
 })
 
 watch(

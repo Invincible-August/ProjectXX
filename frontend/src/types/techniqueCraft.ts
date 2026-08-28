@@ -31,6 +31,12 @@ export const ATTACK_EFFICACIES: ReadonlySet<string> = new Set([
   'martial_attack',
 ])
 
+/** Only idle efficacies can occupy the main-technique slot. */
+export const IDLE_EFFICACIES: ReadonlySet<string> = new Set([
+  'idle_spirit',
+  'idle_body',
+])
+
 export const WEAPON_LIMIT_OPTIONS: ReadonlyArray<{ id: string; label_zh: string }> = [
   { id: 'sword', label_zh: '剑' },
   { id: 'saber', label_zh: '刀' },
@@ -120,6 +126,7 @@ export interface TechniqueMineFields {
   efficacy?: string | null
   cultivable?: boolean
   major_rank?: string | null
+  affix_ids?: string[]
   stats?: Record<string, number>
 }
 
@@ -183,4 +190,25 @@ export function asAffixSlots(raw: unknown): TechniqueAffixSlot[] {
       reroll_count: Number(row.reroll_count || 0),
     }
   })
+}
+
+/**
+ * Map mine-list `affix_ids` into cultivate slots so upgrade stays clickable
+ * before a cultivate POST hydrates levels.
+ */
+export function affixSlotsFromIds(ids: unknown): TechniqueAffixSlot[] {
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return asAffixSlots([])
+  }
+  const chosen = ids.map((id) => String(id || '').trim()).filter((id) => id.length > 0)
+  if (!chosen.length) {
+    return asAffixSlots([])
+  }
+  return chosen.map((id) => ({
+    options: [id],
+    chosen_id: id,
+    chosen_level: 0,
+    upgrade_count: 0,
+    reroll_count: 0,
+  }))
 }
