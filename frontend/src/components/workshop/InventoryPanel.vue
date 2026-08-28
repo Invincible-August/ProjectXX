@@ -4,9 +4,20 @@
  */
 import { ElMessage } from 'element-plus'
 import { useInventoryStore } from '../../stores/inventory'
+import { useResearchStore } from '../../stores/research'
 import type { InventoryItem } from '../../types/inventory'
 
 const inventoryStore = useInventoryStore()
+
+function isTechniqueManual(item: InventoryItem): boolean {
+  if (item.item_type !== 'manual') return false
+  if (item.item_id === 'tech_manual') return true
+  return item.meta?.manual_kind === 'technique'
+}
+
+function isOccupied(item: InventoryItem): boolean {
+  return Boolean(item.occupancy && item.occupancy !== 'none')
+}
 
 async function onMove(item: InventoryItem, target: 'normal' | 'reincarnation'): Promise<void> {
   const err = await inventoryStore.moveBag(item.item_uid, target)
@@ -15,6 +26,16 @@ async function onMove(item: InventoryItem, target: 'normal' | 'reincarnation'): 
     return
   }
   ElMessage.success(target === 'reincarnation' ? '已移入轮回袋' : '已移入普通袋')
+}
+
+async function onUseManual(item: InventoryItem): Promise<void> {
+  const err = await inventoryStore.use(item.item_uid)
+  if (err) {
+    ElMessage.error(err)
+    return
+  }
+  ElMessage.success(`已使用${item.name}`)
+  await useResearchStore().loadMine()
 }
 </script>
 
@@ -40,10 +61,20 @@ async function onMove(item: InventoryItem, target: 'normal' | 'reincarnation'): 
         {{ item.occupancy_label_zh }}
       </el-tag>
       <el-button
+        v-if="isTechniqueManual(item)"
+        link
+        type="primary"
+        size="small"
+        :disabled="isOccupied(item)"
+        @click="onUseManual(item)"
+      >
+        使用
+      </el-button>
+      <el-button
         link
         type="warning"
         size="small"
-        :disabled="item.occupancy && item.occupancy !== 'none'"
+        :disabled="isOccupied(item)"
         @click="onMove(item, 'reincarnation')"
       >
         → 轮回袋

@@ -103,16 +103,23 @@ export function hoverFromTechnique(item: {
   source_label_zh?: string
   level?: number
   max_level?: number
+  author_character_id?: number | null
   elements?: TechniqueItem['elements']
   help_zh?: string
 }): ItemHoverModel {
   const level = item.level
   const maxLevel = item.max_level
+  const parts: string[] = []
+  if (level != null && maxLevel != null) {
+    parts.push(`lv.${level}/lv.${maxLevel}`)
+  }
+  if (item.author_character_id != null) {
+    parts.push(`创作者 #${item.author_character_id}`)
+  }
   return {
     name: item.name,
     cornerZh: item.source_label_zh,
-    subtitle:
-      level != null && maxLevel != null ? `lv.${level}/lv.${maxLevel}` : undefined,
+    subtitle: parts.length ? parts.join(' · ') : undefined,
     elements: item.elements,
     helpZh: item.help_zh,
   }

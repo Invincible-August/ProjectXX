@@ -24,6 +24,7 @@ export interface TechniqueItem {
   cost_next?: number | null
   source?: string
   source_label_zh?: string
+  author_character_id?: number | null
   elements?: TechniqueElementChip[]
   help_zh?: string
   skills_main?: TechniqueSkillChip[]

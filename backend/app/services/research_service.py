@@ -39,6 +39,10 @@ from app.constants.research import (
     RESEARCH_SOURCE_CUSTOM,
     SOURCE_LABEL_CUSTOM_ZH,
 )
+from app.constants.technique import (
+    normalize_technique_source,
+    technique_source_label_zh,
+)
 from app.core.time_utils import ensure_aware_utc, now_utc
 from app.db.models.character import Character
 from app.db.models.research import (
@@ -149,9 +153,30 @@ class ResearchService:
             .where(PrivateTechnique.character_id == character.id)
             .order_by(PrivateTechnique.id),
         )
+        private_rows = list(result.scalars().all())
+        tech_ids = [row.technique_id for row in private_rows]
+        learned_sources: dict[str, str] = {}
+        if tech_ids:
+            learned = await self._session.execute(
+                select(CharacterTechnique).where(
+                    CharacterTechnique.character_id == character.id,
+                    CharacterTechnique.technique_id.in_(tech_ids),
+                ),
+            )
+            learned_sources = {
+                str(row.technique_id): normalize_technique_source(
+                    getattr(row, "source", None),
+                )
+                for row in learned.scalars().all()
+            }
         items: list[dict[str, Any]] = []
-        for row in result.scalars().all():
-            items.append(self._private_public(row))
+        for row in private_rows:
+            public = self._private_public(row)
+            source = learned_sources.get(str(row.technique_id))
+            if source:
+                public["source"] = source
+                public["source_label_zh"] = technique_source_label_zh(source)
+            items.append(public)
         form_result = await self._session.execute(
             select(PrivateFormation)
             .where(PrivateFormation.character_id == character.id)

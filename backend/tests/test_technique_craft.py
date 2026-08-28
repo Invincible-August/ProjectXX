@@ -1429,6 +1429,12 @@ def test_copied_technique_cannot_upgrade_or_print(
                 assert copy_item["source"] == "chance"
                 assert copy_item["cultivable"] is False
 
+                mine = await ResearchService(session).list_mine(learner)
+                mine_copy = next((t for t in mine if t["id"] == copy_item["id"]), None)
+                assert mine_copy is not None
+                assert mine_copy["source"] == "chance"
+                assert mine_copy["cultivable"] is False
+
                 with pytest.raises(AppError) as up_exc:
                     await svc.upgrade_base(learner, str(copy_item["id"]), stat="attack")
                 assert up_exc.value.code == ERR_CRAFT_CULTIVATE

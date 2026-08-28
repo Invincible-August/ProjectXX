@@ -298,6 +298,7 @@ items:
     bag_allowed: [normal]
     manual_kind: technique
     tradable: true
+    unique: true
     bound: false
     use_effect:
       kind: tech_manual_learn
