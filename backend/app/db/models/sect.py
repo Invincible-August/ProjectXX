@@ -273,11 +273,18 @@ class SectScriptureEntry(Base):
         nullable=False,
         index=True,
     )
-    technique_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    technique_id: Mapped[str] = mapped_column(String(128), nullable=False)
     label_zh: Mapped[str] = mapped_column(String(64), nullable=False)
     specialty_tag: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # catalog = 配置目录；donated = 弟子上供；self_research = 自研（须审核）
     source: Mapped[str] = mapped_column(String(32), nullable=False, default="catalog")
+    origin_technique_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    author_character_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    major_rank: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stats_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    affix_ids_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cost_contribution: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

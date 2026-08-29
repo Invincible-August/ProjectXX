@@ -21,6 +21,7 @@ ERR_CRAFT_CULTIVATE: Final[int] = 40223
 ERR_CRAFT_EQUIP_ROLE: Final[int] = 40224
 ERR_CRAFT_MANUAL: Final[int] = 40225
 ERR_CRAFT_LEARN: Final[int] = 40226
+ERR_SCRIPTURE_DONATE: Final[int] = 40227
 
 DRAFT_PHASE_EMBEDDING: Final[str] = "embedding"
 DRAFT_PHASE_ABANDONED: Final[str] = "abandoned"

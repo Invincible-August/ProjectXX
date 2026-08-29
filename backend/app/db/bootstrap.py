@@ -368,6 +368,16 @@ _SECT_HERB_PLOT_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
     ("hosted", "BOOLEAN NOT NULL DEFAULT 0"),
 )
 
+_SECT_SCRIPTURE_ENTRY_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
+    ("origin_technique_id", "VARCHAR(128)"),
+    ("author_character_id", "INTEGER"),
+    ("major_rank", "VARCHAR(32)"),
+    ("payload_json", "TEXT"),
+    ("stats_json", "TEXT"),
+    ("affix_ids_json", "TEXT"),
+    ("cost_contribution", "INTEGER NOT NULL DEFAULT 0"),
+)
+
 
 def _patch_sqlite_sect_columns(connection: Connection) -> None:
     """补齐宗门深化列（grade/specialty/rank 等）。"""
@@ -390,6 +400,11 @@ def _patch_sqlite_sect_columns(connection: Connection) -> None:
         connection,
         table="sect_herb_plots",
         patches=_SECT_HERB_PLOT_COLUMN_PATCHES,
+    )
+    _patch_sqlite_table_columns(
+        connection,
+        table="sect_scripture_entries",
+        patches=_SECT_SCRIPTURE_ENTRY_COLUMN_PATCHES,
     )
 
 

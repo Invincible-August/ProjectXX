@@ -487,6 +487,8 @@ treasury:
 # 藏经阁目录（专精匹配额外贡献奖励）
 scripture:
   specialty_match_bonus_contrib: 30
+  donate_reward_contrib: 40
+  learn_cost_contrib: 60
   catalog:
     basic_breath:
       label_zh: 吐纳心法残卷
