@@ -609,11 +609,10 @@ class SectFacilityService:
             if not origin:
                 raise AppError(code=40000, message="审核单无效", http_status=400)
             technique_id = origin
-            specialty_tag = payload.get("specialty_tag") or getattr(
-                sect, "specialty", None
+            raw_specialty = payload.get("specialty_tag")
+            specialty_tag = (
+                str(raw_specialty) or None if raw_specialty is not None else None
             )
-            if specialty_tag is not None:
-                specialty_tag = str(specialty_tag) or None
             learn_cost = int(scripture.get("learn_cost_contrib") or 0)
             label_zh = str(payload.get("label_zh") or technique_id)
             major_rank = str(payload.get("major_rank") or "") or None

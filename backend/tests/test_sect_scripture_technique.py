@@ -428,7 +428,7 @@ def test_scripture_review_reject_returns_manual(
 def test_scripture_review_approve_grants_contrib_and_entry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Approve stocks SectScriptureEntry and pays YAML donate + specialty bonus."""
+    """Approve stocks SectScriptureEntry and pays base donate reward only."""
     monkeypatch.setattr(
         "app.services.technique_craft_service.roll_embed_success",
         lambda *_a, **_k: True,
@@ -456,7 +456,6 @@ def test_scripture_review_approve_grants_contrib_and_entry(
                 contrib_before = int(member.contribution)
                 scripture = get_game_config().sects.scripture or {}
                 reward = int(scripture.get("donate_reward_contrib") or 0)
-                bonus = int(scripture.get("specialty_match_bonus_contrib") or 0)
                 learn_cost = int(scripture.get("learn_cost_contrib") or 0)
 
                 donated = await SectFacilityService(session).scripture_donate(
@@ -488,9 +487,9 @@ def test_scripture_review_approve_grants_contrib_and_entry(
                 assert entry.payload_json
                 assert entry.stats_json
                 assert entry.affix_ids_json
-                assert entry.specialty_tag == "sword"
+                assert entry.specialty_tag is None
 
-                assert int(member.contribution) == contrib_before + reward + bonus
+                assert int(member.contribution) == contrib_before + reward
 
                 manuals = (
                     await session.execute(
