@@ -112,12 +112,9 @@ class SectScriptureExchangeRequest(BaseModel):
 
 
 class SectScriptureDonateRequest(BaseModel):
-    """藏经阁上供。"""
+    """藏经阁上缴自研秘籍（扣书待审）。"""
 
-    technique_id: str = Field(description="功法 id")
-    label_zh: str = Field(description="中文名")
-    specialty_tag: str | None = Field(default=None)
-    self_research: bool = Field(default=False, description="自研须审核")
+    item_uid: str = Field(description="背包秘籍 item_uid")
 
 
 class SectDonationReviewRequest(BaseModel):

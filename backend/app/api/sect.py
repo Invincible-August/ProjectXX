@@ -383,13 +383,7 @@ async def scripture_donate(
 ) -> dict:
     """藏经阁上供。"""
     return success(
-        await svc.scripture_donate(
-            current_user,
-            technique_id=body.technique_id,
-            label_zh=body.label_zh,
-            specialty_tag=body.specialty_tag,
-            self_research=body.self_research,
-        ),
+        await svc.scripture_donate(current_user, item_uid=body.item_uid),
     )
 
 

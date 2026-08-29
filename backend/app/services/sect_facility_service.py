@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants.inventory import ERR_BLUEPRINT_TYPE_MISMATCH, ItemType
+from app.constants.technique_craft import CARD_MANUAL_ID, ERR_SCRIPTURE_DONATE
 from app.core.time_utils import now_utc
 from app.db.models import Character, User
 from app.db.models.inventory_item import InventoryItem
@@ -390,70 +391,108 @@ class SectFacilityService:
         self,
         user: User,
         *,
-        technique_id: str,
-        label_zh: str,
-        specialty_tag: str | None = None,
-        self_research: bool = False,
+        item_uid: str,
     ) -> dict[str, Any]:
-        """上供功法：未收录可获贡献；自研须审核。"""
+        """
+        Submit a printed technique manual for scripture-pavilion review.
+
+        Consumes one ``tech_manual`` owned by the acting character. Only the
+        snapshot author may donate. Does not grant contribution (approval does).
+        An existing scripture entry for the same origin does not block submit.
+
+        Args:
+            user: Acting user (must be in a sect).
+            item_uid: Inventory uid of the ``tech_manual`` row.
+
+        Returns:
+            dict[str, Any]: Confirmation message and ``review_id``.
+
+        Raises:
+            AppError: 40000 missing item / facility / membership; 40227 wrong
+                item, non-author, or duplicate pending review for the origin.
+        """
+        from app.services.technique_craft_service import TechniqueCraftService
+
         require_sect_system_enabled()
         self._require_facility_gate("scripture_pavilion")
-        character, sect, member = await self._ctx(user)
+        character, sect, _member = await self._ctx(user)
         await self._org.ensure_sect_org_fields(sect)
-        cfg = self._cfg()
-        existing = (
+
+        uid = str(item_uid or "").strip()
+        row = (
             await self._session.execute(
-                select(SectScriptureEntry).where(
-                    SectScriptureEntry.sect_id == sect.id,
-                    SectScriptureEntry.technique_id == technique_id,
+                select(InventoryItem).where(
+                    InventoryItem.character_id == character.id,
+                    InventoryItem.item_uid == uid,
                 ),
             )
         ).scalar_one_or_none()
-        if existing is not None:
-            raise AppError(code=40000, message="该功法已收录，无法再放入", http_status=400)
-        if self_research:
-            review = SectDonationReview(
-                sect_id=sect.id,
-                character_id=character.id,
-                kind="scripture",
-                payload_json=json.dumps(
-                    {
-                        "technique_id": technique_id,
-                        "label_zh": label_zh,
-                        "specialty_tag": specialty_tag,
-                    },
-                    ensure_ascii=False,
-                ),
-                status="pending",
+        if row is None:
+            raise AppError(code=40000, message="背包物品不存在", http_status=400)
+        if str(row.item_id) != CARD_MANUAL_ID:
+            raise AppError(
+                code=ERR_SCRIPTURE_DONATE,
+                message="仅可上缴功法秘籍",
+                http_status=400,
             )
-            self._session.add(review)
-            await self._session.flush()
-            return {
-                "message": "自研功法已提交审核（须掌门/太上/创派同意）",
-                "review_id": review.id,
-            }
-        # 直接收录
-        tag = specialty_tag or sect.specialty
-        self._session.add(
-            SectScriptureEntry(
-                sect_id=sect.id,
-                technique_id=technique_id,
-                label_zh=label_zh,
-                specialty_tag=tag,
-                source="donated",
-            ),
+
+        meta = InventoryService._parse_row_meta(row)
+        snapshot = TechniqueCraftService._require_manual_snapshot(meta)
+        if int(snapshot["author_character_id"]) != int(character.id):
+            raise AppError(
+                code=ERR_SCRIPTURE_DONATE,
+                message="仅创作者可上缴",
+                http_status=400,
+            )
+
+        origin = str(snapshot["origin_technique_id"])
+        pending_rows = (
+            await self._session.execute(
+                select(SectDonationReview).where(
+                    SectDonationReview.sect_id == sect.id,
+                    SectDonationReview.kind == "scripture",
+                    SectDonationReview.status == "pending",
+                ),
+            )
+        ).scalars().all()
+        for pending in pending_rows:
+            try:
+                body = json.loads(pending.payload_json or "{}")
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(body, dict):
+                continue
+            if str(body.get("origin_technique_id") or "") == origin:
+                raise AppError(
+                    code=ERR_SCRIPTURE_DONATE,
+                    message="该功法已在审核中",
+                    http_status=400,
+                )
+
+        payload = {
+            "manual_kind": "technique",
+            "origin_technique_id": origin,
+            "author_character_id": int(snapshot["author_character_id"]),
+            "label_zh": str(snapshot["label_zh"] or ""),
+            "major_rank": str(snapshot["major_rank"]),
+            "payload": snapshot["payload"],
+            "stats": snapshot["stats"],
+            "affix_ids": list(snapshot["affix_ids"]),
+        }
+        await InventoryService(self._session).remove_one_by_uid(character.id, uid)
+        review = SectDonationReview(
+            sect_id=sect.id,
+            character_id=character.id,
+            kind="scripture",
+            payload_json=json.dumps(payload, ensure_ascii=False),
+            status="pending",
         )
-        bonus = 10
-        if tag and sect.specialty and str(tag) == str(sect.specialty):
-            bonus += int((cfg.scripture or {}).get("specialty_match_bonus_contrib") or 30)
-        await self._apply_contrib(
-            member,
-            delta=bonus,
-            reason="scripture_donate",
-            note_zh=f"上供功法 {label_zh}",
-        )
+        self._session.add(review)
         await self._session.flush()
-        return {"message": f"已上供「{label_zh}」，贡献 +{bonus}", "contrib_gain": bonus}
+        return {
+            "message": "已提交审核",
+            "review_id": review.id,
+        }
 
     async def review_donation(
         self,
