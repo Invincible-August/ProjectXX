@@ -274,6 +274,52 @@ export async function exchangeScripture(body: {
   }
 }
 
+/** POST /sect/scripture/donate — 上缴自研秘籍入待审 */
+export async function donateScripture(body: {
+  item_uid: string
+}): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      '/sect/scripture/donate',
+      body,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/** GET /sect/donations — 待审上供（仅掌门/太上/创派） */
+export async function fetchDonations(): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.get<ApiResponse<Record<string, unknown>>>('/sect/donations')
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
+/**
+ * POST /sect/donations/{id}/review
+ *
+ * @param reviewId - 审核单 id
+ * @param body - approve true 通过 / false 拒绝
+ */
+export async function reviewDonation(
+  reviewId: number,
+  body: { approve: boolean },
+): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>(
+      `/sect/donations/${reviewId}/review`,
+      body,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
+  }
+}
+
 /** GET /sect/workshops/{branch} */
 export async function fetchWorkshop(
   branch: string,
