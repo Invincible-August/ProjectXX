@@ -494,6 +494,66 @@ class SectFacilityService:
             "review_id": review.id,
         }
 
+    async def list_donations(self, user: User) -> dict[str, Any]:
+        """
+        List pending donation reviews for the acting character's sect.
+
+        Restricted to founder / leader / supreme_elder.
+
+        Args:
+            user: Acting user.
+
+        Returns:
+            dict[str, Any]: ``items`` of pending reviews with id, kind, label,
+            origin, donor character id, and created_at.
+
+        Raises:
+            AppError: 403 if rank is not an admin office.
+        """
+        require_sect_system_enabled()
+        _character, sect, member = await self._ctx(user)
+        rank = self._rank(member)
+        if rank not in ("founder", "leader", "supreme_elder"):
+            raise AppError(code=40000, message="无权查看上供审核", http_status=403)
+        rows = (
+            await self._session.execute(
+                select(SectDonationReview)
+                .where(
+                    SectDonationReview.sect_id == sect.id,
+                    SectDonationReview.status == "pending",
+                )
+                .order_by(SectDonationReview.id.asc()),
+            )
+        ).scalars().all()
+        items: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                body = json.loads(row.payload_json or "{}")
+            except json.JSONDecodeError:
+                body = {}
+            if not isinstance(body, dict):
+                body = {}
+            origin = str(
+                body.get("origin_technique_id")
+                or body.get("technique_id")
+                or body.get("recipe_id")
+                or body.get("formation_id")
+                or ""
+            )
+            items.append(
+                {
+                    "id": int(row.id),
+                    "kind": str(row.kind),
+                    "label_zh": str(body.get("label_zh") or ""),
+                    "origin_technique_id": origin or None,
+                    "character_id": int(row.character_id),
+                    "created_at": (
+                        row.created_at.isoformat() if row.created_at else None
+                    ),
+                },
+            )
+        return {"items": items}
+
     async def review_donation(
         self,
         user: User,
@@ -502,6 +562,8 @@ class SectFacilityService:
         approve: bool,
     ) -> dict[str, Any]:
         """审核上供（掌门/太上/创派）。"""
+        from app.services.technique_craft_service import TechniqueCraftService
+
         require_sect_system_enabled()
         character, sect, member = await self._ctx(user)
         cfg = self._cfg()
@@ -513,19 +575,71 @@ class SectFacilityService:
             raise AppError(code=40000, message="审核单无效", http_status=400)
         review.reviewer_character_id = character.id
         review.resolved_at = now_utc()
-        if not approve:
-            review.status = "rejected"
-            await self._session.flush()
-            return {"message": "已拒绝上供"}
-        review.status = "approved"
         payload = json.loads(review.payload_json or "{}")
+        if not isinstance(payload, dict):
+            payload = {}
+
         if review.kind == "scripture":
-            tid = str(payload.get("technique_id") or "")
+            if not approve:
+                review.status = "rejected"
+                snapshot = TechniqueCraftService._require_manual_snapshot(payload)
+                snapshot_dict = {
+                    "manual_kind": "technique",
+                    "origin_technique_id": snapshot["origin_technique_id"],
+                    "author_character_id": snapshot["author_character_id"],
+                    "label_zh": snapshot["label_zh"],
+                    "major_rank": snapshot["major_rank"],
+                    "payload": snapshot["payload"],
+                    "stats": snapshot["stats"],
+                    "affix_ids": list(snapshot["affix_ids"]),
+                }
+                await InventoryService(self._session).add_item(
+                    review.character_id,
+                    item_type="manual",
+                    item_id=CARD_MANUAL_ID,
+                    quantity=1,
+                    meta=snapshot_dict,
+                )
+                await self._session.flush()
+                return {"message": "已拒绝上供"}
+
+            review.status = "approved"
+            scripture = dict(cfg.scripture or {})
+            origin = str(payload.get("origin_technique_id") or "").strip()
+            if not origin:
+                raise AppError(code=40000, message="审核单无效", http_status=400)
+            technique_id = origin
+            specialty_tag = payload.get("specialty_tag") or getattr(
+                sect, "specialty", None
+            )
+            if specialty_tag is not None:
+                specialty_tag = str(specialty_tag) or None
+            learn_cost = int(scripture.get("learn_cost_contrib") or 0)
+            label_zh = str(payload.get("label_zh") or technique_id)
+            major_rank = str(payload.get("major_rank") or "") or None
+            author_id = payload.get("author_character_id")
+            try:
+                author_character_id = int(author_id) if author_id is not None else None
+            except (TypeError, ValueError):
+                author_character_id = None
+            payload_json = json.dumps(
+                payload.get("payload") if isinstance(payload.get("payload"), dict) else {},
+                ensure_ascii=False,
+            )
+            stats_json = json.dumps(
+                payload.get("stats") if isinstance(payload.get("stats"), dict) else {},
+                ensure_ascii=False,
+            )
+            affix_raw = payload.get("affix_ids")
+            affix_ids_json = json.dumps(
+                list(affix_raw) if isinstance(affix_raw, list) else [],
+                ensure_ascii=False,
+            )
             exist = (
                 await self._session.execute(
                     select(SectScriptureEntry).where(
                         SectScriptureEntry.sect_id == sect.id,
-                        SectScriptureEntry.technique_id == tid,
+                        SectScriptureEntry.technique_id == technique_id,
                     ),
                 )
             ).scalar_one_or_none()
@@ -533,13 +647,64 @@ class SectFacilityService:
                 self._session.add(
                     SectScriptureEntry(
                         sect_id=sect.id,
-                        technique_id=tid,
-                        label_zh=str(payload.get("label_zh") or tid),
-                        specialty_tag=payload.get("specialty_tag"),
+                        technique_id=technique_id,
+                        label_zh=label_zh,
+                        specialty_tag=specialty_tag,
                         source="self_research",
+                        origin_technique_id=origin,
+                        author_character_id=author_character_id,
+                        major_rank=major_rank,
+                        payload_json=payload_json,
+                        stats_json=stats_json,
+                        affix_ids_json=affix_ids_json,
+                        cost_contribution=learn_cost,
                     ),
                 )
-        elif review.kind == "blueprint":
+            else:
+                exist.label_zh = label_zh
+                exist.major_rank = major_rank
+                exist.author_character_id = author_character_id
+                exist.origin_technique_id = origin
+                exist.payload_json = payload_json
+                exist.stats_json = stats_json
+                exist.affix_ids_json = affix_ids_json
+                exist.cost_contribution = learn_cost
+                exist.source = "self_research"
+                exist.specialty_tag = specialty_tag
+
+            donor = (
+                await self._session.execute(
+                    select(SectMember).where(
+                        SectMember.sect_id == sect.id,
+                        SectMember.character_id == int(review.character_id),
+                    ),
+                )
+            ).scalar_one_or_none()
+            # Donor left the sect: entry still stocks; skip contribution grant.
+            if donor is not None:
+                reward = int(scripture.get("donate_reward_contrib") or 0)
+                bonus = 0
+                if specialty_tag and str(specialty_tag) == str(
+                    getattr(sect, "specialty", None) or ""
+                ):
+                    bonus = int(scripture.get("specialty_match_bonus_contrib") or 0)
+                delta = reward + bonus
+                if delta:
+                    await self._apply_contrib(
+                        donor,
+                        delta=delta,
+                        reason="scripture_donate",
+                        note_zh="藏经阁上供通过",
+                    )
+            await self._session.flush()
+            return {"message": "已通过上供审核"}
+
+        if not approve:
+            review.status = "rejected"
+            await self._session.flush()
+            return {"message": "已拒绝上供"}
+        review.status = "approved"
+        if review.kind == "blueprint":
             branch = str(payload.get("branch") or "")
             recipe_id = str(payload.get("recipe_id") or "")
             if branch and recipe_id:

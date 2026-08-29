@@ -387,6 +387,15 @@ async def scripture_donate(
     )
 
 
+@router.get("/donations", response_model=None)
+async def list_donations(
+    svc: SectFacilityService = Depends(get_sect_facility_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """待审上供列表（管理职）。"""
+    return success(await svc.list_donations(current_user))
+
+
 @router.post("/donations/{review_id}/review", response_model=None)
 async def donation_review(
     review_id: int,

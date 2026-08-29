@@ -13,7 +13,8 @@ from app.constants.technique_craft import CARD_MANUAL_ID, ERR_SCRIPTURE_DONATE
 from app.core.config import get_settings
 from app.db.models import User
 from app.db.models.inventory_item import InventoryItem
-from app.db.models.sect import SectDonationReview, SectMember
+from app.db.models.research import PrivateTechnique
+from app.db.models.sect import SectDonationReview, SectMember, SectScriptureEntry
 from app.db.models.technique import CharacterTechnique
 from app.schemas.common import AppError
 from app.services.gm_service import GmService
@@ -26,6 +27,53 @@ from app.services.technique_service import TechniqueService
 from tests.async_db import open_test_session_factory, run_async as _run
 from tests.test_research_technique_finalize import _prepare_researcher
 from tests.test_technique_craft import _finalize_spell_attack, _grant_manual
+
+
+async def _founder_sect_with_manual(
+    session,
+    *,
+    email: str,
+    name_zh: str,
+    sect_name: str,
+    specialty: str = "sword",
+) -> tuple:
+    """Create founder + sect, finalize spell, print one manual. Returns context tuple."""
+    founder = await _prepare_researcher(session, email, name_zh)
+    user = await session.get(User, founder.user_id)
+    assert user is not None
+    await GmService(session).gm_set_character(user, spirit_stones=200_000)
+    await session.commit()
+    await SectService(session).create(
+        user,
+        name=sect_name,
+        motto=None,
+        specialty=specialty,
+    )
+    await session.commit()
+    await session.refresh(founder)
+    member = (
+        await session.execute(
+            select(SectMember).where(SectMember.character_id == founder.id)
+        )
+    ).scalar_one()
+    craft_svc = TechniqueCraftService(session)
+    tech_id = await _finalize_spell_attack(session, founder, craft_svc)
+    craft = get_game_config().research.technique_craft
+    founder.cultivation_points = int(craft.print_manual_cost_cultivation) * 4
+    await session.commit()
+    await session.refresh(founder)
+    printed = await craft_svc.print_manual(founder, tech_id)
+    await session.commit()
+    row = (
+        await session.execute(
+            select(InventoryItem).where(
+                InventoryItem.character_id == founder.id,
+                InventoryItem.item_id == CARD_MANUAL_ID,
+                InventoryItem.quantity > 0,
+            )
+        )
+    ).scalar_one()
+    return founder, user, member, craft_svc, tech_id, printed["snapshot"], str(row.item_uid)
 
 
 @pytest.fixture(autouse=True)
@@ -309,5 +357,238 @@ def test_scripture_donate_rejects_non_author(
                     )
                 ).scalar_one_or_none()
                 assert still is not None
+
+    _run(_body())
+
+
+def test_scripture_review_reject_returns_manual(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reject returns one tech_manual with snapshot meta to the donor."""
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "sect_rev_rej.db") as factory:
+            async with factory() as session:
+                (
+                    founder,
+                    user,
+                    _member,
+                    _craft,
+                    _tech_id,
+                    snapshot,
+                    item_uid,
+                ) = await _founder_sect_with_manual(
+                    session,
+                    email="sectrevrej@test.com",
+                    name_zh="审拒甲",
+                    sect_name="审拒试炼宗",
+                )
+                donated = await SectFacilityService(session).scripture_donate(
+                    user, item_uid=item_uid
+                )
+                await session.commit()
+                review_id = int(donated["review_id"])
+
+                out = await SectFacilityService(session).review_donation(
+                    user, review_id=review_id, approve=False
+                )
+                await session.commit()
+                assert "拒绝" in str(out.get("message") or "")
+
+                review = await session.get(SectDonationReview, review_id)
+                assert review is not None
+                assert review.status == "rejected"
+
+                returned = (
+                    await session.execute(
+                        select(InventoryItem).where(
+                            InventoryItem.character_id == founder.id,
+                            InventoryItem.item_id == CARD_MANUAL_ID,
+                            InventoryItem.quantity > 0,
+                        )
+                    )
+                ).scalars().all()
+                assert len(returned) == 1
+                meta = InventoryService._parse_row_meta(returned[0])
+                assert meta.get("manual_kind") == "technique"
+                assert meta.get("origin_technique_id") == snapshot["origin_technique_id"]
+                assert int(meta.get("author_character_id") or 0) == int(
+                    snapshot["author_character_id"]
+                )
+                assert "payload" in meta and "stats" in meta and "affix_ids" in meta
+
+    _run(_body())
+
+
+def test_scripture_review_approve_grants_contrib_and_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Approve stocks SectScriptureEntry and pays YAML donate + specialty bonus."""
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "sect_rev_ok.db") as factory:
+            async with factory() as session:
+                (
+                    founder,
+                    user,
+                    member,
+                    _craft,
+                    _tech_id,
+                    snapshot,
+                    item_uid,
+                ) = await _founder_sect_with_manual(
+                    session,
+                    email="sectrevok@test.com",
+                    name_zh="审通甲",
+                    sect_name="审通试炼宗",
+                    specialty="sword",
+                )
+                contrib_before = int(member.contribution)
+                scripture = get_game_config().sects.scripture or {}
+                reward = int(scripture.get("donate_reward_contrib") or 0)
+                bonus = int(scripture.get("specialty_match_bonus_contrib") or 0)
+                learn_cost = int(scripture.get("learn_cost_contrib") or 0)
+
+                donated = await SectFacilityService(session).scripture_donate(
+                    user, item_uid=item_uid
+                )
+                await session.commit()
+                review_id = int(donated["review_id"])
+
+                out = await SectFacilityService(session).review_donation(
+                    user, review_id=review_id, approve=True
+                )
+                await session.commit()
+                await session.refresh(member)
+                assert "通过" in str(out.get("message") or "")
+
+                origin = str(snapshot["origin_technique_id"])
+                entry = (
+                    await session.execute(
+                        select(SectScriptureEntry).where(
+                            SectScriptureEntry.technique_id == origin,
+                        )
+                    )
+                ).scalar_one()
+                assert entry.label_zh == snapshot["label_zh"]
+                assert entry.origin_technique_id == origin
+                assert int(entry.author_character_id or 0) == int(founder.id)
+                assert entry.source == "self_research"
+                assert int(entry.cost_contribution) == learn_cost
+                assert entry.payload_json
+                assert entry.stats_json
+                assert entry.affix_ids_json
+                assert entry.specialty_tag == "sword"
+
+                assert int(member.contribution) == contrib_before + reward + bonus
+
+                manuals = (
+                    await session.execute(
+                        select(InventoryItem).where(
+                            InventoryItem.character_id == founder.id,
+                            InventoryItem.item_id == CARD_MANUAL_ID,
+                            InventoryItem.quantity > 0,
+                        )
+                    )
+                ).scalars().all()
+                assert manuals == []
+
+    _run(_body())
+
+
+def test_scripture_review_approve_replaces_same_origin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Second approve for same origin updates the single entry snapshot/label."""
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "sect_rev_rep.db") as factory:
+            async with factory() as session:
+                (
+                    founder,
+                    user,
+                    _member,
+                    craft_svc,
+                    tech_id,
+                    snapshot,
+                    item_uid,
+                ) = await _founder_sect_with_manual(
+                    session,
+                    email="sectrevrep@test.com",
+                    name_zh="审替甲",
+                    sect_name="审替试炼宗",
+                )
+                first = await SectFacilityService(session).scripture_donate(
+                    user, item_uid=item_uid
+                )
+                await session.commit()
+                await SectFacilityService(session).review_donation(
+                    user, review_id=int(first["review_id"]), approve=True
+                )
+                await session.commit()
+
+                private = (
+                    await session.execute(
+                        select(PrivateTechnique).where(
+                            PrivateTechnique.technique_id == tech_id
+                        )
+                    )
+                ).scalar_one()
+                private.label_zh = "替换后残篇"
+                body = json.loads(private.payload_json or "{}")
+                body["label_note"] = "replaced"
+                private.payload_json = json.dumps(body, ensure_ascii=False)
+                await session.commit()
+                await session.refresh(founder)
+                printed2 = await craft_svc.print_manual(founder, tech_id)
+                await session.commit()
+                row2 = (
+                    await session.execute(
+                        select(InventoryItem).where(
+                            InventoryItem.character_id == founder.id,
+                            InventoryItem.item_id == CARD_MANUAL_ID,
+                            InventoryItem.quantity > 0,
+                        )
+                    )
+                ).scalar_one()
+                second = await SectFacilityService(session).scripture_donate(
+                    user, item_uid=str(row2.item_uid)
+                )
+                await session.commit()
+                await SectFacilityService(session).review_donation(
+                    user, review_id=int(second["review_id"]), approve=True
+                )
+                await session.commit()
+
+                origin = str(snapshot["origin_technique_id"])
+                entries = list(
+                    (
+                        await session.execute(
+                            select(SectScriptureEntry).where(
+                                SectScriptureEntry.technique_id == origin,
+                            )
+                        )
+                    ).scalars()
+                )
+                assert len(entries) == 1
+                assert entries[0].label_zh == "替换后残篇"
+                stored = json.loads(entries[0].payload_json or "{}")
+                assert stored.get("label_note") == "replaced"
+                assert printed2["snapshot"]["label_zh"] == "替换后残篇"
 
     _run(_body())
