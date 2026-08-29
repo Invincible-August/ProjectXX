@@ -823,6 +823,8 @@ class TechniqueCraftService:
         self,
         character: Character,
         meta: dict[str, Any] | None,
+        *,
+        source: str = TECHNIQUE_SOURCE_CHANCE,
     ) -> dict[str, Any]:
         """
         Grant a frozen copy of a printed technique snapshot. Does not consume the book.
@@ -834,6 +836,8 @@ class TechniqueCraftService:
         Args:
             character: Learner (must not be the snapshot author).
             meta: Inventory row snapshot, or None if the row has no/invalid JSON.
+            source: CharacterTechnique.source stamp. Bag manuals keep the default
+                ``chance``; scripture exchange passes ``sect``.
 
         Returns:
             dict[str, Any]: ``technique_id`` of the new private copy.
@@ -883,7 +887,7 @@ class TechniqueCraftService:
                 character_id=int(character.id),
                 technique_id=technique_id,
                 level=1,
-                source=TECHNIQUE_SOURCE_CHANCE,
+                source=normalize_technique_source(source),
             )
         )
         await self._session.flush()
