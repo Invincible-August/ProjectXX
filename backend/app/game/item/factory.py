@@ -52,6 +52,7 @@ def _raw_from_def(defn: Any, fallback_type: str) -> dict[str, Any]:
         "grants": getattr(defn, "grants", None),
         "manual_kind": getattr(defn, "manual_kind", None),
         "unlock_recipe_id": getattr(defn, "unlock_recipe_id", None),
+        "talisman_effect_id": getattr(defn, "talisman_effect_id", None),
     }
 
 

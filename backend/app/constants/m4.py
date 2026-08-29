@@ -69,10 +69,11 @@ IDLE_DIRECTION_SECT_MINING: str = "sect_mining"  # 宗门矿脉挂机方向 id
 class CraftJobStatus(StrEnum):
     """工坊任务生命周期状态。"""
 
-    RUNNING = "running"  # 进行中（未到 finish_at）
-    READY = "ready"  # 已完成待领取
-    CLAIMED = "claimed"  # 已领取入背包/阵法
-    FAILED = "failed"  # 失败（材料/环境等）
+    RUNNING = "running"  # 排队/进行中（未到 finish_at）
+    READY = "ready"  # 遗留：旧版待领取（settle 会自动结清）
+    CLAIMED = "claimed"  # 成功入背包
+    FAILED = "failed"  # 失败（已冻资源不退）
+    CANCELLED = "cancelled"  # 取消并已退冻
 
 
 # 可产出资源的挂机方向（不含 none）
@@ -84,10 +85,9 @@ PRODUCTIVE_IDLE_DIRECTIONS: frozenset[str] = frozenset(
     },
 )
 
-# 工坊队列占用槽位的状态（已满判定用）
+# 工坊「进行中」状态（顺序排队只看 running；ready 不再占槽限制）
 CRAFT_ACTIVE_STATUSES: frozenset[str] = frozenset(
     {
-        CraftJobStatus.RUNNING,  # 进行中占槽
-        CraftJobStatus.READY,  # 待领取仍占槽
+        CraftJobStatus.RUNNING,
     },
 )

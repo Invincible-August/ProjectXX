@@ -4,7 +4,7 @@
  * 公开页：登录 / 注册 / 学习页；受保护页：创角 / 大厅 / 玩法页。
  * M5：`/tribulation` `/reincarnation`；M6：`/dao` `/dao-lord`；
  * M7：`/sect` `/market` `/social` `/friends` `/party` `/dual-cultivation` `/shop`；
- * M8：`/cave` 洞府；`/cave/lab` 研究室（query `mode=technique|formation|talisman`）；
+ * M8：`/cave` 洞府；`/cave/workshop` 工坊；`/cave/lab` 研究室（query `mode=technique|formation|talisman`）；
  * 待引渡强引导；`showWorldBar` 顶栏。
  */
 import {
@@ -20,7 +20,6 @@ import CharacterView from '../views/CharacterView.vue'
 import HallView from '../views/HallView.vue'
 import FormationView from '../views/FormationView.vue'
 import BattleView from '../views/BattleView.vue'
-import AvatarView from '../views/AvatarView.vue'
 import WorkshopView from '../views/WorkshopView.vue'
 import PetsView from '../views/PetsView.vue'
 import TribulationView from '../views/TribulationView.vue'
@@ -68,8 +67,6 @@ const PLAY_ROUTE_NAMES = new Set([
   'character',
   'formation',
   'battle',
-  'avatar',
-  'workshop',
   'pets',
   'tribulation',
   'reincarnation',
@@ -84,6 +81,7 @@ const PLAY_ROUTE_NAMES = new Set([
   'shop',
   'cave',
   'cave-hub',
+  'cave-workshop',
   'cave-lab',
 ])
 
@@ -91,8 +89,6 @@ const PLAY_ROUTE_NAMES = new Set([
 const FERRY_BLOCKED_ROUTES = new Set([
   'battle',
   'formation',
-  'workshop',
-  'avatar',
   'pets',
   'dao-lord',
   'market',
@@ -100,6 +96,7 @@ const FERRY_BLOCKED_ROUTES = new Set([
   'shop',
   'cave',
   'cave-hub',
+  'cave-workshop',
   'cave-lab',
 ])
 
@@ -155,15 +152,14 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/avatar',
-    name: 'avatar',
-    component: AvatarView,
-    meta: { requiresAuth: true, showWorldBar: true },
+    redirect: (to) => ({
+      path: '/character',
+      query: { ...to.query, actor: 'avatar' },
+    }),
   },
   {
     path: '/workshop',
-    name: 'workshop',
-    component: WorkshopView,
-    meta: { requiresAuth: true, showWorldBar: true },
+    redirect: (to) => ({ path: '/cave/workshop', query: to.query }),
   },
   {
     path: '/pets',
@@ -253,6 +249,11 @@ const routes: RouteRecordRaw[] = [
         path: '',
         name: 'cave-hub',
         component: AbodeHubView,
+      },
+      {
+        path: 'workshop',
+        name: 'cave-workshop',
+        component: WorkshopView,
       },
       {
         path: 'lab',
@@ -351,7 +352,10 @@ router.beforeEach(async (to: RouteLocationNormalized) => {
     }
 
     // M5：待引渡 / 新生强引导——积极玩法与大厅均导向轮回页（新生不可进厅）
-    if (FERRY_BLOCKED_ROUTES.has(String(to.name)) || to.name === 'hall') {
+    const ferryBlocked =
+      FERRY_BLOCKED_ROUTES.has(String(to.name)) ||
+      (to.name === 'character' && to.query.actor === 'avatar')
+    if (ferryBlocked || to.name === 'hall') {
       const characterStore = useCharacterStore()
       if (!characterStore.character) {
         try {
@@ -368,7 +372,7 @@ router.beforeEach(async (to: RouteLocationNormalized) => {
           replace: true,
         }
       }
-      if (st === 'awaiting_ferry' && FERRY_BLOCKED_ROUTES.has(String(to.name))) {
+      if (st === 'awaiting_ferry' && ferryBlocked) {
         return {
           path: '/reincarnation',
           query: { mode: 'ferry' },
@@ -394,11 +398,11 @@ router.beforeEach(async (to: RouteLocationNormalized) => {
           try {
             await avatarStore.load()
           } catch {
-            return { path: '/avatar', replace: true }
+            return { path: '/character', query: { actor: 'avatar' }, replace: true }
           }
         }
         if (!canEnterWudao(avatarStore.avatar?.major_realm)) {
-          return { path: '/avatar', replace: true }
+          return { path: '/character', query: { actor: 'avatar' }, replace: true }
         }
       } else if (!canEnterWudao(characterStore.character?.major_realm)) {
         return { path: '/character', replace: true }

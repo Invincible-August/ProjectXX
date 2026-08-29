@@ -33,6 +33,7 @@ const ALLOWED_REDIRECT_PATHS = new Set([
   '/account',
   '/character',
   '/cave',
+  '/cave/workshop',
   '/cave/lab',
   '/research',
 ])

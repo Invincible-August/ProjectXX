@@ -82,6 +82,32 @@ export interface CraftRecipe {
   lock_reason?: string | null
   /** 本体制造业挂机效率加成（来自 craft_recipes.yaml） */
   main_crafting_bonus?: number
+  /** 炼器部位组（武器/头部/护手…）；矿板等为空 */
+  equip_slot_group?: string | null
+  equip_slot_group_zh?: string | null
+  /** 符箓功能：buff / offensive / curse */
+  talisman_kind?: string | null
+  talisman_kind_zh?: string | null
+}
+
+/** 成品属性 id；无属性为空串 */
+export function recipeElementId(recipe: CraftRecipe): string {
+  return recipe.inspect?.element?.id || ''
+}
+
+/** 制作等级门槛 */
+export function recipeRequiredLevel(recipe: CraftRecipe): number {
+  return recipe.inspect?.required_craft_level ?? recipe.required_craft_level ?? 0
+}
+
+/** 炼器部位组；非装备产出为空串 */
+export function recipeEquipSlotGroup(recipe: CraftRecipe): string {
+  return recipe.equip_slot_group || ''
+}
+
+/** 符箓功能 kind；无挂载为空串 */
+export function recipeTalismanKind(recipe: CraftRecipe): string {
+  return recipe.talisman_kind || ''
 }
 
 /** 工坊任务状态 */
@@ -92,9 +118,12 @@ export interface CraftJob {
   id: number
   actor: CraftActor | string
   recipe_id: string
+  /** 一次制造件数 */
+  quantity?: number
   status: CraftJobStatus
   started_at: string
   finish_at: string
+  total_finish_at?: string
   result?: Record<string, unknown> | null
   /** M5：开工时锁定的天气 */
   locked_weather?: string

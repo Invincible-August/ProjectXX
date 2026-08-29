@@ -1,4 +1,4 @@
-"""Cave (洞府) HTTP: hub rooms + lab (研究室) research desk."""
+"""Cave (洞府) HTTP: hub rooms + lab (研究室). Workshop UI is /cave/workshop; craft stays /craft."""
 
 from __future__ import annotations
 

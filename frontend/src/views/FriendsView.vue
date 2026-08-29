@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 独立道友页（/friends）：列表 + 私聊/组队/邀请化身/面交入口。
- * 化身助战开关在「化身」页；邀请开启则立即入队。
+ * 化身助战开关在角色页「化身」面；邀请开启则立即入队。
  */
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -30,7 +30,7 @@ onMounted(async () => {
     }
   }
   await friendsStore.refresh()
-  pushLog('道友页已就绪：私聊 / 邀请化身 / 交易；组队请到队伍页。化身助战开关见化身页。', 'info')
+  pushLog('道友页已就绪：私聊 / 邀请化身 / 交易；组队请到队伍页。化身助战开关见角色页化身。', 'info')
 })
 </script>
 
@@ -43,7 +43,7 @@ onMounted(async () => {
       <el-text tag="b" size="large">道友</el-text>
       <el-text type="info" size="small">修为 · 在线 · 社交动作</el-text>
       <el-button size="small" @click="router.push('/party')">队伍</el-button>
-      <el-button size="small" @click="router.push('/avatar')">化身助战开关</el-button>
+      <el-button size="small" @click="router.push({ path: '/character', query: { actor: 'avatar' } })">化身助战开关</el-button>
       <el-button size="small" @click="router.push('/social')">社交中心</el-button>
       <el-button size="small" @click="router.push('/social?mode=trade')">交易台</el-button>
     </div>
@@ -61,7 +61,7 @@ onMounted(async () => {
             {{ friendsStore.friendCount }} / {{ friendsStore.maxFriends || '—' }}
           </el-text>
           <el-text size="small" type="info" class="side-hint">
-            「邀请化身」需对方在化身页开启助战；关闭时提示闭关，忙碌时提示助战中。
+            「邀请化身」需对方在角色页化身面开启助战；关闭时提示闭关，忙碌时提示助战中。
           </el-text>
         </el-card>
 

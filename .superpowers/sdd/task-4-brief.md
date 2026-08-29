@@ -1,25 +1,27 @@
-﻿### Task 4: verification service锛堝彂鐮?/ 纭 / ticket锛?
+### Task 4: 镶嵌正式卡（可失败）
+
 **Files:**
-- Create: `backend/app/services/verification/service.py`
-- Create: `backend/app/schemas/verification.py`
+- Modify: `backend/app/services/technique_craft_service.py`
+- Modify: `backend/app/domain/technique_craft.py`（`roll_embed_success`）
+- Modify: API `POST /cave/lab/technique/drafts/{id}/embed`
+- Test: `backend/tests/test_technique_craft.py`
 
-**Produces:**
-- `send_sms(session, phone) -> None`
-- `confirm_sms(session, phone, code) -> str`  # ticket
-- `send_email` / `confirm_email` 鍚屼笂
-- `submit_id(session, real_name, id_card, face_token=None) -> str`
-- `assert_register_tickets(session, *, debug, email, phone, id_card, sms_ticket, email_ticket, id_ticket) -> None`
-- `get_modes() -> dict`
+**Body:** `{ "item_uid": "..." }`
 
-閫昏緫瑕佺偣锛?- 鍙戦€佸墠鏌ュ悓 `channel+target` 鏈€杩戜竴鏉★紝鏈秴 `verify_send_interval_seconds` 鈫?`40011`
-- code 瀛?`hash_password` 鎴?sha256锛涚‘璁ょ敤 `verify` 鎴?compare
-- DEBUG锛氭帴鍙?`settings.debug_verify_code`
-- ticket锛歚secrets.token_urlsafe(32)`锛孴TL=`verify_ticket_ttl_seconds`锛屽啓鍏ュ悓涓€ challenge 琛屾垨鏂拌
-- `submit_id`锛氳嫢 `debug` 鈫?鐩存帴鍙?ticket锛涘惁鍒欐寜 `id_verify_mode` 璋冨搴?provider锛屾垚鍔熷悗鍙?ticket锛坧ayload 鍚?mode锛?
-- [ ] **Step 1: 瀹炵幇 service + schemas**
+规则：
+- 正式属性卡：草稿 `elements` 必须仍为空；成功则写入 `elements_json` 并锁定。
+- 正式效能卡：`efficacy` 必须仍为空。
+- 无论成败都 `remove_one_by_uid` 该正式卡。
+- 失败：`embed_fail_rate`，草稿其它字段不变。测试用 monkeypatch `roll_embed_success` 返回 `False`/`True`。
 
-- [ ] **Step 2: httpx 娴?send/confirm**锛圖EBUG锛?
-Expected: confirm 杩斿洖 `code=0` 涓?`data.ticket` 闈炵┖锛涢敊璇爜 `40010`/`40011` 鍙祴銆?
+错误：非主人 40207；错误卡类型 40220；该槽已锁定再镶 40221。
+
+- [ ] **Step 1: 测试** `test_embed_fail_consumes_card_keeps_draft`、`test_embed_success_locks_elements`、`test_embed_second_element_card_rejected`
+
+- [ ] **Step 2: 跑测试确认失败 → 实现 → 跑通**
+
+Run: `cd backend && .venv/Scripts/python.exe -m pytest tests/test_technique_craft.py -k embed -q`
+
+Expected: PASS
+
 ---
-
-

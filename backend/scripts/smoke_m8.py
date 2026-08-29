@@ -114,6 +114,7 @@ async def main() -> None:
                 "cave overview",
             )
             assert any(r.get("id") == "lab" for r in (cave.get("rooms") or [])), cave
+            assert any(r.get("id") == "workshop" for r in (cave.get("rooms") or [])), cave
             tech_sess = _assert_ok(
                 (
                     await client.post(

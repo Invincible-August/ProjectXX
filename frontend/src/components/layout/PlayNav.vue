@@ -20,10 +20,8 @@ interface NavItem {
 const allItems: NavItem[] = [
   { path: '/hall', label: '大厅' },
   { path: '/character', label: '角色', type: 'primary', plain: true },
-  { path: '/avatar', label: '化身', type: 'warning' },
   { path: '/formation', label: '阵法' },
   { path: '/battle', label: '战斗', type: 'danger' },
-  { path: '/workshop', label: '工坊', type: 'warning', plain: true },
   { path: '/cave', label: '洞府', type: 'success' },
   { path: '/sect', label: '宗门', type: 'success', plain: true },
   { path: '/social', label: '社交', type: 'primary' },

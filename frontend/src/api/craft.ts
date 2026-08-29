@@ -47,6 +47,7 @@ export async function startCraft(body: {
   recipe_id: string
   actor: CraftActor
   use_dao?: boolean
+  quantity?: number
 }): Promise<ApiResponse<CraftStartPayload | CraftJob>> {
   try {
     const response = await http.post<ApiResponse<CraftStartPayload | CraftJob>>(
@@ -107,5 +108,17 @@ export async function claimCraft(jobId: number): Promise<ApiResponse<CraftClaimP
     return response.data
   } catch (error: unknown) {
     return envelopeFromAxiosError<CraftClaimPayload>(error)
+  }
+}
+
+/** POST /craft/cancel */
+export async function cancelCraft(jobId: number): Promise<ApiResponse<Record<string, unknown>>> {
+  try {
+    const response = await http.post<ApiResponse<Record<string, unknown>>>('/craft/cancel', {
+      job_id: jobId,
+    })
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError(error)
   }
 }

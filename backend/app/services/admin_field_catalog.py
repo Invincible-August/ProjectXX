@@ -275,6 +275,7 @@ _PATH_HELP: dict[str, tuple[str, str]] = {
     "items.*.inspect.realm_req_zh": ("境界要求", "使用条件：境界门槛"),
     "items.*.inspect.help_zh": ("详细说明", "悬停下方说明"),
     "items.*.inspect.effects": ("功效标签", "疗伤/解毒等中文标签列表"),
+    "items.*.talisman_effect_id": ("符箓效果 ID", "挂 talisman_effects 白名单；kind=buff/offensive/curse"),
     # ---- techniques ----
     "techniques": ("功法表", "technique_id → 定义"),
     "techniques.*": ("功法条目", "单条功法"),

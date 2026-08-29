@@ -3,6 +3,7 @@
  * Finalized private research list (M8 R2).
  */
 import { useRouter } from 'vue-router'
+import { CAVE_WORKSHOP_PATH } from '../../constants/cave'
 import { useResearchStore } from '../../stores/research'
 
 const router = useRouter()
@@ -52,7 +53,7 @@ const researchStore = useResearchStore()
             link
             type="primary"
             size="small"
-            @click="router.push('/workshop?branch=talisman')"
+            @click="router.push({ path: CAVE_WORKSHOP_PATH, query: { branch: 'talisman' } })"
           >
             去工坊
           </el-button>

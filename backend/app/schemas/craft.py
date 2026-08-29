@@ -11,10 +11,17 @@ class CraftStartRequest(BaseModel):
     recipe_id: str
     actor: str = Field(default="main", description="main | avatar")
     use_dao: bool = Field(default=False, description="是否耗道值运用本命道（M6）")
+    quantity: int = Field(default=1, ge=1, le=99, description="一次制造件数")
 
 
 class CraftClaimRequest(BaseModel):
-    """POST /craft/claim 请求体。"""
+    """POST /craft/claim 请求体（兼容旧 ready；完成已自动入包）。"""
+
+    job_id: int
+
+
+class CraftCancelRequest(BaseModel):
+    """POST /craft/cancel 请求体。"""
 
     job_id: int
 

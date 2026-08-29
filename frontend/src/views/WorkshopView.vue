@@ -1,15 +1,14 @@
 <script setup lang="ts">
 /**
- * 工坊页（M4 · /workshop）：外层四分支 / 配方 / 队列 / 领取。
+ * 工坊页（洞府二级 · /cave/workshop）：外层四分支 / 配方 / 队列。
  */
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import AuthSessionBar from '../components/AuthSessionBar.vue'
 import StaminaBar from '../components/battle/StaminaBar.vue'
-import CraftClaimBar from '../components/workshop/CraftClaimBar.vue'
 import CraftJobQueue from '../components/workshop/CraftJobQueue.vue'
 import RecipeList from '../components/workshop/RecipeList.vue'
 import { usePlayWriteGate } from '../composables/usePlayWriteGate'
+import { CAVE_WORKSHOP_PATH } from '../constants/cave'
 import { useCraftStore } from '../stores/craft'
 import { useCharacterStore } from '../stores/character'
 import { useInventoryStore } from '../stores/inventory'
@@ -39,7 +38,7 @@ function onBranchChange(next: CraftBranch): void {
   if (next === workshopBranch.value) return
   workshopBranch.value = next
   const query = { ...route.query, branch: next }
-  void router.replace({ path: '/workshop', query })
+  void router.replace({ path: CAVE_WORKSHOP_PATH, query })
 }
 
 watch(
@@ -89,14 +88,6 @@ onUnmounted(() => {
 
 <template>
   <div class="workshop-page">
-    <AuthSessionBar />
-
-    <div class="page-title">
-      <el-button size="small" @click="router.push('/hall')">← 回大厅</el-button>
-      <el-text tag="b" size="large">工坊</el-text>
-      <el-text type="info" size="small">配方</el-text>
-    </div>
-
     <div class="mode-nav">
       <el-button
         v-for="tab in CRAFT_BRANCH_TABS"
@@ -135,28 +126,16 @@ onUnmounted(() => {
       class="page-alert"
     />
 
-    <CraftClaimBar @log="pushLog" @claimed="refreshAll" />
-
     <div class="workshop-grid">
       <RecipeList :branch="workshopBranch" @log="pushLog" @started="refreshAll" />
-      <CraftJobQueue />
+      <CraftJobQueue @log="pushLog" @changed="refreshAll" />
     </div>
   </div>
 </template>
 
 <style scoped>
 .workshop-page {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 1rem 1rem 2rem;
-}
-
-.page-title {
-  display: flex;
-  align-items: baseline;
-  gap: 0.75rem;
-  margin: 0.75rem 0 0.5rem;
-  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .mode-nav {

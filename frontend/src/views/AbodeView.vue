@@ -1,27 +1,41 @@
 <script setup lang="ts">
 /**
- * 洞府壳：一级页；子路由挂研究室等二级房间。
+ * 洞府壳：一级页；子路由挂工坊 / 研究室等二级房间。
+ * 房间入口只在枢纽大卡，标题行不再放小切换钮。
  */
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AuthSessionBar from '../components/AuthSessionBar.vue'
-import { CAVE_LAB_PATH, CAVE_PATH } from '../constants/cave'
+import { CAVE_LAB_PATH, CAVE_PATH, CAVE_WORKSHOP_PATH } from '../constants/cave'
 
 const route = useRoute()
 const router = useRouter()
 
-const isLab = computed(
-  () => route.path === CAVE_LAB_PATH || route.path.startsWith(`${CAVE_LAB_PATH}/`),
-)
+const currentRoom = computed<'hub' | 'workshop' | 'lab'>(() => {
+  if (route.path === CAVE_WORKSHOP_PATH || route.path.startsWith(`${CAVE_WORKSHOP_PATH}/`)) {
+    return 'workshop'
+  }
+  if (route.path === CAVE_LAB_PATH || route.path.startsWith(`${CAVE_LAB_PATH}/`)) {
+    return 'lab'
+  }
+  return 'hub'
+})
+
+const titleZh = computed(() => {
+  if (currentRoom.value === 'workshop') return '工坊'
+  if (currentRoom.value === 'lab') return '研究室'
+  return '洞府'
+})
+
+const subtitleZh = computed(() => {
+  if (currentRoom.value === 'workshop') return '炼丹 / 炼器 / 符箓 / 傀儡'
+  if (currentRoom.value === 'lab') return '功法 / 阵盘 / 符箓图纸'
+  return '驻地'
+})
 
 function goHub(): void {
   if (route.path === CAVE_PATH) return
   void router.push(CAVE_PATH)
-}
-
-function goLab(): void {
-  if (isLab.value) return
-  void router.push(CAVE_LAB_PATH)
 }
 </script>
 
@@ -29,15 +43,10 @@ function goLab(): void {
   <div class="abode-page">
     <AuthSessionBar />
     <div class="page-title">
-      <el-button v-if="isLab" size="small" @click="goHub">← 洞府</el-button>
+      <el-button v-if="currentRoom !== 'hub'" size="small" @click="goHub">← 洞府</el-button>
       <el-button v-else size="small" @click="router.push('/hall')">← 回大厅</el-button>
-      <el-text tag="b" size="large">{{ isLab ? '研究室' : '洞府' }}</el-text>
-      <el-text type="info" size="small">{{ isLab ? '功法 / 阵盘 / 符箓图纸' : '驻地' }}</el-text>
-      <div class="mode-nav">
-        <el-button size="small" :type="isLab ? 'primary' : 'default'" @click="goLab">
-          研究室
-        </el-button>
-      </div>
+      <el-text tag="b" size="large">{{ titleZh }}</el-text>
+      <el-text type="info" size="small">{{ subtitleZh }}</el-text>
     </div>
     <router-view />
   </div>
@@ -55,11 +64,5 @@ function goLab(): void {
   align-items: baseline;
   gap: 0.5rem 0.75rem;
   margin: 0.75rem 0 1rem;
-}
-.mode-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-left: auto;
 }
 </style>

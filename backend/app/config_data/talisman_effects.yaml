@@ -81,3 +81,16 @@ atk_strike_direct:
   attr: phys_atk
   use_chance: 0.35
   hit_chance: 0.8
+
+curse_weaken_atk:
+  label_zh: 蚀锋咒符
+  help_zh: 占位：开战写入诅咒层，不改数值。同组取最高，低效果符仍消耗。
+  trigger: battle_start
+  kind: curse
+  stack_group: curse_weaken_atk
+  magnitude: 0
+  duration_kind: global
+  duration: 0
+  attr: phys_atk
+  use_chance: 0
+  hit_chance: 1

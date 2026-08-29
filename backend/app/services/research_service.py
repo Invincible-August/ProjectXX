@@ -1,5 +1,5 @@
 """
-Research session service (M8 R2 technique path).
+Research session service (formation / talisman; technique uses TechniqueCraftService).
 """
 
 from __future__ import annotations
@@ -7,7 +7,6 @@ from __future__ import annotations
 import json
 import logging
 import secrets
-import random
 from datetime import timedelta
 from typing import Any
 
@@ -58,10 +57,9 @@ from app.domain.formation_blueprint import (
     parse_terrain_layout,
     validate_blueprint,
 )
-from app.domain.research_schema import is_valid_zh_label, pick_affix_ids, sum_affix_stats
+from app.domain.research_schema import is_valid_zh_label
 from app.domain.technique_craft import payload_attr_grants
 from app.schemas.common import AppError
-from app.services.dice_service import DiceService
 from app.services.inventory_service import InventoryService
 from app.services.realm_config import get_game_config
 
@@ -69,7 +67,7 @@ logger = logging.getLogger(__name__)
 
 
 class ResearchService:
-    """Create / preview / finalize research sessions (technique R2, formation R3)."""
+    """Create / preview / finalize research sessions (formation R3, talisman R4)."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -280,21 +278,7 @@ class ResearchService:
             raise AppError(ERR_RESEARCH_VALIDATE, "阵法草案请保存设计，无需重投", http_status=400)
         if row.kind == RESEARCH_KIND_TALISMAN:
             raise AppError(ERR_RESEARCH_VALIDATE, "符箓草案请改效果后定稿，无需重投", http_status=400)
-        cfg = get_game_config().research.technique
-        if int(row.reroll_count) >= int(cfg.max_rerolls):
-            raise AppError(ERR_RESEARCH_VALIDATE, "重投次数已用尽", http_status=400)
-        extra = list(cfg.reroll_materials)
-        if extra:
-            try:
-                await InventoryService(self._session).remove_materials(character.id, extra)
-            except AppError as exc:
-                if exc.code == 40055:
-                    raise AppError(ERR_RESEARCH_MATERIALS, "非法材料或投入不足", http_status=400) from exc
-                raise
-        row.reroll_count = int(row.reroll_count) + 1
-        await self._roll_preview(character, row)
-        await self._session.flush()
-        return self._session_public(row)
+        raise AppError(ERR_RESEARCH_VALIDATE, "本期仅开放功法、阵法与符箓自研", http_status=400)
 
     async def finalize_session(
         self,
@@ -315,55 +299,7 @@ class ResearchService:
             return await self._finalize_formation(character, row, label_zh)
         if row.kind == RESEARCH_KIND_TALISMAN:
             return await self._finalize_talisman(character, row, label_zh)
-        if not is_valid_zh_label(label_zh):
-            raise AppError(ERR_RESEARCH_VALIDATE, "请使用二至十六字中文名称", http_status=400)
-        affix_ids = [str(x.get("id")) for x in json.loads(row.affix_preview_json or "[]") if x.get("id")]
-        if not affix_ids:
-            raise AppError(ERR_RESEARCH_VALIDATE, "草稿词条为空，请重投后再定稿", http_status=400)
-        cfg = get_game_config()
-        stats = sum_affix_stats(affix_ids, cfg.research.affixes)
-        slug = secrets.token_hex(4)
-        technique_id = f"{PRIVATE_ID_PREFIX}:technique:{character.id}:{slug}"
-        private = PrivateTechnique(
-            character_id=character.id,
-            technique_id=technique_id,
-            label_zh=label_zh.strip(),
-            revision=1,
-            schema_version=cfg.research.schema_version,
-            affix_ids_json=json.dumps(affix_ids, ensure_ascii=False),
-            stats_json=json.dumps(stats, ensure_ascii=False),
-            track=cfg.research.technique.track,
-            max_level=cfg.research.technique.max_level,
-            source=RESEARCH_SOURCE_CUSTOM,
-        )
-        self._session.add(private)
-        existing = await self._session.execute(
-            select(CharacterTechnique.id).where(
-                CharacterTechnique.character_id == character.id,
-                CharacterTechnique.technique_id == technique_id,
-            ).limit(1),
-        )
-        if existing.scalar_one_or_none() is None:
-            self._session.add(
-                CharacterTechnique(
-                    character_id=character.id,
-                    technique_id=technique_id,
-                    level=1,
-                    source="research",
-                ),
-            )
-        row.phase = RESEARCH_PHASE_FINALIZED
-        row.private_content_id = technique_id
-        await self._session.flush()
-        logger.info(
-            "research finalized character_id=%s session_id=%s technique_id=%s",
-            character.id,
-            row.id,
-            technique_id,
-        )
-        payload = self._session_public(row)
-        payload["private"] = self._private_public(private)
-        return payload
+        raise AppError(ERR_RESEARCH_VALIDATE, "本期仅开放功法、阵法与符箓自研", http_status=400)
 
     def default_formation_blueprint(self) -> dict[str, Any]:
         """Empty free_own + brush draft matching research.yaml."""
@@ -704,31 +640,6 @@ class ResearchService:
         """Placeholder review pool — always closed in R2."""
         await self._require_session(character, session_id)
         raise AppError(ERR_RESEARCH_REVIEW_CLOSED, "审核池尚未开放", http_status=400)
-
-    async def _roll_preview(self, character: Character, row: ResearchSession) -> None:
-        dice = DiceService(self._session)
-        rng = random.Random(int(row.seed) + int(row.reroll_count) * 17)
-        value, bounds = await dice.roll_for_character(
-            character,
-            purpose=DICE_PURPOSE_RESEARCH_TECHNIQUE,
-            rng=rng,
-        )
-        cfg = get_game_config().research
-        pool = list(cfg.affixes.keys())
-        picked = pick_affix_ids(
-            pool,
-            roll=int(value),
-            slots=cfg.technique.affix_slots,
-            extra_affix_roll=cfg.technique.extra_affix_roll,
-        )
-        previews = []
-        for affix_id in picked:
-            affix = cfg.affixes[affix_id]
-            previews.append({"id": affix_id, "label_zh": affix.label_zh, "stats": affix.stats})
-        row.dice_roll = int(value)
-        row.affix_preview_json = json.dumps(previews, ensure_ascii=False)
-        row.phase = RESEARCH_PHASE_PREVIEWED
-        _ = bounds
 
     async def _require_session(
         self,

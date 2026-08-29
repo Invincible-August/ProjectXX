@@ -633,6 +633,8 @@ class AdminConfigService:
             rc._parse_pet_capture(merged)
         elif domain == "items":
             rc._parse_inventory(merged)
+        elif domain == "craft_recipes":
+            rc._parse_craft_recipes(merged)
         elif domain == "techniques":
             rc._parse_techniques(merged)
         elif domain == "weather":

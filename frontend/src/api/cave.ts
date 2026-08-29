@@ -2,6 +2,7 @@
  * Cave (洞府) API: hub rooms + lab (研究室) desk.
  *
  * Canonical lab paths are `/cave/lab/*`. `/research/*` remains a backend alias.
+ * Workshop play page is `/cave/workshop`; craft HTTP stays `/craft`.
  */
 import { http } from './http'
 import { envelopeFromAxiosError } from './envelope'

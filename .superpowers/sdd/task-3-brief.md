@@ -1,44 +1,44 @@
-﻿### Task 3: ID / SMS / Email Providers
+### Task 3: 草稿表与创建/列表/放弃
 
 **Files:**
-- Create: `backend/app/services/verification/__init__.py`
-- Create: `backend/app/services/verification/providers/__init__.py`
-- Create: `backend/app/services/verification/providers/id_format.py`锛堝畬鏁存牎楠屼綅锛?- Create: `backend/app/services/verification/providers/id_two_factor.py`锛坰tub锛?- Create: `backend/app/services/verification/providers/id_real_person.py`锛坰tub锛?- Create: `backend/app/services/verification/providers/sms_debug.py` 绛?- Create: `backend/app/services/verification/id_card_util.py`锛坢ask + hash锛?
+- Create: `backend/app/db/models/technique_craft.py`
+- Modify: `backend/app/db/models/__init__.py`
+- Create: `backend/app/services/technique_craft_service.py`
+- Modify: `backend/app/api/research.py`（或 cave lab 路由文件，与现网关同一 PlayGate）
+- Modify: `backend/app/schemas/research.py` 或新建 `schemas/technique_craft.py`
+- Test: `backend/tests/test_technique_craft.py`
+
 **Produces:**
-- `validate_id_card_format(id_card: str) -> None` 澶辫触鎶?`AppError(40014)`
-- `hash_id_card(id_card: str) -> str` / `mask_id_card(id_card: str) -> str`
-- `async def verify_identity(...)` 宸ュ巶锛氭寜 mode 璋冪敤 A/B/C
-- SMS/Email锛歚async def send_code(target, code) -> None`锛涢潪 debug 鏈疄鐜版椂 `AppError(50100)`
+- 表 `technique_research_drafts`
+- `TechniqueCraftService.create_draft(character) -> dict`
+- `list_drafts(character) -> list[dict]`
+- `abandon_draft(character, draft_id) -> None`（`phase=abandoned`，不退卡）
+- `GET/POST /cave/lab/technique/drafts`，`POST /cave/lab/technique/drafts/{id}/abandon`
 
-- [ ] **Step 1: 瀹炵幇鍥芥爣 18 浣嶆牎楠屼綅**锛堝惈鍦板潃鐮佺矖妫€鍙€夛紝鑷冲皯鏍￠獙浣嶏級
+草稿列：`id, character_id, phase, label_zh, elements_json, efficacy, element_limit, weapon_limit, base_json, affixes_json, upgrade_points, major_rank, created_at, updated_at`。`phase` 初值 `embedding`。`major_rank` 初值角色当前 `major_realm`（通常 `body_tempering`）。
 
-- [ ] **Step 2: stub B/C**
+- [ ] **Step 1: 写失败测试** `test_create_two_drafts_independent`
 
-```python
-async def verify_two_factor(*, real_name: str, id_card: str) -> None:
-    settings = get_settings()
-    if settings.debug:
-        return
-    if settings.id_two_factor_provider == "stub":
-        raise AppError(50100, "浜岃绱?Provider 鏈厤缃?, http_status=501)
-    raise AppError(50100, "浜岃绱?Provider 灏氭湭鎺ュ叆", http_status=501)
-```
+创建两次 `create_draft`，`list_drafts` 长度为 2；`abandon` 后列表为 1。
 
-C 鍚岀悊锛屾帴鏀跺彲閫?`face_token`銆?
-- [ ] **Step 3: debug SMS/Email** 鈥?浠?`logger.info` 鎻愮ず宸层€屽彂閫併€嶏紙DEBUG 鍙笉鎵撳嵃鐮佸埌鏂囦欢浠ュ锛屾垨浠?debug 绾у埆鎵撳嵃鍥哄畾鐮佽鏄庯級
+- [ ] **Step 2: 跑测试确认失败**
 
-- [ ] **Step 4: aliyun/tencent/resend 鏂囦欢** 鈥?鍑芥暟绛惧悕榻愬叏锛宍raise AppError(50100, "...")`
+Expected: FAIL（服务不存在）
 
-- [ ] **Step 5: 鍗曞厓娴嬫牸寮忔牎楠?*
+- [ ] **Step 3: ORM + create_all**
 
-```python
-def test_id_card_checksum_valid():
-    # 浣跨敤宸茬煡鍚堟硶娴嬭瘯鍙凤紙鍏紑娴嬭瘯鐢ㄥ彿锛屽嬁鐢ㄧ湡浜鸿瘉浠讹級
-    validate_id_card_format("110101199003074477")  # 鑻ョ畻娉曚笅闈炴硶鍒欐崲鏍囧噯鏍蜂緥
-```
+模型文件；`models/__init__.py` import。测试 factory 会 `create_all`，无需手工 SQL。本地 `xiuxian.db` 靠启动 `create_all` 建新表。
 
-Run: `pytest backend/tests/test_id_format.py -v`
+- [ ] **Step 4: Service + 路由**
+
+`create_draft` 不扣卡。响应含 `id, phase, elements, efficacy, can_finalize=false`。PlayGate 写操作走现有 `_prepare_research_write`。
+
+`ResearchService.create_session(kind="technique")` 改为 `raise AppError(40201, "请改用功法自研草稿接口")` 或内部转调 `create_draft`（推荐直接拒绝旧接口，避免双轨）。阵法/符箓 `kind` 不变。
+
+- [ ] **Step 5: 跑测试确认通过**
+
+Run: `cd backend && .venv/Scripts/python.exe -m pytest tests/test_technique_craft.py::test_create_two_drafts_independent tests/test_research_formation_blueprint.py tests/test_research_talisman_whitelist.py -q`
+
+Expected: PASS（阵法/符测仍绿）
 
 ---
-
-

@@ -80,6 +80,91 @@ items:
       realm_req_zh: 无
       effects: [恢复体力]
       help_zh: 服下后恢复体力。同属性灵根额外收益尚未结算，本版只展示属性。
+  # —— 炼丹样本（金木水火土风雷暗；服下效果除体力丹外占位）——
+  metal_pill_minor:
+    name: 小金元丹
+    item_type: consumable
+    max_stack: 99
+    bag_allowed: [normal, reincarnation]
+    tradable: true
+    bound: false
+    inspect:
+      element: metal
+      realm_req_zh: 无
+      effects: [功效占位]
+      help_zh: 本版服下效果占位，仅可炼成入包。同属性灵根额外收益尚未结算。
+  water_pill_minor:
+    name: 小清心丹
+    item_type: consumable
+    max_stack: 99
+    bag_allowed: [normal, reincarnation]
+    tradable: true
+    bound: false
+    inspect:
+      element: water
+      realm_req_zh: 无
+      effects: [功效占位]
+      help_zh: 本版服下效果占位，仅可炼成入包。同属性灵根额外收益尚未结算。
+  fire_pill_minor:
+    name: 小炎心丹
+    item_type: consumable
+    max_stack: 99
+    bag_allowed: [normal, reincarnation]
+    tradable: true
+    bound: false
+    inspect:
+      element: fire
+      realm_req_zh: 无
+      effects: [功效占位]
+      help_zh: 本版服下效果占位，仅可炼成入包。同属性灵根额外收益尚未结算。
+  earth_pill_minor:
+    name: 小厚土丹
+    item_type: consumable
+    max_stack: 99
+    bag_allowed: [normal, reincarnation]
+    tradable: true
+    bound: false
+    inspect:
+      element: earth
+      realm_req_zh: 无
+      effects: [功效占位]
+      help_zh: 本版服下效果占位，仅可炼成入包。同属性灵根额外收益尚未结算。
+  wind_pill_minor:
+    name: 小轻身丹
+    item_type: consumable
+    max_stack: 99
+    bag_allowed: [normal, reincarnation]
+    tradable: true
+    bound: false
+    inspect:
+      element: wind
+      realm_req_zh: 无
+      effects: [功效占位]
+      help_zh: 本版服下效果占位，仅可炼成入包。同属性灵根额外收益尚未结算。
+  thunder_pill_minor:
+    name: 小惊雷丹
+    item_type: consumable
+    max_stack: 99
+    bag_allowed: [normal, reincarnation]
+    tradable: true
+    bound: false
+    inspect:
+      element: thunder
+      realm_req_zh: 无
+      effects: [功效占位]
+      help_zh: 本版服下效果占位，仅可炼成入包。同属性灵根额外收益尚未结算。
+  dark_pill_minor:
+    name: 小蔽影丹
+    item_type: consumable
+    max_stack: 99
+    bag_allowed: [normal, reincarnation]
+    tradable: true
+    bound: false
+    inspect:
+      element: dark
+      realm_req_zh: 无
+      effects: [功效占位]
+      help_zh: 本版服下效果占位，仅可炼成入包。同属性灵根额外收益尚未结算。
   bound_spirit_token:
     name: 绑定灵符（测试）
     item_type: consumable
@@ -102,10 +187,33 @@ items:
     item_type: talisman
     max_stack: 20
     bag_allowed: [normal, reincarnation]
+    talisman_effect_id: atk_strike_direct
     inspect:
       element: fire
       realm_req_zh: 无
-      effects: [增伤]
+      effects: [攻击]
+      help_zh: 符箓成品。同属性灵根额外收益尚未结算，本版只展示属性。
+  talisman_ward_t1:
+    name: 一级护符
+    item_type: talisman
+    max_stack: 20
+    bag_allowed: [normal, reincarnation]
+    talisman_effect_id: first_hit_ward
+    inspect:
+      element: wood
+      realm_req_zh: 无
+      effects: [增益]
+      help_zh: 符箓成品。同属性灵根额外收益尚未结算，本版只展示属性。
+  talisman_curse_t1:
+    name: 一级咒符
+    item_type: talisman
+    max_stack: 20
+    bag_allowed: [normal, reincarnation]
+    talisman_effect_id: curse_weaken_atk
+    inspect:
+      element: dark
+      realm_req_zh: 无
+      effects: [诅咒]
       help_zh: 符箓成品。同属性灵根额外收益尚未结算，本版只展示属性。
   puppet_wood_v1:
     name: 木傀·初
@@ -211,6 +319,11 @@ items:
     bag_allowed: [normal, reincarnation]
     tradable: true
     bound: false
+    inspect:
+      element: metal
+      realm_req_zh: 无
+      effects: [兵器]
+      help_zh: 炼器成品。同属性灵根额外收益尚未结算，本版只展示属性。
   iron_greatsword_t1:
     name: 玄铁大剑（占位）
     item_type: equipment
@@ -218,6 +331,11 @@ items:
     bag_allowed: [normal, reincarnation]
     tradable: true
     bound: false
+    inspect:
+      element: metal
+      realm_req_zh: 无
+      effects: [兵器]
+      help_zh: 炼器成品。同属性灵根额外收益尚未结算，本版只展示属性。
   cloth_robe_t1:
     name: 粗布法衣（占位）
     item_type: equipment
@@ -225,6 +343,59 @@ items:
     bag_allowed: [normal, reincarnation]
     tradable: true
     bound: false
+    inspect:
+      element: earth
+      realm_req_zh: 无
+      effects: [护体]
+      help_zh: 炼器成品。同属性灵根额外收益尚未结算，本版只展示属性。
+  cloth_cap_t1:
+    name: 粗布头巾（占位）
+    item_type: equipment
+    max_stack: 1
+    bag_allowed: [normal, reincarnation]
+    tradable: true
+    bound: false
+    inspect:
+      element: earth
+      realm_req_zh: 无
+      effects: [护头]
+      help_zh: 炼器成品。同属性灵根额外收益尚未结算，本版只展示属性。
+  iron_gloves_t1:
+    name: 玄铁护手（占位）
+    item_type: equipment
+    max_stack: 1
+    bag_allowed: [normal, reincarnation]
+    tradable: true
+    bound: false
+    inspect:
+      element: metal
+      realm_req_zh: 无
+      effects: [护手]
+      help_zh: 炼器成品。同属性灵根额外收益尚未结算，本版只展示属性。
+  iron_greaves_t1:
+    name: 玄铁腿甲（占位）
+    item_type: equipment
+    max_stack: 1
+    bag_allowed: [normal, reincarnation]
+    tradable: true
+    bound: false
+    inspect:
+      element: metal
+      realm_req_zh: 无
+      effects: [护腿]
+      help_zh: 炼器成品。同属性灵根额外收益尚未结算，本版只展示属性。
+  cloth_shoes_t1:
+    name: 粗布鞋履（占位）
+    item_type: equipment
+    max_stack: 1
+    bag_allowed: [normal, reincarnation]
+    tradable: true
+    bound: false
+    inspect:
+      element: wind
+      realm_req_zh: 无
+      effects: [轻身]
+      help_zh: 炼器成品。同属性灵根额外收益尚未结算，本版只展示属性。
   jade_pendant_t1:
     name: 青玉佩（占位）
     item_type: equipment
@@ -232,6 +403,11 @@ items:
     bag_allowed: [normal, reincarnation]
     tradable: true
     bound: false
+    inspect:
+      element: water
+      realm_req_zh: 无
+      effects: [饰品]
+      help_zh: 炼器成品。同属性灵根额外收益尚未结算，本版只展示属性。
   spirit_bead_t1:
     name: 灵珠（占位）
     item_type: equipment
@@ -239,6 +415,11 @@ items:
     bag_allowed: [normal, reincarnation]
     tradable: true
     bound: false
+    inspect:
+      element: thunder
+      realm_req_zh: 无
+      effects: [法宝]
+      help_zh: 炼器成品。同属性灵根额外收益尚未结算，本版只展示属性。
   # —— 功法自研卡片（空白/类型可交易可堆叠；正式卡绑定不堆叠，镶嵌走研究室）——
   tech_card_blank:
     name: 功法空白卡

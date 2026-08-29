@@ -68,3 +68,20 @@ TALISMAN_TRIGGERS: Final[frozenset[str]] = frozenset(
         TALISMAN_TRIGGER_ON_ATTACK,
     },
 )
+
+# 符箓效果功能类（talisman_effects.kind；工坊筛选镜像）
+TALISMAN_KIND_BUFF: Final[str] = "buff"  # 增益
+TALISMAN_KIND_OFFENSIVE: Final[str] = "offensive"  # 攻击
+TALISMAN_KIND_CURSE: Final[str] = "curse"  # 诅咒
+TALISMAN_KINDS: Final[frozenset[str]] = frozenset(
+    {
+        TALISMAN_KIND_BUFF,
+        TALISMAN_KIND_OFFENSIVE,
+        TALISMAN_KIND_CURSE,
+    },
+)
+TALISMAN_KIND_LABELS_ZH: Final[dict[str, str]] = {
+    TALISMAN_KIND_BUFF: "增益",
+    TALISMAN_KIND_OFFENSIVE: "攻击",
+    TALISMAN_KIND_CURSE: "诅咒",
+}

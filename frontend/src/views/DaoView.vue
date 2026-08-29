@@ -39,7 +39,10 @@ const focusId = computed(() =>
   typeof route.query.focus === 'string' ? route.query.focus : null,
 )
 
-const backPath = computed(() => (actor.value === 'avatar' ? '/avatar' : '/character'))
+const backPath = computed(() =>
+  actor.value === 'avatar' ? { path: '/character', query: { actor: 'avatar' } } : '/character',
+)
+const backLabel = computed(() => (actor.value === 'avatar' ? '化身' : '本尊'))
 
 function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
   logEntries.value = [...logEntries.value.slice(-49), createLogEntry(message, level)]
@@ -62,7 +65,7 @@ async function ensureRealmOrLeave(): Promise<boolean> {
       await avatarStore.load()
     }
     if (!canEnterWudao(avatarStore.avatar?.major_realm)) {
-      await router.replace('/avatar')
+      await router.replace({ path: '/character', query: { actor: 'avatar' } })
       return false
     }
     return true
@@ -116,7 +119,7 @@ watch(actor, async (next) => {
 
     <div class="page-title">
       <el-button size="small" @click="router.push(backPath)">
-        ← {{ actor === 'avatar' ? '化身' : '角色' }}
+        ← {{ backLabel }}
       </el-button>
       <el-text tag="b" size="large">悟道</el-text>
       <el-text type="info" size="small">

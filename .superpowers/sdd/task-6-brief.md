@@ -1,37 +1,27 @@
-﻿### Task 6: 娉ㄥ唽鏀归€?+ 瓒呯骇瀵嗙爜鐧诲綍
+### Task 6: 定稿、已学列表、装备角色限制
 
 **Files:**
-- Modify: `backend/app/schemas/auth.py`
-- Modify: `backend/app/services/auth_service.py`
-- Modify: `backend/app/api/auth.py`锛堣嫢闇€锛?
-**Produces:**
-- `RegisterRequest` 澧炲姞 optional/required 瀛楁锛歚email`, `phone`, `real_name`, `id_card`, `sms_ticket`, `email_ticket`, `id_ticket`
-- `register_user`锛氶潪 DEBUG 缂烘潗鏂?鈫?`40017`锛涜皟 `assert_register_tickets`锛涙煡閲?email/phone 鈫?`40013`锛涘啓鎵╁睍瀛楁
-- `login_user`锛氱敤鎴峰瘑鐮佸け璐ュ悗瓒呯骇瀵嗙爜鍒嗘敮 + WARNING 鏃ュ織锛涚鐢ㄥ彿浠?`40300`
+- Modify: `backend/app/db/models/research.py`（`PrivateTechnique.payload_json` `Text default '{}'`，`major_rank` `String(32)`，`author_character_id` `Integer`）
+- Modify: `backend/app/db/bootstrap.py` 给 `private_techniques` 补这三列
+- Modify: `technique_craft_service.py` `finalize_draft`
+- Modify: `technique_service.py` `equip_technique`
+- Modify: `ResearchService.list_mine` / technique list DTO 带 `efficacy`、`author_character_id`、`cultivable: true`
+- Test: `backend/tests/test_technique_craft.py`；改写 `tests/test_research_technique_finalize.py` 为调用新 finalize 或删除过时用例并在本文件覆盖「定稿后可装备」
 
-- [ ] **Step 1: Schema + service**
+**finalize 门槛：** elements 非空、efficacy 非空、conditions 已调用过（允许两框都空，用 `conditions_confirmed` 布尔）、至少一栏 `chosen_id` 非空。
 
-瓒呯骇瀵嗙爜姣斿锛?
-```python
-import secrets
-from app.core.config import get_settings
+定稿：`phase=finalized`；插入 `PrivateTechnique`（`technique_id=custom:technique:{cid}:{slug}` 沿用现前缀）；插入 `CharacterTechnique` `source=research`；草稿不再出现在 list_drafts。
 
-settings = get_settings()
-if settings.super_password and secrets.compare_digest(payload.password, settings.super_password):
-    logger.warning("super_password_login user_id=%s username=%s", user.id, user.username)
-    return _build_token_payload(user, remember_me=payload.remember_me)
-```
+装备：读 payload.efficacy，若 slot=main 且 efficacy ∉ `IDLE_EFFICACIES` → `AppError(40224, "该功法不能装备为主功法")`。技法格六种都行。同一门不能同时占 main+art（现逻辑保留）。
 
-- [ ] **Step 2: 闆嗘垚娴嬭瘯**
+- [ ] **Step 1: 测试** `test_finalize_requires_affix`、`test_finalize_enters_learn_list`、`test_equip_attack_spell_as_main_rejected`、`test_equip_idle_spirit_as_main_ok`
 
-1. DEBUG 娉ㄥ唽鏃?ticket 鎴愬姛  
-2. 涓存椂 `DEBUG=false`锛堟祴璇曞唴 monkeypatch锛夋棤 ticket 鈫?`40017`  
-3. 瀹屾垚涓?ticket + format 娉ㄥ唽鎴愬姛  
-4. 瓒呯骇瀵嗙爜鐧诲綍鎴愬姛锛涢敊璇瘑鐮佷粛 `40002`
+- [ ] **Step 2: 实现 bootstrap 补列**（与现有 `_patch_table` 模式一致，表名 `private_techniques`）
 
-Run: `pytest backend/tests/test_verification_auth.py -v`  
+- [ ] **Step 3: 跑测试**
+
+Run: `cd backend && .venv/Scripts/python.exe -m pytest tests/test_technique_craft.py -k "finalize or equip" tests/test_research_technique_finalize.py -q`
+
 Expected: PASS
 
 ---
-
-

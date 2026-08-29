@@ -49,4 +49,4 @@ Staged **only** these two files. Did not `git add -A`. Did not push.
 
 ## Commits
 
-- `d468cf6` Fix Task 1: drop inventory talisman_effect_id from parse.
+- `ef80509` Fix Task 1: drop inventory talisman_effect_id from parse.

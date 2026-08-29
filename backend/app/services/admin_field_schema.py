@@ -676,6 +676,39 @@ ITEMS_SCHEMA = DomainEditSchema(
         _f("max_stack", "堆叠上限", "整数", "int"),
         _f("description", "说明", "运营/玩家说明", "string"),
         _f("inspect", "悬停检视", "单一属性/功效/境界门槛/说明", "json"),
+        _f(
+            "talisman_effect_id",
+            "符箓效果 ID",
+            "官方符箓挂 talisman_effects 白名单；工坊按 kind 筛增益/攻击/诅咒",
+            "string",
+        ),
+    ),
+)
+
+CRAFT_RECIPES_SCHEMA = DomainEditSchema(
+    domain_id="craft_recipes",
+    title_zh="工坊配方",
+    description_zh="制造业配方表；属性读道具 inspect.element；炼器部位读装备 slot；符箓功能读 talisman_effect_id。",
+    edit_modes=("entries", "json"),
+    fields=(
+        _f("main_crafting_bonus", "本体挂机加成", "制造业方向工坊效率乘区", "float"),
+        _f("max_jobs_per_actor", "同时任务上限", "同一角色同时进行的工坊任务数", "int"),
+        _f("quality_by_level_delta", "品质档", "制作者等级差→品质权重", "json"),
+        _f("recipes", "配方表", "recipe_id→配方定义", "json"),
+    ),
+    entry_path=("recipes",),
+    entry_fields=(
+        _ENTRY_COMMON_NAME,
+        _f("branch", "分支", "alchemy/smithing/talisman/puppet", "string"),
+        _f("duration_seconds", "耗时秒", "开工到可领取的秒数", "int"),
+        _f("fail_chance", "失败率", "0～1 占位失败概率", "float"),
+        _f("spirit_stone_cost", "灵石消耗", "开工扣灵石", "int"),
+        _f("stamina_cost", "体力消耗", "开工扣体力", "int"),
+        _f("required_craft_level", "制作等级门槛", "对应分支等级不足则锁定", "int"),
+        _f("recipe_tier", "图纸品阶", "展示用；学习完式仍后置", "int"),
+        _f("grant_craft_level", "领取加等级", "成功领取时该分支等级 +N", "int"),
+        _f("materials", "材料", "[{item_id, quantity}]", "json"),
+        _f("outputs", "产出", "[{item_type, item_id, quantity}]", "json"),
     ),
 )
 
@@ -1309,6 +1342,7 @@ DOMAIN_EDIT_SCHEMAS: dict[str, DomainEditSchema] = {
         PET_ENCOUNTER_SCHEMA,
         PET_CAPTURE_SCHEMA,
         ITEMS_SCHEMA,
+        CRAFT_RECIPES_SCHEMA,
         TECHNIQUES_SCHEMA,
         MONSTERS_SCHEMA,
         FORMATIONS_SCHEMA,

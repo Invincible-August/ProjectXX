@@ -40,6 +40,20 @@ def test_quality_weights_jump_with_level_delta() -> None:
     assert roll_craft_quality(5, bands, rng=rng) in {"common", "fine", "rare", "superb"}
 
 
+def test_craft_equip_slot_group_maps_catalog_kinds() -> None:
+    """Workshop slot filter groups weapons/armor pieces, not 17-zone pointers."""
+    from app.constants.craft import craft_equip_slot_group
+
+    assert craft_equip_slot_group("weapon_1h") == "weapon"
+    assert craft_equip_slot_group("weapon_2h") == "weapon"
+    assert craft_equip_slot_group("armor_head") == "head"
+    assert craft_equip_slot_group("armor_hands") == "hands"
+    assert craft_equip_slot_group("armor_legs") == "legs"
+    assert craft_equip_slot_group("accessory") == "accessory"
+    assert craft_equip_slot_group("fabao_1") == "fabao"
+    assert craft_equip_slot_group("ore_plate") is None
+
+
 async def _user(session, email: str) -> User:
     await auth_service.register_user(
         session,
@@ -88,9 +102,60 @@ def test_recipe_locked_until_craft_level(tmp_path: Path) -> None:
                 assert any(tag["label_zh"] == "恢复体力" for tag in inspect["effects"])
                 assert inspect["realm_req_zh"] == "无"
                 assert inspect["help_zh"]
+                assert recipes["talisman_atk_t1"]["talisman_kind"] == "offensive"
+                alchemy = [r for r in recipes.values() if r["branch"] == "alchemy"]
+                assert len(alchemy) >= 8
+                alchemy_element_ids = {
+                    ((r.get("inspect") or {}).get("element") or {}).get("id")
+                    for r in alchemy
+                }
+                assert alchemy_element_ids == {
+                    "metal",
+                    "wood",
+                    "water",
+                    "fire",
+                    "earth",
+                    "wind",
+                    "thunder",
+                    "dark",
+                }
+                alchemy_levels = {int(r["required_craft_level"]) for r in alchemy}
+                assert 0 in alchemy_levels and 3 in alchemy_levels
+                assert recipes["pill_fire_minor"]["locked"] is True
                 smith = recipes["ore_plate_t1"]
                 assert smith["inspect"]["craft_level_label_zh"] == "炼器等级"
                 assert smith["inspect"]["element"]["id"] == "metal"
+                assert smith["equip_slot_group"] is None
+                assert recipes["iron_sword_t1"]["equip_slot_group"] == "weapon"
+                assert recipes["iron_sword_t1"]["equip_slot_group_zh"] == "武器"
+                assert recipes["cloth_cap_t1"]["equip_slot_group"] == "head"
+                assert recipes["iron_gloves_t1"]["equip_slot_group"] == "hands"
+                assert recipes["iron_greaves_t1"]["equip_slot_group"] == "legs"
+                smithing_groups = {
+                    r["equip_slot_group"]
+                    for r in recipes.values()
+                    if r["branch"] == "smithing" and r.get("equip_slot_group")
+                }
+                assert {
+                    "weapon",
+                    "head",
+                    "chest",
+                    "hands",
+                    "legs",
+                    "shoes",
+                    "accessory",
+                    "fabao",
+                }.issubset(smithing_groups)
+                talisman_kinds = {
+                    r["talisman_kind"]
+                    for r in recipes.values()
+                    if r["branch"] == "talisman"
+                }
+                assert talisman_kinds == {"buff", "offensive", "curse"}
+                assert recipes["talisman_ward_t1"]["talisman_kind_zh"] == "增益"
+                assert recipes["talisman_atk_t1"]["talisman_kind_zh"] == "攻击"
+                assert recipes["talisman_curse_t1"]["talisman_kind_zh"] == "诅咒"
+                assert recipes["talisman_curse_t1"]["locked"] is True
                 assert pill["recipe_tier"] == 1
                 with pytest.raises(AppError) as exc:
                     await craft.start(user, recipe_id="ore_plate_t2", actor="main")

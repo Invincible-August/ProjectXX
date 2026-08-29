@@ -5,8 +5,8 @@
 
 # 本体制造向挂机时对工坊效率的加成乘区
 main_crafting_bonus: 1.25
-# 同一角色同时进行的工坊任务上限
-max_jobs_per_actor: 1
+# 同一角色同时进行的工坊任务上限（已废弃：顺序排队不设上限；保留键兼容后台/旧客户端）
+max_jobs_per_actor: 99
 
 # 领取品质：按 (制作者等级 - required_craft_level) 取最高已达档
 # 高等级制造低门槛已学图纸时，高品质权重大幅提高
@@ -41,6 +41,104 @@ recipes:
       - { item_id: herb_spirit_grass, quantity: 2 }
     outputs:
       - { item_type: consumable, item_id: stamina_pill_minor, quantity: 1 }
+  pill_metal_minor:
+    branch: alchemy
+    name: 小金元丹
+    duration_seconds: 60
+    fail_chance: 0.05
+    spirit_stone_cost: 50
+    stamina_cost: 10
+    required_craft_level: 0
+    recipe_tier: 1
+    grant_craft_level: 1
+    materials:
+      - { item_id: herb_spirit_grass, quantity: 2 }
+    outputs:
+      - { item_type: consumable, item_id: metal_pill_minor, quantity: 1 }
+  pill_water_minor:
+    branch: alchemy
+    name: 小清心丹
+    duration_seconds: 90
+    fail_chance: 0.07
+    spirit_stone_cost: 80
+    stamina_cost: 12
+    required_craft_level: 1
+    recipe_tier: 2
+    grant_craft_level: 1
+    materials:
+      - { item_id: herb_spirit_grass, quantity: 3 }
+    outputs:
+      - { item_type: consumable, item_id: water_pill_minor, quantity: 1 }
+  pill_fire_minor:
+    branch: alchemy
+    name: 小炎心丹
+    duration_seconds: 90
+    fail_chance: 0.07
+    spirit_stone_cost: 80
+    stamina_cost: 12
+    required_craft_level: 1
+    recipe_tier: 2
+    grant_craft_level: 1
+    materials:
+      - { item_id: herb_spirit_grass, quantity: 3 }
+    outputs:
+      - { item_type: consumable, item_id: fire_pill_minor, quantity: 1 }
+  pill_earth_minor:
+    branch: alchemy
+    name: 小厚土丹
+    duration_seconds: 120
+    fail_chance: 0.09
+    spirit_stone_cost: 120
+    stamina_cost: 14
+    required_craft_level: 2
+    recipe_tier: 3
+    grant_craft_level: 1
+    materials:
+      - { item_id: herb_spirit_grass, quantity: 4 }
+    outputs:
+      - { item_type: consumable, item_id: earth_pill_minor, quantity: 1 }
+  pill_wind_minor:
+    branch: alchemy
+    name: 小轻身丹
+    duration_seconds: 120
+    fail_chance: 0.09
+    spirit_stone_cost: 120
+    stamina_cost: 14
+    required_craft_level: 2
+    recipe_tier: 3
+    grant_craft_level: 1
+    materials:
+      - { item_id: herb_spirit_grass, quantity: 4 }
+    outputs:
+      - { item_type: consumable, item_id: wind_pill_minor, quantity: 1 }
+  pill_thunder_minor:
+    branch: alchemy
+    name: 小惊雷丹
+    duration_seconds: 160
+    fail_chance: 0.11
+    spirit_stone_cost: 180
+    stamina_cost: 16
+    required_craft_level: 3
+    recipe_tier: 4
+    grant_craft_level: 1
+    materials:
+      - { item_id: herb_spirit_grass, quantity: 5 }
+    outputs:
+      - { item_type: consumable, item_id: thunder_pill_minor, quantity: 1 }
+  pill_dark_minor:
+    branch: alchemy
+    name: 小蔽影丹
+    duration_seconds: 160
+    fail_chance: 0.11
+    spirit_stone_cost: 180
+    stamina_cost: 16
+    required_craft_level: 3
+    recipe_tier: 4
+    grant_craft_level: 1
+    materials:
+      - { item_id: herb_spirit_grass, quantity: 5 }
+    outputs:
+      - { item_type: consumable, item_id: dark_pill_minor, quantity: 1 }
   ore_plate_t1:
     branch: smithing
     name: 一级矿板
@@ -69,7 +167,133 @@ recipes:
       - { item_id: ore_iron_raw, quantity: 5 }
     outputs:
       - { item_type: material, item_id: ore_plate_t1, quantity: 2 }
+  iron_sword_t1:
+    branch: smithing
+    name: 玄铁剑（占位）
+    duration_seconds: 100
+    fail_chance: 0.1
+    spirit_stone_cost: 90
+    stamina_cost: 12
+    required_craft_level: 0
+    recipe_tier: 1
+    grant_craft_level: 1
+    materials:
+      - { item_id: ore_iron_raw, quantity: 3 }
+    outputs:
+      - { item_type: equipment, item_id: iron_sword_t1, quantity: 1 }
+  cloth_cap_t1:
+    branch: smithing
+    name: 粗布头巾（占位）
+    duration_seconds: 80
+    fail_chance: 0.08
+    spirit_stone_cost: 70
+    stamina_cost: 10
+    required_craft_level: 0
+    recipe_tier: 1
+    grant_craft_level: 1
+    materials:
+      - { item_id: wood_spirit, quantity: 2 }
+    outputs:
+      - { item_type: equipment, item_id: cloth_cap_t1, quantity: 1 }
+  iron_gloves_t1:
+    branch: smithing
+    name: 玄铁护手（占位）
+    duration_seconds: 110
+    fail_chance: 0.1
+    spirit_stone_cost: 100
+    stamina_cost: 12
+    required_craft_level: 1
+    recipe_tier: 2
+    grant_craft_level: 1
+    materials:
+      - { item_id: ore_iron_raw, quantity: 3 }
+    outputs:
+      - { item_type: equipment, item_id: iron_gloves_t1, quantity: 1 }
+  iron_greaves_t1:
+    branch: smithing
+    name: 玄铁腿甲（占位）
+    duration_seconds: 110
+    fail_chance: 0.1
+    spirit_stone_cost: 100
+    stamina_cost: 12
+    required_craft_level: 1
+    recipe_tier: 2
+    grant_craft_level: 1
+    materials:
+      - { item_id: ore_iron_raw, quantity: 3 }
+    outputs:
+      - { item_type: equipment, item_id: iron_greaves_t1, quantity: 1 }
+  cloth_robe_t1:
+    branch: smithing
+    name: 粗布法衣（占位）
+    duration_seconds: 130
+    fail_chance: 0.11
+    spirit_stone_cost: 120
+    stamina_cost: 14
+    required_craft_level: 2
+    recipe_tier: 3
+    grant_craft_level: 1
+    materials:
+      - { item_id: wood_spirit, quantity: 3 }
+    outputs:
+      - { item_type: equipment, item_id: cloth_robe_t1, quantity: 1 }
+  cloth_shoes_t1:
+    branch: smithing
+    name: 粗布鞋履（占位）
+    duration_seconds: 90
+    fail_chance: 0.09
+    spirit_stone_cost: 80
+    stamina_cost: 10
+    required_craft_level: 2
+    recipe_tier: 3
+    grant_craft_level: 1
+    materials:
+      - { item_id: wood_spirit, quantity: 2 }
+    outputs:
+      - { item_type: equipment, item_id: cloth_shoes_t1, quantity: 1 }
+  jade_pendant_t1:
+    branch: smithing
+    name: 青玉佩（占位）
+    duration_seconds: 150
+    fail_chance: 0.12
+    spirit_stone_cost: 160
+    stamina_cost: 14
+    required_craft_level: 3
+    recipe_tier: 4
+    grant_craft_level: 1
+    materials:
+      - { item_id: ore_iron_raw, quantity: 2 }
+    outputs:
+      - { item_type: equipment, item_id: jade_pendant_t1, quantity: 1 }
+  spirit_bead_t1:
+    branch: smithing
+    name: 灵珠（占位）
+    duration_seconds: 160
+    fail_chance: 0.12
+    spirit_stone_cost: 180
+    stamina_cost: 16
+    required_craft_level: 3
+    recipe_tier: 4
+    grant_craft_level: 1
+    materials:
+      - { item_id: ore_iron_raw, quantity: 2 }
+    outputs:
+      - { item_type: equipment, item_id: spirit_bead_t1, quantity: 1 }
 
+  talisman_ward_t1:
+    branch: talisman
+    name: 一级护符
+    duration_seconds: 75
+    fail_chance: 0.1
+    spirit_stone_cost: 60
+    stamina_cost: 10
+    required_craft_level: 0
+    recipe_tier: 1
+    grant_craft_level: 1
+    materials:
+      - { item_id: talisman_paper, quantity: 2 }
+    outputs:
+      - { item_type: talisman, item_id: talisman_ward_t1, quantity: 1 }
   talisman_atk_t1:
     branch: talisman
     name: 一级攻符
@@ -84,6 +308,20 @@ recipes:
       - { item_id: talisman_paper, quantity: 2 }
     outputs:
       - { item_type: talisman, item_id: talisman_atk_t1, quantity: 1 }
+  talisman_curse_t1:
+    branch: talisman
+    name: 一级咒符
+    duration_seconds: 90
+    fail_chance: 0.11
+    spirit_stone_cost: 80
+    stamina_cost: 12
+    required_craft_level: 1
+    recipe_tier: 2
+    grant_craft_level: 1
+    materials:
+      - { item_id: talisman_paper, quantity: 3 }
+    outputs:
+      - { item_type: talisman, item_id: talisman_curse_t1, quantity: 1 }
 
   puppet_wood_v1:
     branch: puppet
@@ -97,5 +335,59 @@ recipes:
     grant_craft_level: 1
     materials:
       - { item_id: wood_spirit, quantity: 2 }
+    outputs:
+      - { item_type: puppet, item_id: puppet_wood_v1, quantity: 1 }
+
+  # —— 联调：四分支仅扣灵石（无材料；stamina_cost=0 跳过体力）——
+  test_pill_spirit_only:
+    branch: alchemy
+    name: 【测】灵丹·仅灵石
+    duration_seconds: 5
+    fail_chance: 0
+    spirit_stone_cost: 10
+    stamina_cost: 0
+    required_craft_level: 0
+    recipe_tier: 1
+    grant_craft_level: 0
+    materials: []
+    outputs:
+      - { item_type: consumable, item_id: stamina_pill_minor, quantity: 1 }
+  test_forge_spirit_only:
+    branch: smithing
+    name: 【测】炼器·仅灵石
+    duration_seconds: 5
+    fail_chance: 0
+    spirit_stone_cost: 10
+    stamina_cost: 0
+    required_craft_level: 0
+    recipe_tier: 1
+    grant_craft_level: 0
+    materials: []
+    outputs:
+      - { item_type: equipment, item_id: iron_sword_t1, quantity: 1 }
+  test_talisman_spirit_only:
+    branch: talisman
+    name: 【测】符箓·仅灵石
+    duration_seconds: 5
+    fail_chance: 0
+    spirit_stone_cost: 10
+    stamina_cost: 0
+    required_craft_level: 0
+    recipe_tier: 1
+    grant_craft_level: 0
+    materials: []
+    outputs:
+      - { item_type: talisman, item_id: talisman_ward_t1, quantity: 1 }
+  test_puppet_spirit_only:
+    branch: puppet
+    name: 【测】傀儡·仅灵石
+    duration_seconds: 5
+    fail_chance: 0
+    spirit_stone_cost: 10
+    stamina_cost: 0
+    required_craft_level: 0
+    recipe_tier: 1
+    grant_craft_level: 0
+    materials: []
     outputs:
       - { item_type: puppet, item_id: puppet_wood_v1, quantity: 1 }

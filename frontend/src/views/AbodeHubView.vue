@@ -1,14 +1,15 @@
 <script setup lang="ts">
 /**
- * 洞府枢纽：列出开放房间（当前仅研究室）。
+ * 洞府枢纽：列出开放房间（工坊 / 研究室）。
  */
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchCaveOverviewApi } from '../api/cave'
-import { CAVE_LAB_PATH } from '../constants/cave'
+import { CAVE_ROOM_PATHS } from '../constants/cave'
 import type { CaveRoomPublic } from '../types/cave'
 
 const FALLBACK_ROOMS: CaveRoomPublic[] = [
+  { id: 'workshop', label_zh: '工坊', summary_zh: '炼丹 / 炼器 / 符箓 / 傀儡' },
   { id: 'lab', label_zh: '研究室', summary_zh: '功法 / 阵盘 / 符箓图纸' },
 ]
 
@@ -29,9 +30,8 @@ onMounted(async () => {
 })
 
 function enter(room: CaveRoomPublic): void {
-  if (room.id === 'lab') {
-    void router.push(CAVE_LAB_PATH)
-  }
+  const path = CAVE_ROOM_PATHS[room.id]
+  if (path) void router.push(path)
 }
 </script>
 

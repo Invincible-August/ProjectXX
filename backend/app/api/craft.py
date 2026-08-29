@@ -6,7 +6,13 @@ from fastapi import APIRouter, Depends
 
 from app.core.deps import get_craft_service, get_current_user, get_play_gate
 from app.db.models import User
-from app.schemas.craft import CraftClaimRequest, CraftStartRequest, TalismanPreloadRequest, TalismanScribeRequest
+from app.schemas.craft import (
+    CraftCancelRequest,
+    CraftClaimRequest,
+    CraftStartRequest,
+    TalismanPreloadRequest,
+    TalismanScribeRequest,
+)
 from app.schemas.common import success
 from app.services.craft_service import CraftService
 from app.services.play_gate import PlayGate
@@ -43,12 +49,13 @@ async def start_craft(
     service: CraftService = Depends(get_craft_service),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """开工配方。"""
+    """开工配方（入队冻资源；可带数量）。"""
     data = await service.start(
         current_user,
         recipe_id=payload.recipe_id,
         actor=payload.actor,
         use_dao=bool(payload.use_dao),
+        quantity=int(payload.quantity),
     )
     return success(data)
 
@@ -59,8 +66,19 @@ async def claim_craft(
     service: CraftService = Depends(get_craft_service),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """领取完成品。"""
+    """兼容旧领取；完成已在 settle 直入包。"""
     data = await service.claim(current_user, payload.job_id)
+    return success(data)
+
+
+@router.post("/cancel", response_model=None)
+async def cancel_craft(
+    payload: CraftCancelRequest,
+    service: CraftService = Depends(get_craft_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """取消排队中的任务并退回冻结资源。"""
+    data = await service.cancel(current_user, payload.job_id)
     return success(data)
 
 

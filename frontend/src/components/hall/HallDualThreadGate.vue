@@ -4,6 +4,7 @@
  */
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { CAVE_WORKSHOP_PATH } from '../../constants/cave'
 import { useCharacterStore } from '../../stores/character'
 import { avatarIdleBadge } from '../../utils/idleLabels'
 
@@ -33,14 +34,14 @@ const petsCount = computed(() => character.value?.pets_count ?? 0)
     </template>
 
     <div class="gate-grid">
-      <div class="gate-card" @click="router.push('/avatar')">
+      <div class="gate-card" @click="router.push({ path: '/character', query: { actor: 'avatar' } })">
         <el-badge :value="avatarBadge" :hidden="!avatarBadge" type="info">
           <el-button type="primary" size="small">化身</el-button>
         </el-badge>
         <el-text size="small" type="info">凝练 · 双挂机 · 传修为</el-text>
       </div>
 
-      <div class="gate-card" @click="router.push('/workshop')">
+      <div class="gate-card" @click="router.push(CAVE_WORKSHOP_PATH)">
         <el-badge :value="craftReady" :hidden="craftReady <= 0" type="success">
           <el-button type="warning" size="small">工坊</el-button>
         </el-badge>

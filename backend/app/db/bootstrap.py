@@ -104,9 +104,11 @@ _PET_TABLE_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
 
 _M2_CULTIVATION_MIGRATION_ID = "m2_cultivation_to_realm_progress_v1"
 
-# craft_jobs 表 M5 补列
+# craft_jobs 表 M5 / 队列直入包补列
 _CRAFT_JOB_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
     ("env_lock_json", "TEXT"),
+    ("quantity", "INTEGER NOT NULL DEFAULT 1"),
+    ("cost_snapshot_json", "TEXT"),
 )
 
 _TECHNIQUE_TABLE_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (

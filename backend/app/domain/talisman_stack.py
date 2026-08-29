@@ -21,7 +21,7 @@ class TalismanLayer:
     label_zh: str
     use_chance: float
     hit_chance: float
-    kind: str  # buff / offensive
+    kind: str  # buff / offensive / curse
 
 
 def parse_talisman_layer(payload: Mapping[str, Any], effect: Mapping[str, Any] | Any) -> TalismanLayer:

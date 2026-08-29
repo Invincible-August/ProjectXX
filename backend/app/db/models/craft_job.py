@@ -1,7 +1,7 @@
 """
 M4 工坊队列 ORM 模型。
 
-惰性 settle 推进 running → ready；玩家 claim 后入背包或阵法等级。
+入队即冻资源；惰性 settle 到期后直入背包（claimed|failed）；可取消退冻。
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from app.db.base import Base
 
 
 class CraftJob(Base):
-    """进行中或待领取的配方任务。"""
+    """排队中的配方任务（完成即结算，无需领取）。"""
 
     __tablename__ = "craft_jobs"
     __table_args__ = (
@@ -32,11 +32,15 @@ class CraftJob(Base):
     # 执行者：main（本体）或 avatar（化身）
     actor: Mapped[str] = mapped_column(String(16), nullable=False, default="main")
     recipe_id: Mapped[str] = mapped_column(String(64), nullable=False)  # 配方 id
+    # 一次开工件数；耗时与费用均 × quantity
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # 开工时刻
     finish_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # 预计完成时刻
-    # 状态：running → ready → claimed | failed
+    # 状态：running → claimed | failed；cancelled 为取消退冻
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="running", index=True)
     result_json: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)  # 产出/失败摘要
+    # 入队冻结快照：materials / spirit_stones / stamina（取消时退回）
+    cost_snapshot_json: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     # M5：开工瞬间锁定的 shichen/weather
     env_lock_json: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(

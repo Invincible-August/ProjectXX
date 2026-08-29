@@ -7,13 +7,13 @@ from __future__ import annotations
 import json
 import logging
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.time_utils import now_utc, to_utc_iso
+from app.core.time_utils import ensure_aware_utc, now_utc, to_utc_iso
 from app.db.models.character import Character
 from app.db.models.craft_job import CraftJob
 from app.db.models.user import User
@@ -21,7 +21,6 @@ from app.domain.craft_rules import (
     bump_craft_level,
     compute_efficiency,
     compute_finish_at,
-    count_active_jobs,
     read_craft_levels,
     roll_fail,
 )
@@ -29,12 +28,15 @@ from app.domain.craft_quality import roll_craft_quality
 from app.domain.reincarnation_rules import parse_growth_attrs
 from app.constants.character import CRAFT_BRANCH_LEVEL_LABEL_ZH, CRAFT_WORKSHOP_BRANCHES
 from app.constants.craft import (
+    CRAFT_EQUIP_SLOT_GROUP_LABELS_ZH,
     CRAFT_QUALITY_LABEL_ZH,
     ERR_CRAFT_LEVEL,
     ERR_CRAFT_LEVEL_ZH,
     ERR_CRAFT_NOT_WORKSHOP,
     ERR_CRAFT_NOT_WORKSHOP_ZH,
+    craft_equip_slot_group,
 )
+from app.constants.research import TALISMAN_KIND_LABELS_ZH
 from app.constants.inventory import (
     INSPECT_REALM_NONE_ZH,
     USE_EFFECT_KIND_LABEL_ZH,
@@ -137,6 +139,40 @@ class CraftService:
             "element": element,
         }
 
+    @staticmethod
+    def _output_filter_fields(first_out: CraftRecipeOutput | None) -> dict[str, Any]:
+        """Resolve workshop filters from the first output item.
+
+        炼器部位读 equipment.yaml slot；符箓功能读道具 talisman_effect_id → 效果表 kind。
+        矿板等非装备产出部位为空，筛选「武器」时会被隐藏。
+        """
+        slot_group: str | None = None
+        slot_zh: str | None = None
+        talisman_kind: str | None = None
+        talisman_kind_zh: str | None = None
+        if first_out is not None and first_out.item_id:
+            item_id = str(first_out.item_id)
+            cfg = get_game_config()
+            equipment = cfg.equipment.items.get(item_id)
+            if equipment is not None:
+                slot_group = craft_equip_slot_group(equipment.slot)
+                if slot_group:
+                    slot_zh = CRAFT_EQUIP_SLOT_GROUP_LABELS_ZH.get(slot_group)
+            item = cfg.inventory.items.get(item_id)
+            effect_id = getattr(item, "talisman_effect_id", None) if item is not None else None
+            if effect_id:
+                effect = cfg.talisman_effects.get(effect_id)
+                if effect is not None:
+                    talisman_kind = str(effect.kind or "") or None
+                    if talisman_kind:
+                        talisman_kind_zh = TALISMAN_KIND_LABELS_ZH.get(talisman_kind)
+        return {
+            "equip_slot_group": slot_group,
+            "equip_slot_group_zh": slot_zh,
+            "talisman_kind": talisman_kind,
+            "talisman_kind_zh": talisman_kind_zh,
+        }
+
     def list_recipes(self, character: Character) -> list[dict[str, Any]]:
         """配方列表：制作等级不足则 locked；悬停读成品单一属性与功效。"""
         cfg = get_game_config().craft_recipes
@@ -169,6 +205,7 @@ class CraftService:
                     "craft_level": current,
                     "effect_zh": effect_zh,
                     "inspect": self._recipe_inspect(recipe, first_out),
+                    **self._output_filter_fields(first_out),
                     "materials": [
                         {
                             "item_id": m.item_id,
@@ -210,14 +247,16 @@ class CraftService:
             "id": job.id,
             "actor": job.actor,
             "recipe_id": job.recipe_id,
+            "quantity": int(getattr(job, "quantity", 1) or 1),
             "status": job.status,
             "started_at": to_utc_iso(job.started_at),
             "finish_at": to_utc_iso(job.finish_at),
+            "total_finish_at": to_utc_iso(CraftService._job_total_finish_at(job)),
             "result": json.loads(job.result_json) if job.result_json else None,
         }
 
     async def jobs_summary(self, character_id: int) -> dict[str, int]:
-        """进行中 / 可领取条数摘要。"""
+        """进行中条数摘要（ready 仅兼容旧数据）。"""
         result = await self._session.execute(
             select(CraftJob).where(CraftJob.character_id == character_id),
         )
@@ -229,6 +268,49 @@ class CraftService:
                 ready += 1
         return {"running": running, "ready": ready}
 
+    @staticmethod
+    def _unit_duration_seconds(job: CraftJob, recipe: CraftRecipe | None) -> float:
+        """当前件单次有效耗时（秒）；优先用 started/finish 差以保留效率。"""
+        started = ensure_aware_utc(job.started_at)
+        finish = ensure_aware_utc(job.finish_at)
+        delta = (finish - started).total_seconds()
+        if delta > 0.01:
+            return delta
+        return float(recipe.duration_seconds if recipe else 60)
+
+    @staticmethod
+    def _job_total_finish_at(job: CraftJob, recipe: CraftRecipe | None = None) -> datetime:
+        """整单预估结束：下一件完成时刻 + 剩余 (qty-1) 件。"""
+        qty = max(1, int(getattr(job, "quantity", 1) or 1))
+        unit = CraftService._unit_duration_seconds(job, recipe)
+        return ensure_aware_utc(job.finish_at) + timedelta(seconds=unit * max(0, qty - 1))
+
+    async def _queue_anchor_at(
+        self,
+        character_id: int,
+        actor: str,
+        *,
+        now: datetime,
+    ) -> datetime:
+        """
+        同 actor 队尾锚点：取各 running 整单结束时刻的最大值（若晚于 now），否则 now。
+        """
+        result = await self._session.execute(
+            select(CraftJob).where(
+                CraftJob.character_id == character_id,
+                CraftJob.actor == actor,
+                CraftJob.status == CraftJobStatus.RUNNING,
+            ),
+        )
+        cfg = get_game_config().craft_recipes
+        anchor = now
+        for job in result.scalars().all():
+            recipe = cfg.recipes.get(job.recipe_id)
+            total_end = self._job_total_finish_at(job, recipe)
+            if total_end > anchor:
+                anchor = total_end
+        return anchor
+
     async def start(
         self,
         user: User,
@@ -236,16 +318,14 @@ class CraftService:
         recipe_id: str,
         actor: str = CraftActor.MAIN,
         use_dao: bool = False,
+        quantity: int = 1,
         now: datetime | None = None,
     ) -> dict[str, Any]:
         """
-        开工：扣材料/灵石/体力，创建 running 任务。
-
-        异常:
-            AppError: 40053 队列满；40055 材料不足；40049 体力不足；40084 道值不足。
+        开工入队：立即冻材料/灵石/体力；挂到同 actor 队尾。
+        quantity 为剩余件数；逐件完成后入包并递减。
         """
         require_craft_enabled()
-        # 一站式：角色 + 清 pending + 双线程 settle + 须先停止修炼
         from app.domain.activity_mutex import Activity
 
         character, _ = await self._gate.prepare_for_play(
@@ -253,6 +333,11 @@ class CraftService:
             now=now,
             require=Activity.START_CRAFT,
         )
+        await self.settle_jobs_async(character, now=now)
+
+        qty = int(quantity)
+        if qty < 1 or qty > 99:
+            raise AppError(code=40000, message="制造数量须在 1～99", http_status=400)
 
         cfg = get_game_config().craft_recipes
         recipe = cfg.recipes.get(recipe_id)
@@ -278,7 +363,6 @@ class CraftService:
         avatar_row = await self._avatar.get_avatar_row(character.id)
         if actor == CraftActor.AVATAR and avatar_row is None:
             raise AppError(code=40051, message="尚未凝练化身", http_status=400)
-        # AVATAR-D01：化身工坊须元婴起 workshop_actor
         if actor == CraftActor.AVATAR:
             from app.constants.m4 import AvatarFeature
 
@@ -297,24 +381,15 @@ class CraftService:
             if not ok:
                 raise AppError(code=code or 40090, message=msg, http_status=400)
 
-        result = await self._session.execute(
-            select(CraftJob).where(
-                CraftJob.character_id == character.id,
-                CraftJob.status.in_(
-                    (CraftJobStatus.RUNNING, CraftJobStatus.READY),
-                ),
-            ),
-        )
-        active_jobs = list(result.scalars().all())
-        if count_active_jobs(active_jobs, actor, cfg.max_jobs_per_actor):
-            raise AppError(code=40053, message="工坊队列已满", http_status=400)
-
-        mats = [{"item_id": m.item_id, "quantity": m.quantity} for m in recipe.materials]
-        # remove_materials 内会再次校验并扣减，避免双次手写校验
-        if int(character.spirit_stones) < recipe.spirit_stone_cost:
+        mats = [
+            {"item_id": m.item_id, "quantity": int(m.quantity) * qty}
+            for m in recipe.materials
+        ]
+        stone_cost = int(recipe.spirit_stone_cost) * qty
+        stamina_cost = int(recipe.stamina_cost) * qty
+        if int(character.spirit_stones) < stone_cost:
             raise AppError(code=40000, message="灵石不足以开工", http_status=400)
 
-        # M6：开工前扣道值（成功运用占位；失败率/词条在 claim 加深）
         dao_usage_info: dict[str, Any] | None = None
         if use_dao:
             from app.services.dao_service import DaoService
@@ -326,9 +401,22 @@ class CraftService:
                 actor=actor,
             )
 
-        self._stamina.spend(character, "craft", now=now)
+        if stamina_cost > 0:
+            self._stamina.spend_amount(
+                character,
+                stamina_cost,
+                reason="craft",
+                now=now,
+            )
         await self._inventory.remove_materials(character.id, mats)
-        character.spirit_stones = int(character.spirit_stones) - recipe.spirit_stone_cost
+        character.spirit_stones = int(character.spirit_stones) - stone_cost
+
+        cost_snapshot = {
+            "materials": mats,
+            "spirit_stones": stone_cost,
+            "stamina": stamina_cost,
+            "quantity_total": qty,
+        }
 
         eff = compute_efficiency(
             actor=actor,
@@ -336,15 +424,15 @@ class CraftService:
             avatar_idle_direction=avatar_row.idle_direction if avatar_row else None,
             main_crafting_bonus=cfg.main_crafting_bonus,
         )
-        # M5：开工锁定世界环境，并乘天气分支效率
         from app.domain.env_modifiers import resolve_craft_branch_mult
         from app.domain.weather_rules import build_env_lock
         from app.services.calendar_service import CalendarService
         from app.services.weather_service import WeatherService
 
-        started = now_utc(now)
-        cal = CalendarService().get_snapshot(now=started)
-        weather_id = WeatherService().get_underlying_weather_id(now=started)
+        now_aware = now_utc(now)
+        started = await self._queue_anchor_at(character.id, actor, now=now_aware)
+        cal = CalendarService().get_snapshot(now=now_aware)
+        weather_id = WeatherService().get_underlying_weather_id(now=now_aware)
         env_lock = build_env_lock(str(cal["shichen_id"]), weather_id)
         weather_cfg = get_game_config().weather
         branch = str(recipe.branch or "alchemy")
@@ -359,33 +447,35 @@ class CraftService:
             )
             eff = float(eff) * float(weather_eff)
 
-        finish = compute_finish_at(started, recipe.duration_seconds, eff)
+        # finish_at = 当前这一件完成时刻；整单时长由 quantity 件累加
+        finish = compute_finish_at(started, int(recipe.duration_seconds), eff)
 
         job = CraftJob(
             character_id=character.id,
             actor=actor,
             recipe_id=recipe_id,
+            quantity=qty,
             started_at=started,
             finish_at=finish,
             status=CraftJobStatus.RUNNING,
+            cost_snapshot_json=json.dumps(cost_snapshot, ensure_ascii=False),
             env_lock_json=json.dumps(env_lock.to_dict(), ensure_ascii=False),
         )
         self._session.add(job)
         await self._session.flush()
         await self._session.refresh(job)
         logger.info(
-            "craft started character_id=%s job_id=%s recipe=%s actor=%s eff=%s use_dao=%s",
+            "craft started character_id=%s job_id=%s recipe=%s qty=%s actor=%s eff=%s",
             character.id,
             job.id,
             recipe_id,
+            qty,
             actor,
             eff,
-            use_dao,
         )
         payload = self._job_to_dict(job)
         if dao_usage_info is not None:
             payload["dao_usage"] = dao_usage_info
-            # 显性：失败率占位说明
             delta = float(dao_usage_info.get("fail_rate_delta") or 0)
             payload["dao_usage_hint"] = (
                 f"已运用{dao_usage_info.get('fate_dao_label')}："
@@ -397,29 +487,240 @@ class CraftService:
         self,
         character: Character,
         now: datetime | None = None,
+        *,
+        rng: random.Random | None = None,
     ) -> list[int]:
         """
-        惰性推进 running → ready（now >= finish_at）。
-
-        返回:
-            本次变为 ready 的 job id 列表。
+        惰性结算：到期则逐件入包；quantity 递减，归零才完结。
         """
         now_aware = now_utc(now)
         result = await self._session.execute(
-            select(CraftJob).where(
+            select(CraftJob)
+            .where(
                 CraftJob.character_id == character.id,
-                CraftJob.status == CraftJobStatus.RUNNING,
-            ),
+                CraftJob.status.in_((CraftJobStatus.RUNNING, CraftJobStatus.READY)),
+            )
+            .order_by(CraftJob.id.asc()),
         )
-        ready_ids: list[int] = []
+        touched_ids: list[int] = []
         for job in result.scalars().all():
-            if now_aware >= job.finish_at:
-                job.status = CraftJobStatus.READY
-                ready_ids.append(job.id)
-        if ready_ids:
+            if job.status == CraftJobStatus.READY:
+                await self._resolve_finished_job(character, job, rng=rng, now=now_aware)
+                touched_ids.append(job.id)
+                continue
+            if now_aware < ensure_aware_utc(job.finish_at):
+                continue
+            await self._resolve_finished_job(character, job, rng=rng, now=now_aware)
+            touched_ids.append(job.id)
+        if touched_ids:
             await self._session.flush()
-            logger.info("craft jobs ready character_id=%s ids=%s", character.id, ready_ids)
-        return ready_ids
+            logger.info(
+                "craft jobs settled character_id=%s ids=%s",
+                character.id,
+                touched_ids,
+            )
+        return touched_ids
+
+    async def _grant_one_unit(
+        self,
+        character: Character,
+        job: CraftJob,
+        recipe: CraftRecipe,
+        *,
+        rng: random.Random | None = None,
+        grant_craft_level: bool = False,
+    ) -> dict[str, Any]:
+        """结算单件：失败不入包；成功入包一件。"""
+        failed = roll_fail(recipe.fail_chance, rng=rng)
+        unit_result: dict[str, Any] = {"failed": failed}
+        if failed:
+            return unit_result
+
+        outputs: list[dict[str, Any]] = []
+        growth = parse_growth_attrs(getattr(character, "growth_attrs_json", None))
+        crafter_level = int(
+            read_craft_levels(
+                growth_attrs=growth,
+                array_craft_level=int(getattr(character, "array_craft_level", 0) or 0),
+            ).get(recipe.branch, 0)
+            or 0
+        )
+        level_delta = crafter_level - int(recipe.required_craft_level or 0)
+        cfg = get_game_config().craft_recipes
+        quality = roll_craft_quality(
+            level_delta,
+            cfg.quality_by_level_delta,
+            rng=rng,
+        )
+        unit_result["quality"] = quality
+        grant_lv = int(recipe.grant_craft_level or 0) if grant_craft_level else 0
+        for out in recipe.outputs:
+            if grant_craft_level:
+                grant_lv += int(getattr(out, "grant_craft_level", 0) or 0)
+            if out.grant_array_craft_level > 0:
+                character.array_craft_level = (
+                    int(character.array_craft_level) + int(out.grant_array_craft_level)
+                )
+                outputs.append(
+                    {"grant_array_craft_level": int(out.grant_array_craft_level)},
+                )
+            elif out.item_id:
+                item_type = str(out.item_type or "material")
+                out_qty = int(out.quantity)
+                claim_meta: dict[str, Any] = {"quality": quality}
+                item_def = get_game_config().inventory.items.get(str(out.item_id))
+                effect_id = (
+                    getattr(item_def, "talisman_effect_id", None)
+                    if item_def is not None
+                    else None
+                )
+                if effect_id:
+                    claim_meta["effect_id"] = effect_id
+                await self._inventory.add_item(
+                    character.id,
+                    item_type=item_type,
+                    item_id=str(out.item_id),
+                    quantity=out_qty,
+                    meta=claim_meta,
+                )
+                from app.constants.inventory import ITEM_TYPE_PUPPET
+                from app.services.puppet_service import PuppetService
+
+                if item_type == ITEM_TYPE_PUPPET:
+                    await PuppetService(self._session).on_craft_granted(
+                        character.id,
+                        item_id=str(out.item_id),
+                        quantity=out_qty,
+                    )
+                outputs.append(
+                    {
+                        "item_type": out.item_type,
+                        "item_id": out.item_id,
+                        "quantity": out_qty,
+                        "quality": quality,
+                        "quality_label_zh": CRAFT_QUALITY_LABEL_ZH.get(quality, quality),
+                    },
+                )
+        if grant_lv > 0:
+            growth, new_lv = bump_craft_level(
+                growth,
+                branch=recipe.branch,
+                amount=grant_lv,
+                array_craft_level=int(character.array_craft_level or 0),
+            )
+            character.growth_attrs_json = json.dumps(growth, ensure_ascii=False)
+            outputs.append({"grant_craft_level": grant_lv, "craft_level": new_lv})
+        unit_result["outputs"] = outputs
+        return unit_result
+
+    async def _resolve_finished_job(
+        self,
+        character: Character,
+        job: CraftJob,
+        *,
+        rng: random.Random | None = None,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """
+        推进到期件数：每件单独判定并入包；quantity 递减。
+        离线追上时可能一次结算多件。
+        """
+        if job.status in (
+            CraftJobStatus.CLAIMED,
+            CraftJobStatus.FAILED,
+            CraftJobStatus.CANCELLED,
+        ):
+            return json.loads(job.result_json) if job.result_json else {"job_id": job.id}
+
+        cfg = get_game_config().craft_recipes
+        recipe = cfg.recipes.get(job.recipe_id)
+        if recipe is None:
+            raise AppError(code=40000, message="配方配置缺失", http_status=500)
+
+        now_aware = now_utc(now)
+        units_done: list[dict[str, Any]] = []
+        # 遗留 ready：整单一次性（兼容）
+        if job.status == CraftJobStatus.READY:
+            qty = max(1, int(getattr(job, "quantity", 1) or 1))
+            for i in range(qty):
+                is_last = i == qty - 1
+                units_done.append(
+                    await self._grant_one_unit(
+                        character,
+                        job,
+                        recipe,
+                        rng=rng,
+                        grant_craft_level=is_last,
+                    ),
+                )
+            job.quantity = 0
+            job.status = CraftJobStatus.CLAIMED
+            job.result_json = json.dumps(
+                {"failed": False, "units": units_done, "quantity": 0},
+                ensure_ascii=False,
+            )
+            await self._session.flush()
+            return {"job_id": job.id, "failed": False, "units": units_done}
+
+        while (
+            job.status == CraftJobStatus.RUNNING
+            and int(job.quantity or 0) > 0
+            and now_aware >= ensure_aware_utc(job.finish_at)
+        ):
+            remaining_before = int(job.quantity)
+            is_last = remaining_before <= 1
+            unit = await self._grant_one_unit(
+                character,
+                job,
+                recipe,
+                rng=rng,
+                grant_craft_level=is_last,
+            )
+            units_done.append(unit)
+            job.quantity = remaining_before - 1
+            if job.quantity <= 0:
+                job.status = CraftJobStatus.CLAIMED
+                job.result_json = json.dumps(
+                    {"failed": False, "units": units_done, "quantity": 0},
+                    ensure_ascii=False,
+                )
+                break
+            # 推进下一件窗口，不改动已消耗时间
+            unit_secs = self._unit_duration_seconds(job, recipe)
+            next_start = ensure_aware_utc(job.finish_at)
+            job.started_at = next_start
+            job.finish_at = next_start + timedelta(seconds=unit_secs)
+
+        if units_done:
+            prev = {}
+            if job.result_json:
+                try:
+                    prev = json.loads(job.result_json)
+                except json.JSONDecodeError:
+                    prev = {}
+            merged = list(prev.get("units") or []) + units_done
+            job.result_json = json.dumps(
+                {
+                    "failed": False,
+                    "units": merged,
+                    "quantity": int(job.quantity or 0),
+                },
+                ensure_ascii=False,
+            )
+            await self._session.flush()
+            logger.info(
+                "craft unit(s) resolved character_id=%s job_id=%s done=%s left=%s",
+                character.id,
+                job.id,
+                len(units_done),
+                job.quantity,
+            )
+        return {
+            "job_id": job.id,
+            "failed": False,
+            "units": units_done,
+            "quantity": int(job.quantity or 0),
+        }
 
     async def claim(
         self,
@@ -429,14 +730,40 @@ class CraftService:
         rng: random.Random | None = None,
         now: datetime | None = None,
     ) -> dict[str, Any]:
-        """
-        领取完成品：入背包或 array_craft_level++。
+        """兼容旧领取：先 settle；已自动入包则返回结果摘要。"""
+        character = await self._gate.require_character(user)
+        await self.settle_jobs_async(character, now=now, rng=rng)
 
-        领取前先 settle，避免 finish_at 已到但 status 仍为 running。
+        result = await self._session.execute(
+            select(CraftJob)
+            .where(CraftJob.id == job_id, CraftJob.character_id == character.id)
+            .limit(1),
+        )
+        job = result.scalar_one_or_none()
+        if job is None:
+            raise AppError(code=40000, message="工坊任务不存在", http_status=404)
+        if job.status == CraftJobStatus.RUNNING:
+            raise AppError(code=40000, message="任务尚未完成", http_status=400)
+        if job.status == CraftJobStatus.READY:
+            return await self._resolve_finished_job(character, job, rng=rng, now=now)
+        if job.status in (CraftJobStatus.CLAIMED, CraftJobStatus.FAILED):
+            body = json.loads(job.result_json) if job.result_json else {}
+            body.setdefault("job_id", job.id)
+            body.setdefault("failed", job.status == CraftJobStatus.FAILED)
+            return body
+        raise AppError(code=40000, message="任务不可领取", http_status=400)
 
-        异常:
-            AppError: 任务不存在或不可领取。
+    async def cancel(
+        self,
+        user: User,
+        job_id: int,
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
         """
+        取消任务：按剩余件数比例退冻；重排后续排队项，不触碰正在制造中的进度。
+        """
+        require_craft_enabled()
         character = await self._gate.require_character(user)
         await self.settle_jobs_async(character, now=now)
 
@@ -448,103 +775,126 @@ class CraftService:
         job = result.scalar_one_or_none()
         if job is None:
             raise AppError(code=40000, message="工坊任务不存在", http_status=404)
-        if job.status == CraftJobStatus.CLAIMED:
-            raise AppError(code=40000, message="任务已领取", http_status=400)
-        if job.status == CraftJobStatus.RUNNING:
-            raise AppError(code=40000, message="任务尚未完成", http_status=400)
+        if job.status != CraftJobStatus.RUNNING:
+            raise AppError(code=40000, message="仅可取消排队中的任务", http_status=400)
 
-        cfg = get_game_config().craft_recipes
-        recipe = cfg.recipes.get(job.recipe_id)
-        if recipe is None:
-            raise AppError(code=40000, message="配方配置缺失", http_status=500)
+        snapshot: dict[str, Any] = {}
+        if job.cost_snapshot_json:
+            try:
+                snapshot = json.loads(job.cost_snapshot_json)
+            except json.JSONDecodeError:
+                snapshot = {}
+        if not isinstance(snapshot, dict):
+            snapshot = {}
 
-        # 已标记 failed 的任务直接按失败结算；否则按 fail_chance 掷骰
-        failed = True if job.status == CraftJobStatus.FAILED else roll_fail(
-            recipe.fail_chance,
-            rng=rng,
-        )
-        claim_result: dict[str, Any] = {"job_id": job.id, "failed": failed}
+        remaining = max(0, int(getattr(job, "quantity", 1) or 1))
+        total = max(remaining, int(snapshot.get("quantity_total") or remaining or 1))
+        # 已完成件数不退；只退剩余占比
+        ratio = remaining / total if total > 0 else 0.0
 
-        if failed:
-            job.status = CraftJobStatus.FAILED
-            job.result_json = json.dumps({"failed": True}, ensure_ascii=False)
-        else:
-            job.status = CraftJobStatus.CLAIMED
-            outputs: list[dict[str, Any]] = []
-            growth = parse_growth_attrs(getattr(character, "growth_attrs_json", None))
-            crafter_level = int(
-                read_craft_levels(
-                    growth_attrs=growth,
-                    array_craft_level=int(getattr(character, "array_craft_level", 0) or 0),
-                ).get(recipe.branch, 0)
-                or 0
-            )
-            level_delta = crafter_level - int(recipe.required_craft_level or 0)
-            quality = roll_craft_quality(
-                level_delta,
-                cfg.quality_by_level_delta,
-                rng=rng,
-            )
-            claim_result["quality"] = quality
-            claim_result["quality_label_zh"] = CRAFT_QUALITY_LABEL_ZH.get(quality, quality)
-            grant_lv = int(recipe.grant_craft_level or 0)
-            for out in recipe.outputs:
-                grant_lv += int(getattr(out, "grant_craft_level", 0) or 0)
-                if out.grant_array_craft_level > 0:
-                    character.array_craft_level = (
-                        int(character.array_craft_level) + out.grant_array_craft_level
-                    )
-                    outputs.append({"grant_array_craft_level": out.grant_array_craft_level})
-                elif out.item_id:
-                    item_type = str(out.item_type or "material")
-                    await self._inventory.add_item(
-                        character.id,
-                        item_type=item_type,
-                        item_id=str(out.item_id),
-                        quantity=int(out.quantity),
-                        meta={"quality": quality},
-                    )
-                    from app.constants.inventory import ITEM_TYPE_PUPPET
-                    from app.services.puppet_service import PuppetService
-
-                    if item_type == ITEM_TYPE_PUPPET:
-                        await PuppetService(self._session).on_craft_granted(
-                            character.id,
-                            item_id=str(out.item_id),
-                            quantity=int(out.quantity),
-                        )
-                    outputs.append(
-                        {
-                            "item_type": out.item_type,
-                            "item_id": out.item_id,
-                            "quantity": out.quantity,
-                            "quality": quality,
-                            "quality_label_zh": CRAFT_QUALITY_LABEL_ZH.get(quality, quality),
-                        },
-                    )
-            if grant_lv > 0:
-                growth, new_lv = bump_craft_level(
-                    growth,
-                    branch=recipe.branch,
-                    amount=grant_lv,
-                    array_craft_level=int(character.array_craft_level or 0),
+        refunded_mats: list[dict[str, Any]] = []
+        mats = snapshot.get("materials") or []
+        if isinstance(mats, list) and ratio > 0:
+            inv_cfg = get_game_config().inventory
+            for mat in mats:
+                if not isinstance(mat, dict):
+                    continue
+                item_id = str(mat.get("item_id") or "")
+                need = int(round(int(mat.get("quantity") or 0) * ratio))
+                if not item_id or need <= 0:
+                    continue
+                item_def = inv_cfg.items.get(item_id)
+                item_type = str(item_def.item_type) if item_def is not None else "material"
+                await self._inventory.add_item(
+                    character.id,
+                    item_type=item_type,
+                    item_id=item_id,
+                    quantity=need,
                 )
-                character.growth_attrs_json = json.dumps(growth, ensure_ascii=False)
-                outputs.append({"grant_craft_level": grant_lv, "craft_level": new_lv})
-            job.result_json = json.dumps(
-                {"failed": False, "outputs": outputs, "quality": quality},
-                ensure_ascii=False,
-            )
-            claim_result["outputs"] = outputs
+                refunded_mats.append({"item_id": item_id, "quantity": need})
 
+        stones = int(round(int(snapshot.get("spirit_stones") or 0) * ratio))
+        if stones > 0:
+            character.spirit_stones = int(character.spirit_stones) + stones
+
+        stamina = int(round(int(snapshot.get("stamina") or 0) * ratio))
+        if stamina > 0:
+            self._stamina.add_stamina(character, stamina, now=now)
+
+        actor = str(job.actor)
+        job.status = CraftJobStatus.CANCELLED
+        job.result_json = json.dumps(
+            {
+                "cancelled": True,
+                "refunded": {
+                    "spirit_stones": stones,
+                    "stamina": stamina,
+                    "materials": refunded_mats,
+                    "remaining": remaining,
+                    "quantity_total": total,
+                },
+            },
+            ensure_ascii=False,
+        )
+        await self._session.flush()
+        await self._rechain_running_jobs(character.id, actor, now=now_utc(now))
         await self._session.flush()
         logger.info(
-            "craft claimed character_id=%s job_id=%s failed=%s",
+            "craft cancelled character_id=%s job_id=%s refund_stones=%s refund_stamina=%s rem=%s/%s",
             character.id,
-            job.id,
-            failed,
+            job_id,
+            stones,
+            stamina,
+            remaining,
+            total,
         )
-        return claim_result
+        return {
+            "job_id": job_id,
+            "cancelled": True,
+            "refunded": {
+                "spirit_stones": stones,
+                "stamina": stamina,
+                "materials": refunded_mats,
+            },
+        }
+
+    async def _rechain_running_jobs(
+        self,
+        character_id: int,
+        actor: str,
+        *,
+        now: datetime,
+    ) -> None:
+        """
+        重排尚未开始的排队任务；正在制造中的（started_at <= now）进度不动。
+        """
+        result = await self._session.execute(
+            select(CraftJob)
+            .where(
+                CraftJob.character_id == character_id,
+                CraftJob.actor == actor,
+                CraftJob.status == CraftJobStatus.RUNNING,
+            )
+            .order_by(CraftJob.id.asc()),
+        )
+        jobs = list(result.scalars().all())
+        if not jobs:
+            return
+        cfg = get_game_config().craft_recipes
+        cursor = now
+        for job in jobs:
+            recipe = cfg.recipes.get(job.recipe_id)
+            started = ensure_aware_utc(job.started_at)
+            # 已开工（含正在做当前件）：保留进度，仅用整单结束时刻推进 cursor
+            if started <= now:
+                cursor = max(cursor, self._job_total_finish_at(job, recipe))
+                continue
+            # 排队未开始：接到 cursor 后
+            qty = max(1, int(getattr(job, "quantity", 1) or 1))
+            unit = int(recipe.duration_seconds if recipe else 60)
+            job.started_at = cursor
+            job.finish_at = compute_finish_at(cursor, unit, 1.0)
+            cursor = self._job_total_finish_at(job, recipe)
 
     async def scribe_talisman(
         self,

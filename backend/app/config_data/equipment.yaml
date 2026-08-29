@@ -44,6 +44,50 @@ items:
     grants: []
     required_major_realm: body_tempering
 
+  cloth_cap_t1:
+    label_zh: 粗布头巾（占位）
+    help_zh: 教学头部防具；略增生命
+    slot: armor_head
+    stats:
+      hp: 8
+    idle_mods:
+      idle_mult: 1.0
+    grants: []
+    required_major_realm: body_tempering
+
+  iron_gloves_t1:
+    label_zh: 玄铁护手（占位）
+    help_zh: 教学护手；略增物理防御
+    slot: armor_hands
+    stats:
+      phys_def: 2
+    idle_mods:
+      idle_mult: 1.0
+    grants: []
+    required_major_realm: body_tempering
+
+  iron_greaves_t1:
+    label_zh: 玄铁腿甲（占位）
+    help_zh: 教学腿甲；略增物理防御
+    slot: armor_legs
+    stats:
+      phys_def: 2
+    idle_mods:
+      idle_mult: 1.0
+    grants: []
+    required_major_realm: body_tempering
+
+  cloth_shoes_t1:
+    label_zh: 粗布鞋履（占位）
+    help_zh: 教学鞋履；略增生命
+    slot: armor_shoes
+    stats:
+      hp: 6
+    idle_mods:
+      idle_mult: 1.0
+    grants: []
+    required_major_realm: body_tempering
+
   jade_pendant_t1:
     label_zh: 青玉佩（占位）
     help_zh: 教学饰品；略增物理攻击

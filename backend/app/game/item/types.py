@@ -94,6 +94,12 @@ class TalismanItem(GenericItem):
 
     kind = "talisman"
 
+    @property
+    def talisman_effect_id(self) -> str | None:
+        """Official whitelist effect id (optional on crafted samples)."""
+        raw = str(self._raw.get("talisman_effect_id") or "").strip()
+        return raw or None
+
 
 class ManualItem(GenericItem):
     """秘籍（包内物；配方正文归 Content）。"""

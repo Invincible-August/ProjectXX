@@ -268,6 +268,16 @@ DOMAIN_REGISTRY: dict[str, DomainMeta] = {
         category_title_zh="制造与装备",
         category_order=50,
     ),
+    "craft_recipes": DomainMeta(
+        domain_id="craft_recipes",
+        filename="craft_recipes.yaml",
+        title="工坊配方",
+        risk="content",
+        description="炼丹/炼器/符箓/傀儡配方、耗时、材料与制作等级门槛",
+        category_id="craft",
+        category_title_zh="制造与装备",
+        category_order=50,
+    ),
     "realms": DomainMeta(
         domain_id="realms",
         filename="realms.yaml",

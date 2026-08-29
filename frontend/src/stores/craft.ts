@@ -1,9 +1,9 @@
 /**
- * M4 工坊 Pinia store：配方 / 队列 / 本地进度 tick / 开工领取。
+ * M4 工坊 Pinia store：配方 / 队列 / 本地进度 tick / 开工取消。
  */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { claimCraft, fetchJobs, fetchRecipes, startCraft } from '../api/craft'
+import { cancelCraft, fetchJobs, fetchRecipes, startCraft } from '../api/craft'
 import type { CraftActor, CraftJob, CraftRecipe } from '../types/craft'
 import type { CharacterPublic } from '../types/character'
 import { craftProgressRatio } from '../utils/craftProgress'
@@ -47,6 +47,14 @@ export const useCraftStore = defineStore('craft', () => {
     stopTick()
     tickTimer = setInterval(() => {
       tickNow.value = Date.now()
+      // 本地进度满时刷队列，触发后端 settle 直入包
+      const due = jobs.value.some((j) => {
+        if (j.status !== 'running') return false
+        return craftProgressRatio(j.started_at, j.finish_at, tickNow.value) >= 1
+      })
+      if (due) {
+        void refreshJobs()
+      }
     }, craftTickMs())
   }
 
@@ -102,8 +110,12 @@ export const useCraftStore = defineStore('craft', () => {
     return null
   }
 
-  /** 开工 */
-  async function start(recipeId: string, craftActor?: CraftActor): Promise<string | null> {
+  /** 开工（quantity 默认 1） */
+  async function start(
+    recipeId: string,
+    craftActor?: CraftActor,
+    quantity = 1,
+  ): Promise<string | null> {
     const who = craftActor ?? actor.value
     loading.value = true
     try {
@@ -111,6 +123,7 @@ export const useCraftStore = defineStore('craft', () => {
         recipe_id: recipeId,
         actor: who,
         use_dao: useDao.value,
+        quantity,
       })
       if (envelope.code !== 0 || !envelope.data) {
         return envelope.message || `开工失败（code=${envelope.code}）`
@@ -122,6 +135,7 @@ export const useCraftStore = defineStore('craft', () => {
       } else if ('id' in data && 'recipe_id' in data) {
         jobs.value = [data as CraftJob, ...jobs.value]
       }
+      await refreshJobs()
       await useCharacterStore().fetchMe()
       return null
     } finally {
@@ -129,18 +143,17 @@ export const useCraftStore = defineStore('craft', () => {
     }
   }
 
-  /** 领取 */
-  async function claim(jobId: number): Promise<{ error: string | null; failed?: boolean }> {
+  /** 取消排队中的任务并退冻资源 */
+  async function cancel(jobId: number): Promise<string | null> {
     loading.value = true
     try {
-      const envelope = await claimCraft(jobId)
-      if (envelope.code !== 0 || !envelope.data) {
-        return { error: envelope.message || `领取失败（code=${envelope.code}）` }
+      const envelope = await cancelCraft(jobId)
+      if (envelope.code !== 0) {
+        return envelope.message || `取消失败（code=${envelope.code}）`
       }
-      await applyCharacterIfPresent(envelope.data)
       await useCharacterStore().fetchMe()
       await refreshJobs()
-      return { error: null, failed: envelope.data.failed }
+      return null
     } finally {
       loading.value = false
     }
@@ -164,7 +177,7 @@ export const useCraftStore = defineStore('craft', () => {
     load,
     refreshJobs,
     start,
-    claim,
+    cancel,
     tickLocal,
     startTick,
     stopTick,

@@ -435,7 +435,10 @@ const avatarAssistCountLine = computed(() => {
 <template>
   <el-card shadow="never" class="attr-panel">
     <template v-if="!compact" #header>
-      <el-text tag="b">{{ variant === 'avatar' ? '化身属性' : '角色属性' }}</el-text>
+      <div class="attr-header">
+        <el-text tag="b">{{ variant === 'avatar' ? '化身属性' : '本尊属性' }}</el-text>
+        <slot name="header-extra" />
+      </div>
     </template>
 
     <el-empty v-if="!character" description="暂无角色数据" :image-size="56" />
@@ -642,6 +645,13 @@ const avatarAssistCountLine = computed(() => {
 </template>
 
 <style scoped>
+.attr-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
 .attr-hero {
   display: flex;
   align-items: center;

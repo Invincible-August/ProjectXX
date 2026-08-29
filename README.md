@@ -40,13 +40,12 @@
 | [M7前端目录与路由设计.md](./M7前端目录与路由设计.md) | **M7** `/sect` `/market` `/social` `/friends` `/party` `/dual-cultivation` `/shop` + ChatDock；**v1.0**（2026-08-11） |
 | [道具与装备实体设计.md](./道具与装备实体设计.md) | **M8 R0**：17 区穿戴栏、化身开关、符箓编成、傀儡最多 3 只、双手双指针、丹药方案 A、福宝不可逆耐久、四页背包、穿戴悬停 format、工坊成品单一属性 `inspect`；**v0.8.11**（2026-08-19） |
 | [M8自研与内容管线设计.md](./M8自研与内容管线设计.md) | **M8** 自研功法/阵法/符箓 + ATTR-D02 装备喂属性 + 扩表校验；竖切 **R0～R6 已落地**；洞府 `/cave` + 研究室 `/cave/lab`；**v1.1.18**（2026-08-20） |
-| [M8前端目录与路由设计.md](./M8前端目录与路由设计.md) | **M8** `/cave` 洞府、`/cave/lab` 研究室；角色页 **17 区示意剪影穿戴栏**；`PlayNav` 含账号同一组按钮；工坊四分支（无阵法）+ 两列配方/队列；布阵只摆子；**v1.1.30**（2026-08-20） |
+| [M8前端目录与路由设计.md](./M8前端目录与路由设计.md) | **M8** `/cave` 洞府、`/cave/workshop` 工坊、`/cave/lab` 研究室；角色页本尊/化身同页切换 + **17 区示意剪影穿戴栏**；悟道挂本尊属性卡头；`PlayNav` 含账号同一组按钮；工坊四分支（无阵法）+ 两列配方/队列；布阵只摆子；**v1.1.36**（2026-08-25） |
 | [ATTR战斗属性占位设计.md](./ATTR战斗属性占位设计.md) | **ATTR-D01 已落地**：统一战斗+生活属性 schema；**v1.4.2** 根基含悟性/耐力/神通（2026-08-18） |
 | [统一实体类层次与重构方案.md](./统一实体类层次与重构方案.md) | **OOP/ABC v1.0.6**：`CultivatorCharacter` 修士；化身叶 + `DivineSenseConsumer`；灵宠/傀儡仍 `SenseMinionCharacter` |
 | [双轨整改与配置兼容方案.md](./双轨整改与配置兼容方案.md) | **双轨 v1.0**：存量整改 / 增量规范；ContentStore（测试 YAML / 正式可 DB）（2026-08-14） |
 | [玩家在线状态设计.md](./玩家在线状态设计.md) | **Presence**：WS 鉴权在线 / grace / 组队·面交·助战门闸；**v1.0**（2026-08-12） |
 | [核验与超级密码设计](./docs/superpowers/specs/2026-07-28-verification-super-password-design.md) | 注册核验 / verification API / 超级密码（**已实现**，2026-07-28） |
-| [核验与超级密码实现计划](./docs/superpowers/plans/2026-07-28-verification-super-password.md) | 分任务实现清单 |
 | [功法自研（卡片创造与培养）](./docs/superpowers/specs/2026-08-27-technique-research-design.md) | 研究室功法自研：三步卡、多草稿、定稿后培养、秘籍、藏经阁；**P1+P2+P3 已实现**（2026-08-29）；P4 师徒未做 |
 | [功法自研 P1 实现计划](./docs/superpowers/plans/2026-08-27-technique-research-p1.md) | 卡片创造 + 定稿培养；不含秘籍/藏经阁/师徒 |
 | [功法自研 P2 实现计划](./docs/superpowers/plans/2026-08-27-technique-research-p2.md) | 秘籍印制与学习；不含藏经阁/师徒 |
@@ -57,8 +56,17 @@
 ## 当前进度
 
 - **功法自研 P3（2026-08-29）**：藏经阁已实现（秘籍上缴审核 / 贡献学习）；师徒仍为 P4。
+- **工坊逐件制造（2026-08-30）**：`×N` 一件件入包并显示剩余；取消排队不打断当前制造进度。
+- **工坊队列直入包（2026-08-30）**：入队冻资源、数量×耗时顺序排、完成直入背包、可取消退冻；体力按配方数值。
+- **工坊结算时区（2026-08-29）**：开工前惰性结算时把 `finish_at` 规范为 aware UTC，避免 SQLite 混比报错。
+- **工坊联调配方（2026-08-29）**：四分支「【测】仅灵石」图纸（无材料、10 灵石、5 秒）；`stamina_cost: 0` 开工不扣体力。
+- **工坊配方列表（2026-08-28）**：`GET /craft/recipes` 曾因缺 `talisman_effect_id` 解析字段 500，浏览器误报连不上后端；已接回。
 - **功法自研 P2（2026-08-28）**：原创者可制成秘籍；他人使用后学会只读副本。藏经阁/师徒为 P3–P4。
 - **功法自研 P1（2026-08-28）**：研究室功法改为三步卡、多草稿、镶嵌定稿与原创培养；GM 发材料时附带空白卡 10 张。
+- **角色页本尊/化身（2026-08-25）**：化身并入 `/character` 页内切换；顶栏无独立化身；悟道挂在本尊属性卡头（仅本尊真仙）。旧 `/avatar` 重定向。
+- **洞府房间入口（2026-08-25）**：枢纽大卡进工坊/研究室；标题行不再放右上小切换钮。
+- **工坊迁入洞府（2026-08-24）**：工坊是洞府二级页 `/cave/workshop`；顶栏只留「洞府」。旧 `/workshop` 重定向。制造业接口仍 `/api/v1/craft`。
+- **工坊配方栏（2026-08-24）**：`/cave/workshop` 配方卡为内部筛选表单 + 表格点选。属性=金木水火土风雷暗，等级=制作门槛；炼器另可按部位（武器/头部/胸甲/护手/腿甲/鞋履/饰品/法宝）筛，符箓另可按功能（增益/攻击/诅咒）筛。后台域 `craft_recipes` 可 CRUD。
 - **洞府 / 研究室（2026-08-20）**：顶栏「自研」改为「洞府」；研究室是洞府二级页 `/cave/lab`。权威 API `/api/v1/cave` 与 `/api/v1/cave/lab/*`；旧 `/research` 页与接口仍兼容。来源标签仍叫「自研」。
 - **工坊去掉阵法（2026-08-20）**：制造业仅炼丹/炼器/符箓/傀儡；阵法等级仍走角色面板与自研
 - **材料不足提示（2026-08-20）**：缺料显示「材料不足：灵草 缺少 2」，不再甩物品 id
@@ -277,7 +285,7 @@ npm run build
 
 非法材料 `40200`；审核未开放 `40210`；待引渡/渡劫写自研或画符 `40211`。
 
-大厅 nav：角色 · **阵法** · 战斗 · 化身 · **工坊** · **洞府** · 宗门 · …；有草案时标题行 warning「继续草案」进研究室。
+大厅 nav：角色 · **阵法** · 战斗 · **洞府** · 宗门 · …；角色页内「本尊 / 化身」。洞府内二级「工坊」「研究室」。有草案时标题行 warning「继续草案」进研究室。
 
 冒烟：`python scripts/smoke_m8.py`（穿戴→功法→阵法快照→画符开战→工坊真扣→待引渡写门禁 40211）。
 
@@ -333,7 +341,7 @@ affixes:
       phys_atk: 2
 ```
 
-后台域名（`/management`）：`equipment` · `research` · `talisman_effects` · `combat_attrs` · `items`（inventory）· `techniques` · `formations`。改草稿 → 校验 → 发布；玩家服经 ContentStore 热更，**无需改前端/玩法分支代码**。
+后台域名（`/management`）：`equipment` · `research` · `craft_recipes` · `talisman_effects` · `combat_attrs` · `items`（inventory）· `techniques` · `formations`。改草稿 → 校验 → 发布；玩家服经 ContentStore 热更，**无需改前端/玩法分支代码**。
 
 ### M3 战斗成型 API（需 Bearer）
 
@@ -370,11 +378,11 @@ M3 GM 扩展（`POST /gm/character/set` 新增可选字段）：`set_stamina` / 
 | GET | `/api/v1/avatar/sense` | 神识读数（capacity/load/soft/hard/zone/overload_mult/backlash） |
 | GET | `/api/v1/avatar/explore/status` | 探索代理桩（化神+） |
 | POST | `/api/v1/avatar/quests/accept` | Body `{"quest_kind":"npc"\|"sect"}`；未解锁 `40090`；解锁后桩 `50110` |
-| POST | `/api/v1/avatar/assist/settings` | Body `{"enabled":bool}`；**化身页**开关「化身助战」（关=闭关）；化神 `friend_assist` |
+| POST | `/api/v1/avatar/assist/settings` | Body `{"enabled":bool}`；**角色页化身面**开关「化身助战」（关=闭关）；化神 `friend_assist` |
 | POST | `/api/v1/avatar/assist/invite` | Body `target_character_id` 或 `target_name`；**邀请化身**：开则立即入队；关→「闭关中」；忙→「助战中」 |
 | POST | `/api/v1/avatar/assist/{id}/accept\|reject\|end` | 兼容旧 invited / 手动结束；PVE 战后自动离队 |
 | GET | `/api/v1/avatar/assist/me` | 助战会话 + 开关 + **助战专用体力**（独立槽，仅随境界变容） |
-| GET | `/api/v1/craft/recipes` | 配方列表（炼丹/炼器/符箓/傀儡；不含阵法） |
+| GET | `/api/v1/craft/recipes` | 配方列表（炼丹/炼器/符箓/傀儡；不含阵法；含 inspect 属性与制作等级） |
 | GET | `/api/v1/craft/jobs` | 工坊队列 |
 | POST | `/api/v1/craft/start` | Body `{"recipe_id":"...","actor":"main"\|"avatar","use_dao":bool}`；`use_dao` 扣该 actor 道值 |
 | POST | `/api/v1/craft/claim` | Body `{"job_id":N}` |
@@ -432,7 +440,7 @@ M6 GM：`force_true_immortal` / `lock_fate_dao` / `grant_dao_pool` / `set_dao_qi
 
 本地 DEV：将 `backend/.env.example` 中 M6 段（尤其 `DAO_LORD_FORCE_WINDOW=true`、`WORLD_EVENTS_ENABLED=true`）同步进 `backend/.env` 后重启 uvicorn；大厅展开「调参（DEV）」→ **M6 一键联调套装**。
 
-开通悟道后，大厅简览 / 角色页 / 化身页角色栏展示本命道与道值。本体与化身之道独立；**悟道**入口在角色页/化身页，须该主体真仙后才显示，未达真仙不可进 `/dao`。
+开通悟道后，大厅简览 / 角色页角色栏展示本命道与道值。本体与化身之道独立；**悟道**入口挂在角色页本尊属性卡头，须本尊真仙后才显示，未达真仙不可进 `/dao`。
 
 M6 冒烟：`python scripts/smoke_m6.py`（backend 目录、已激活 venv）。
 
@@ -471,7 +479,7 @@ M6 冒烟：`python scripts/smoke_m6.py`（backend 目录、已激活 venv）。
 | GET/POST | `/trade/auctions` · `…/{id}/bid` | 拍卖行·竞拍 |
 | POST/GET | `/trade/face` · `GET …/pending` · `GET …/invite-options` · `…/{id}` · `…/accept` · `…/reject` · `…/offer` · `…/lock` · `…/confirm` · `…/cancel` | 社交交易（邀约提交后推送；页内待接受列表即时出现→锁定→确认；点通知先拉会话再进页手动接受）；道具格同邮件 72px；报价自动同步；改草稿不拆对方锁定；WS `session` 为接收方视角；`vessel_offer.hours`；单侧最多 16 种；WS `face.invite`/`face.update` |
 
-前端：大厅顶栏 **社交**（`/social`：道友关系/队伍/双修/**交易**/邮件/师徒/引渡）· **商店**（`/shop`：`mode=bazaar|auction|tiandao`）；另有 **化身**（顶栏在「角色」后；`/avatar`：凝练/装备功法神通/互传/助战；**挂机在大厅修炼区**）· **账号**（`/account`：资料/仙缘与打赏摘要/改密弹窗/打赏账单/退出）；修炼区标题行「资源分配/进阶」入口弹窗；已凝练化身后修炼区本体下方出现化身线程，大厅简览可点角色名/化身切换。开通悟道后角色栏显示该主体本命道名与道值；角色页/化身页真仙后出现「悟道」。`/market` 为拍卖行独立入口（`mode=listings|auction`，旧 `face` 深链重定向社交交易）；`/friends` `/party` `/dual-cultivation` 深链保留。道友页为单页分区：我的道友/道侣/炉鼎；若自身为他人炉鼎则显示「我的主人」（含到期时间）。交易可要约「愿为对方炉鼎」并设现实小时；双方至多一侧；**互为道侣不可互为炉鼎**（道侣仍可为他人炉鼎）；主人可随时解除，到期自动解除。大厅日志下方有**邀请列表**；社交页操作日志同步进大厅事件日志；右上角 WS 邀请提示可点击跳转对应社交子页（交易/组队/双修/道友/道侣）。
+前端：大厅顶栏 **社交**（`/social`：道友关系/队伍/双修/**交易**/邮件/师徒/引渡）· **商店**（`/shop`：`mode=bazaar|auction|tiandao`）；化身并入 **角色** 页（本尊/化身同页切换；旧 `/avatar` 重定向；**挂机在大厅修炼区**）· **账号**（`/account`：资料/仙缘与打赏摘要/改密弹窗/打赏账单/退出）；修炼区标题行「资源分配/进阶」入口弹窗；已凝练化身后修炼区本体下方出现化身线程，大厅简览可点角色名/化身切换。开通悟道后角色栏显示该主体本命道名与道值；角色页本尊属性卡头在真仙后出现「悟道」。`/market` 为拍卖行独立入口（`mode=listings|auction`，旧 `face` 深链重定向社交交易）；`/friends` `/party` `/dual-cultivation` 深链保留。道友页为单页分区：我的道友/道侣/炉鼎；若自身为他人炉鼎则显示「我的主人」（含到期时间）。交易可要约「愿为对方炉鼎」并设现实小时；双方至多一侧；**互为道侣不可互为炉鼎**（道侣仍可为他人炉鼎）；主人可随时解除，到期自动解除。大厅日志下方有**邀请列表**；社交页操作日志同步进大厅事件日志；右上角 WS 邀请提示可点击跳转对应社交子页（交易/组队/双修/道友/道侣）。
 
 ### M7 L3 邮件 API（需 Bearer；原赠送已并入发信）
 
