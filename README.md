@@ -47,14 +47,16 @@
 | [玩家在线状态设计.md](./玩家在线状态设计.md) | **Presence**：WS 鉴权在线 / grace / 组队·面交·助战门闸；**v1.0**（2026-08-12） |
 | [核验与超级密码设计](./docs/superpowers/specs/2026-07-28-verification-super-password-design.md) | 注册核验 / verification API / 超级密码（**已实现**，2026-07-28） |
 | [核验与超级密码实现计划](./docs/superpowers/plans/2026-07-28-verification-super-password.md) | 分任务实现清单 |
-| [功法自研（卡片创造与培养）](./docs/superpowers/specs/2026-08-27-technique-research-design.md) | 研究室功法自研：三步卡、多草稿、定稿后培养、秘籍；**P1+P2 已实现**（2026-08-28）；P3–P4 藏经阁/师徒未做 |
+| [功法自研（卡片创造与培养）](./docs/superpowers/specs/2026-08-27-technique-research-design.md) | 研究室功法自研：三步卡、多草稿、定稿后培养、秘籍、藏经阁；**P1+P2+P3 已实现**（2026-08-29）；P4 师徒未做 |
 | [功法自研 P1 实现计划](./docs/superpowers/plans/2026-08-27-technique-research-p1.md) | 卡片创造 + 定稿培养；不含秘籍/藏经阁/师徒 |
 | [功法自研 P2 实现计划](./docs/superpowers/plans/2026-08-27-technique-research-p2.md) | 秘籍印制与学习；不含藏经阁/师徒 |
+| [功法自研 P3 实现计划](./docs/superpowers/plans/2026-08-29-technique-scripture-p3.md) | 藏经阁：秘籍上缴审核、条目贡献学习；不含师徒 |
 | [测试更新指令.md](./测试更新指令.md) | **测试服更新/重启**：conda + screen + Nginx（8080/8100）；完整更新与按改动范围精简步骤 |
 | [CHANGELOG.md](./CHANGELOG.md) | 变更记录 |
 
 ## 当前进度
 
+- **功法自研 P3（2026-08-29）**：藏经阁已实现（秘籍上缴审核 / 贡献学习）；师徒仍为 P4。
 - **功法自研 P2（2026-08-28）**：原创者可制成秘籍；他人使用后学会只读副本。藏经阁/师徒为 P3–P4。
 - **功法自研 P1（2026-08-28）**：研究室功法改为三步卡、多草稿、镶嵌定稿与原创培养；GM 发材料时附带空白卡 10 张。
 - **洞府 / 研究室（2026-08-20）**：顶栏「自研」改为「洞府」；研究室是洞府二级页 `/cave/lab`。权威 API `/api/v1/cave` 与 `/api/v1/cave/lab/*`；旧 `/research` 页与接口仍兼容。来源标签仍叫「自研」。
