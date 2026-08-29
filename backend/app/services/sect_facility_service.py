@@ -552,6 +552,9 @@ class SectFacilityService:
             "stats": snapshot["stats"],
             "affix_ids": list(snapshot["affix_ids"]),
         }
+        raw_specialty = meta.get("specialty_tag") if isinstance(meta, dict) else None
+        if isinstance(raw_specialty, str) and raw_specialty.strip():
+            payload["specialty_tag"] = raw_specialty.strip()
         await InventoryService(self._session).remove_one_by_uid(character.id, uid)
         review = SectDonationReview(
             sect_id=sect.id,
@@ -666,6 +669,9 @@ class SectFacilityService:
                     "stats": snapshot["stats"],
                     "affix_ids": list(snapshot["affix_ids"]),
                 }
+                raw_specialty = payload.get("specialty_tag")
+                if isinstance(raw_specialty, str) and raw_specialty.strip():
+                    snapshot_dict["specialty_tag"] = raw_specialty.strip()
                 await InventoryService(self._session).add_item(
                     review.character_id,
                     item_type="manual",

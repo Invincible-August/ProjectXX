@@ -12,7 +12,7 @@ import {
 } from '../../api/sect'
 import { useCharacterStore } from '../../stores/character'
 import { useInventoryStore } from '../../stores/inventory'
-import { TECH_MANUAL_ID } from '../../types/techniqueCraft'
+import { rankLabelZh, TECH_MANUAL_ID } from '../../types/techniqueCraft'
 import type { InventoryItem } from '../../types/inventory'
 
 const emit = defineEmits<{
@@ -150,7 +150,8 @@ async function onReview(reviewId: number, approve: boolean): Promise<void> {
     const msg = String(env.data?.message || (approve ? '已通过' : '已拒绝'))
     ElMessage.success(msg)
     emit('log', msg, 'success')
-    await reload()
+    // Reject returns the manual to the donor; refresh bag if reviewer is donor.
+    await Promise.all([reload(), inventoryStore.load()])
   } finally {
     busy.value = false
   }
@@ -186,7 +187,11 @@ onMounted(() => {
     <el-text tag="b" size="small" style="display: block; margin-top: 0.75rem">已收录自研</el-text>
     <div v-for="e in data?.entries || []" :key="`ent-${e.technique_id}`" class="row">
       <el-text>
-        {{ e.label_zh || e.technique_id }} · {{ e.cost_contribution }} 贡献
+        {{ e.label_zh || e.technique_id }}
+        <el-text size="small" type="info">
+          · 署名 {{ e.author_character_id ?? '—' }} · {{ rankLabelZh(e.major_rank) }}阶
+        </el-text>
+        · {{ e.cost_contribution }} 贡献
         <el-tag v-if="e.owned" size="small" type="success">已学会</el-tag>
         <el-tag v-else-if="!e.has_snapshot" size="small" type="info">无快照</el-tag>
       </el-text>

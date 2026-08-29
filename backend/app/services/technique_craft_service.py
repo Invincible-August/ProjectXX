@@ -54,6 +54,7 @@ from app.constants.technique_craft import (
 from app.db.models.character import Character
 from app.db.models.inventory_item import InventoryItem
 from app.db.models.research import PrivateTechnique
+from app.db.models.sect import Sect
 from app.db.models.technique import CharacterTechnique
 from app.db.models.technique_craft import TechniqueResearchDraft
 from app.domain.research_schema import is_valid_zh_label
@@ -776,6 +777,8 @@ class TechniqueCraftService:
 
         Only the original research author may print. The private technique row is
         not mutated. Non-empty ``meta`` forces a new inventory row (no stacking).
+        If the author is in a sect with a non-empty specialty, that value is
+        stamped onto the snapshot as ``specialty_tag`` (intrinsic at print time).
 
         Args:
             character: Acting original author.
@@ -802,6 +805,13 @@ class TechniqueCraftService:
         )
         self._deduct_reroll_cost(character, efficacy, int(cost))
         snapshot = self._manual_snapshot(private, payload)
+        # Intrinsic specialty at print time (author's current sect), not at donate.
+        sect_id = getattr(character, "sect_id", None)
+        if sect_id is not None:
+            sect = await self._session.get(Sect, int(sect_id))
+            specialty = str(getattr(sect, "specialty", None) or "").strip() if sect else ""
+            if specialty:
+                snapshot["specialty_tag"] = specialty
         inv = InventoryService(self._session)
         await inv.add_item(
             character.id,

@@ -432,7 +432,7 @@ def test_scripture_review_reject_returns_manual(
 def test_scripture_review_approve_grants_contrib_and_entry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Approve stocks SectScriptureEntry and pays base donate reward only."""
+    """Approve stocks entry; matching print-time specialty_tag pays base + bonus."""
     monkeypatch.setattr(
         "app.services.technique_craft_service.roll_embed_success",
         lambda *_a, **_k: True,
@@ -457,9 +457,11 @@ def test_scripture_review_approve_grants_contrib_and_entry(
                     sect_name="审通试炼宗",
                     specialty="sword",
                 )
+                assert snapshot.get("specialty_tag") == "sword"
                 contrib_before = int(member.contribution)
                 scripture = get_game_config().sects.scripture or {}
                 reward = int(scripture.get("donate_reward_contrib") or 0)
+                bonus = int(scripture.get("specialty_match_bonus_contrib") or 0)
                 learn_cost = int(scripture.get("learn_cost_contrib") or 0)
 
                 donated = await SectFacilityService(session).scripture_donate(
@@ -467,6 +469,10 @@ def test_scripture_review_approve_grants_contrib_and_entry(
                 )
                 await session.commit()
                 review_id = int(donated["review_id"])
+                review = await session.get(SectDonationReview, review_id)
+                assert review is not None
+                review_payload = json.loads(review.payload_json or "{}")
+                assert review_payload.get("specialty_tag") == "sword"
 
                 out = await SectFacilityService(session).review_donation(
                     user, review_id=review_id, approve=True
@@ -491,9 +497,9 @@ def test_scripture_review_approve_grants_contrib_and_entry(
                 assert entry.payload_json
                 assert entry.stats_json
                 assert entry.affix_ids_json
-                assert entry.specialty_tag is None
+                assert entry.specialty_tag == "sword"
 
-                assert int(member.contribution) == contrib_before + reward
+                assert int(member.contribution) == contrib_before + reward + bonus
 
                 manuals = (
                     await session.execute(
@@ -505,6 +511,71 @@ def test_scripture_review_approve_grants_contrib_and_entry(
                     )
                 ).scalars().all()
                 assert manuals == []
+
+    _run(_body())
+
+
+def test_scripture_review_approve_specialty_mismatch_base_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mismatch specialty_tag on the manual grants donate_reward only (no bonus)."""
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "sect_rev_mis.db") as factory:
+            async with factory() as session:
+                (
+                    founder,
+                    user,
+                    member,
+                    _craft,
+                    _tech_id,
+                    snapshot,
+                    item_uid,
+                ) = await _founder_sect_with_manual(
+                    session,
+                    email="sectrevmis@test.com",
+                    name_zh="审特甲",
+                    sect_name="审特试炼宗",
+                    specialty="sword",
+                )
+                assert snapshot.get("specialty_tag") == "sword"
+                row = (
+                    await session.execute(
+                        select(InventoryItem).where(
+                            InventoryItem.character_id == founder.id,
+                            InventoryItem.item_uid == item_uid,
+                        )
+                    )
+                ).scalar_one()
+                meta = json.loads(row.meta_json or "{}")
+                meta["specialty_tag"] = "alchemy"
+                row.meta_json = json.dumps(meta, ensure_ascii=False)
+                await session.commit()
+
+                contrib_before = int(member.contribution)
+                scripture = get_game_config().sects.scripture or {}
+                reward = int(scripture.get("donate_reward_contrib") or 0)
+
+                donated = await SectFacilityService(session).scripture_donate(
+                    user, item_uid=item_uid
+                )
+                await session.commit()
+                await SectFacilityService(session).review_donation(
+                    user, review_id=int(donated["review_id"]), approve=True
+                )
+                await session.commit()
+                await session.refresh(member)
+
+                entry = (
+                    await session.execute(select(SectScriptureEntry))
+                ).scalar_one()
+                assert entry.specialty_tag == "alchemy"
+                assert int(member.contribution) == contrib_before + reward
 
     _run(_body())
 
