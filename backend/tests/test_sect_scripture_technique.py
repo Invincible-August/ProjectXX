@@ -9,12 +9,16 @@ import pytest
 from sqlalchemy import select
 
 from app.constants.technique import TECHNIQUE_SOURCE_SECT
-from app.constants.technique_craft import CARD_MANUAL_ID, ERR_SCRIPTURE_DONATE
+from app.constants.technique_craft import (
+    CARD_MANUAL_ID,
+    ERR_CRAFT_LEARN,
+    ERR_SCRIPTURE_DONATE,
+)
 from app.core.config import get_settings
 from app.db.models import User
 from app.db.models.inventory_item import InventoryItem
 from app.db.models.research import PrivateTechnique
-from app.db.models.sect import SectDonationReview, SectMember, SectScriptureEntry
+from app.db.models.sect import Sect, SectDonationReview, SectMember, SectScriptureEntry
 from app.db.models.technique import CharacterTechnique
 from app.schemas.common import AppError
 from app.services.gm_service import GmService
@@ -589,5 +593,321 @@ def test_scripture_review_approve_replaces_same_origin(
                 stored = json.loads(entries[0].payload_json or "{}")
                 assert stored.get("label_note") == "replaced"
                 assert printed2["snapshot"]["label_zh"] == "替换后残篇"
+
+    _run(_body())
+
+
+async def _join_sect_as_member(session, *, sect: Sect, peer) -> SectMember:
+    """Attach a second character as outer disciple of an existing player sect."""
+    member = SectMember(
+        sect_id=sect.id,
+        character_id=peer.id,
+        role="member",
+        rank="outer_disciple",
+        contribution=0,
+    )
+    session.add(member)
+    peer.sect_id = sect.id
+    await session.flush()
+    return member
+
+
+async def _approve_scripture_entry(session, user, item_uid: str) -> SectScriptureEntry:
+    """Donate + approve; return the stocked scripture entry."""
+    donated = await SectFacilityService(session).scripture_donate(
+        user, item_uid=item_uid
+    )
+    await session.commit()
+    await SectFacilityService(session).review_donation(
+        user, review_id=int(donated["review_id"]), approve=True
+    )
+    await session.commit()
+    entry = (
+        await session.execute(select(SectScriptureEntry))
+    ).scalar_one()
+    return entry
+
+
+def test_scripture_exchange_learns_sect_copy_and_charges(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Approved snapshot exchange grants source=sect copy and charges learn_cost."""
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "sect_ex_ok.db") as factory:
+            async with factory() as session:
+                (
+                    founder,
+                    founder_user,
+                    _f_member,
+                    _craft,
+                    _tech_id,
+                    snapshot,
+                    item_uid,
+                ) = await _founder_sect_with_manual(
+                    session,
+                    email="sectexoka@test.com",
+                    name_zh="兑学创",
+                    sect_name="兑学试炼宗",
+                )
+                entry = await _approve_scripture_entry(
+                    session, founder_user, item_uid
+                )
+                learn_cost = int(entry.cost_contribution)
+                assert learn_cost > 0
+
+                peer = await _prepare_researcher(
+                    session, "sectexokb@test.com", "兑学徒"
+                )
+                peer_user = await session.get(User, peer.user_id)
+                assert peer_user is not None
+                sect = await session.get(Sect, entry.sect_id)
+                assert sect is not None
+                peer_member = await _join_sect_as_member(
+                    session, sect=sect, peer=peer
+                )
+                peer.major_realm = str(
+                    snapshot.get("major_rank") or peer.major_realm
+                )
+                await SectFacilityService(session)._apply_contrib(
+                    peer_member,
+                    delta=learn_cost + 10,
+                    reason="test_grant",
+                    note_zh="测试加贡献",
+                )
+                await session.commit()
+                await session.refresh(peer_member)
+                contrib_before = int(peer_member.contribution)
+
+                listed = await SectFacilityService(session).scripture_list(peer_user)
+                listed_entry = next(
+                    (
+                        e
+                        for e in listed["entries"]
+                        if e["technique_id"] == entry.technique_id
+                    ),
+                    None,
+                )
+                assert listed_entry is not None
+                assert listed_entry["has_snapshot"] is True
+                assert listed_entry["owned"] is False
+                assert listed_entry["origin_technique_id"] == snapshot[
+                    "origin_technique_id"
+                ]
+                assert int(listed_entry["cost_contribution"]) == learn_cost
+
+                out = await SectFacilityService(session).scripture_exchange(
+                    peer_user, technique_id=entry.technique_id
+                )
+                await session.commit()
+                await session.refresh(peer_member)
+
+                assert int(peer_member.contribution) == contrib_before - learn_cost
+                copy_id = str(out["technique_id"])
+                assert copy_id != entry.technique_id
+
+                learned = (
+                    await session.execute(
+                        select(CharacterTechnique).where(
+                            CharacterTechnique.character_id == peer.id,
+                            CharacterTechnique.technique_id == copy_id,
+                        )
+                    )
+                ).scalar_one()
+                assert learned.source == TECHNIQUE_SOURCE_SECT
+
+                mine = await TechniqueService(session).list_my_techniques(peer)
+                copy_item = next((t for t in mine if t["id"] == copy_id), None)
+                assert copy_item is not None
+                assert copy_item["source"] == "sect"
+                assert copy_item["cultivable"] is False
+
+                listed2 = await SectFacilityService(session).scripture_list(peer_user)
+                listed2_entry = next(
+                    (
+                        e
+                        for e in listed2["entries"]
+                        if e["technique_id"] == entry.technique_id
+                    ),
+                    None,
+                )
+                assert listed2_entry is not None
+                assert listed2_entry["owned"] is True
+
+    _run(_body())
+
+
+def test_scripture_exchange_below_rank_no_charge(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Below-rank exchange raises and does not deduct contribution."""
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "sect_ex_rank.db") as factory:
+            async with factory() as session:
+                founder = await _prepare_researcher(
+                    session, "sectexranka@test.com", "兑阶创"
+                )
+                founder.major_realm = "qi_refining"
+                await session.commit()
+                founder_user = await session.get(User, founder.user_id)
+                assert founder_user is not None
+                await GmService(session).gm_set_character(
+                    founder_user, spirit_stones=200_000
+                )
+                await session.commit()
+                await SectService(session).create(
+                    founder_user,
+                    name="兑阶试炼宗",
+                    motto=None,
+                    specialty="sword",
+                )
+                await session.commit()
+                await session.refresh(founder)
+
+                craft_svc = TechniqueCraftService(session)
+                tech_id = await _finalize_spell_attack(session, founder, craft_svc)
+                craft = get_game_config().research.technique_craft
+                founder.cultivation_points = int(craft.print_manual_cost_cultivation) * 4
+                await session.commit()
+                printed = await craft_svc.print_manual(founder, tech_id)
+                await session.commit()
+                assert printed["snapshot"]["major_rank"] == "qi_refining"
+                row = (
+                    await session.execute(
+                        select(InventoryItem).where(
+                            InventoryItem.character_id == founder.id,
+                            InventoryItem.item_id == CARD_MANUAL_ID,
+                            InventoryItem.quantity > 0,
+                        )
+                    )
+                ).scalar_one()
+                entry = await _approve_scripture_entry(
+                    session, founder_user, str(row.item_uid)
+                )
+                learn_cost = int(entry.cost_contribution)
+
+                peer = await _prepare_researcher(
+                    session, "sectexrankb@test.com", "兑阶徒"
+                )
+                peer_user = await session.get(User, peer.user_id)
+                assert peer_user is not None
+                sect = await session.get(Sect, entry.sect_id)
+                assert sect is not None
+                peer_member = await _join_sect_as_member(
+                    session, sect=sect, peer=peer
+                )
+                peer.major_realm = "body_tempering"
+                await SectFacilityService(session)._apply_contrib(
+                    peer_member,
+                    delta=learn_cost + 20,
+                    reason="test_grant",
+                    note_zh="测试加贡献",
+                )
+                await session.commit()
+                await session.refresh(peer_member)
+                contrib_before = int(peer_member.contribution)
+
+                with pytest.raises(AppError) as exc:
+                    await SectFacilityService(session).scripture_exchange(
+                        peer_user, technique_id=entry.technique_id
+                    )
+                assert exc.value.code == ERR_CRAFT_LEARN
+                assert "境界不足" in str(exc.value.message)
+                await session.refresh(peer_member)
+                assert int(peer_member.contribution) == contrib_before
+
+                privates = (
+                    await session.execute(
+                        select(PrivateTechnique).where(
+                            PrivateTechnique.character_id == peer.id,
+                        )
+                    )
+                ).scalars().all()
+                assert privates == []
+
+    _run(_body())
+
+
+def test_catalog_exchange_still_placeholder(tmp_path: Path) -> None:
+    """YAML catalog exchange stays placeholder and creates no PrivateTechnique."""
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "sect_ex_cat.db") as factory:
+            async with factory() as session:
+                founder = await _prepare_researcher(
+                    session, "sectexcat@test.com", "兑目创"
+                )
+                user = await session.get(User, founder.user_id)
+                assert user is not None
+                await GmService(session).gm_set_character(
+                    user, spirit_stones=200_000
+                )
+                await session.commit()
+                await SectService(session).create(
+                    user,
+                    name="兑目试炼宗",
+                    motto=None,
+                    specialty="sword",
+                )
+                await session.commit()
+                await session.refresh(founder)
+                member = (
+                    await session.execute(
+                        select(SectMember).where(
+                            SectMember.character_id == founder.id
+                        )
+                    )
+                ).scalar_one()
+                catalog = dict(
+                    (get_game_config().sects.scripture or {}).get("catalog") or {}
+                )
+                tid = "basic_breath"
+                assert tid in catalog
+                cost = int(catalog[tid].get("cost_contribution") or 60)
+                await SectFacilityService(session)._apply_contrib(
+                    member,
+                    delta=cost + 5,
+                    reason="test_grant",
+                    note_zh="测试加贡献",
+                )
+                await session.commit()
+                await session.refresh(member)
+                contrib_before = int(member.contribution)
+                privates_before = (
+                    await session.execute(
+                        select(PrivateTechnique).where(
+                            PrivateTechnique.character_id == founder.id,
+                        )
+                    )
+                ).scalars().all()
+
+                out = await SectFacilityService(session).scripture_exchange(
+                    user, technique_id=tid
+                )
+                await session.commit()
+                await session.refresh(member)
+
+                assert "占位授予" in str(out.get("message") or "")
+                assert out.get("technique_id") == tid
+                assert int(member.contribution) == contrib_before - cost
+                privates_after = (
+                    await session.execute(
+                        select(PrivateTechnique).where(
+                            PrivateTechnique.character_id == founder.id,
+                        )
+                    )
+                ).scalars().all()
+                assert len(privates_after) == len(privates_before)
 
     _run(_body())

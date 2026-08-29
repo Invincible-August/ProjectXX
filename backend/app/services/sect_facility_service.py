@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants.inventory import ERR_BLUEPRINT_TYPE_MISMATCH, ItemType
+from app.constants.technique import TECHNIQUE_SOURCE_SECT
 from app.constants.technique_craft import CARD_MANUAL_ID, ERR_SCRIPTURE_DONATE
 from app.core.time_utils import now_utc
 from app.db.models import Character, User
@@ -317,9 +318,11 @@ class SectFacilityService:
 
     async def scripture_list(self, user: User) -> dict[str, Any]:
         """藏经阁目录与已收录。"""
+        from app.services.technique_craft_service import TechniqueCraftService
+
         require_sect_system_enabled()
         self._require_facility_gate("scripture_pavilion")
-        _c, sect, member = await self._ctx(user)
+        character, sect, member = await self._ctx(user)
         await self._org.ensure_sect_org_fields(sect)
         cfg = self._cfg()
         scripture = cfg.scripture or {}
@@ -329,7 +332,28 @@ class SectFacilityService:
                 select(SectScriptureEntry).where(SectScriptureEntry.sect_id == sect.id),
             )
         ).scalars().all()
-        owned = {e.technique_id for e in entries}
+        stocked = {e.technique_id for e in entries}
+        craft = TechniqueCraftService(self._session)
+        entry_views: list[dict[str, Any]] = []
+        for e in entries:
+            origin = str(e.origin_technique_id or e.technique_id or "")
+            owned = (
+                await craft._already_learned_origin(character, origin) if origin else False
+            )
+            entry_views.append(
+                {
+                    "technique_id": e.technique_id,
+                    "origin_technique_id": e.origin_technique_id,
+                    "author_character_id": e.author_character_id,
+                    "label_zh": e.label_zh,
+                    "major_rank": e.major_rank,
+                    "cost_contribution": int(e.cost_contribution),
+                    "source": e.source,
+                    "has_snapshot": bool(e.payload_json),
+                    "owned": owned,
+                    "specialty_tag": e.specialty_tag,
+                }
+            )
         return {
             "specialty": sect.specialty,
             "catalog": [
@@ -339,27 +363,27 @@ class SectFacilityService:
                     "summary": str(body.get("summary") or ""),
                     "cost_contribution": int(body.get("cost_contribution") or 0),
                     "specialty_tags": list(body.get("specialty_tags") or []),
-                    "owned": tid in owned,
+                    "owned": tid in stocked,
                 }
                 for tid, body in catalog.items()
             ],
-            "entries": [
-                {
-                    "technique_id": e.technique_id,
-                    "label_zh": e.label_zh,
-                    "source": e.source,
-                    "specialty_tag": e.specialty_tag,
-                }
-                for e in entries
-            ],
+            "entries": entry_views,
             "contrib": int(member.contribution),
         }
 
     async def scripture_exchange(self, user: User, *, technique_id: str) -> dict[str, Any]:
-        """贡献兑换功法（须已收录或在目录）。"""
+        """
+        Exchange contribution for a scripture technique.
+
+        Snapshot entries: learn first via ``learn_from_manual_meta`` (source=sect),
+        then charge ``entry.cost_contribution``. Learn failures do not charge.
+        Catalog / no-snapshot rows keep the placeholder grant behavior.
+        """
+        from app.services.technique_craft_service import TechniqueCraftService
+
         require_sect_system_enabled()
         self._require_facility_gate("scripture_pavilion")
-        _c, sect, member = await self._ctx(user)
+        character, sect, member = await self._ctx(user)
         cfg = self._cfg()
         catalog = dict((cfg.scripture or {}).get("catalog") or {})
         body = catalog.get(technique_id)
@@ -371,6 +395,55 @@ class SectFacilityService:
                 ),
             )
         ).scalar_one_or_none()
+
+        if entry is not None and entry.payload_json:
+            try:
+                payload = json.loads(entry.payload_json or "{}")
+            except json.JSONDecodeError:
+                payload = {}
+            try:
+                stats = json.loads(entry.stats_json or "{}")
+            except json.JSONDecodeError:
+                stats = {}
+            try:
+                affix_ids = json.loads(entry.affix_ids_json or "[]")
+            except json.JSONDecodeError:
+                affix_ids = []
+            if not isinstance(payload, dict):
+                payload = {}
+            if not isinstance(stats, dict):
+                stats = {}
+            if not isinstance(affix_ids, list):
+                affix_ids = []
+            meta = {
+                "manual_kind": "technique",
+                "origin_technique_id": str(
+                    entry.origin_technique_id or entry.technique_id
+                ),
+                "author_character_id": entry.author_character_id,
+                "label_zh": entry.label_zh,
+                "major_rank": entry.major_rank,
+                "payload": payload,
+                "stats": stats,
+                "affix_ids": affix_ids,
+            }
+            learned = await TechniqueCraftService(self._session).learn_from_manual_meta(
+                character, meta, source=TECHNIQUE_SOURCE_SECT
+            )
+            cost = int(entry.cost_contribution)
+            await self._apply_contrib(
+                member,
+                delta=-cost,
+                reason="scripture_exchange",
+                note_zh=f"藏经阁兑换 {entry.label_zh or technique_id}",
+            )
+            await self._session.flush()
+            return {
+                "message": "已学会宗门功法",
+                "technique_id": str(learned["technique_id"]),
+                "contrib": int(member.contribution),
+            }
+
         if body is None and entry is None:
             raise AppError(code=40000, message="功法未收录", http_status=400)
         cost = int((body or {}).get("cost_contribution") or 60)
