@@ -13,8 +13,7 @@ import FerryRescuePanel from '../components/social/FerryRescuePanel.vue'
 import MailBoxPanel from '../components/social/MailBoxPanel.vue'
 import MentorPanel from '../components/social/MentorPanel.vue'
 import { useCharacterStore } from '../stores/character'
-import { useGameLogStore } from '../stores/gameLog'
-import { type GameLogEntry } from '../types/gameLog'
+import { useGameLogPush } from '../composables/useGameLogPush'
 
 /** 合法 mode（gift 已并入 mail，访问时重定向） */
 type SocialMode =
@@ -39,7 +38,7 @@ const MODE_SET = new Set<string>([
 const route = useRoute()
 const router = useRouter()
 const characterStore = useCharacterStore()
-const gameLogStore = useGameLogStore()
+const { gameLogStore, pushLog } = useGameLogPush()
 
 const mode = computed<SocialMode>(() => {
   const m = route.query.mode
@@ -65,10 +64,6 @@ const tradeSessionId = computed(() => {
   }
   return null
 })
-
-function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
-  gameLogStore.push(message, level)
-}
 
 function setMode(next: SocialMode): void {
   const query: Record<string, string> = {

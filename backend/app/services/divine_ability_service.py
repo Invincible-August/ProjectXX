@@ -165,6 +165,7 @@ class DivineAbilityService:
                 {
                     "id": row.ability_id,
                     "name": body.name,
+                    "icon": str(body.icon or row.ability_id),
                     "source": source,
                     "source_label_zh": technique_source_label_zh(source),
                     "help_zh": body.help_zh,
@@ -270,6 +271,7 @@ class DivineAbilityService:
             }
             if item:
                 view["name"] = item["name"]
+                view["icon"] = item.get("icon") or ability_id
                 view["source"] = item["source"]
                 view["source_label_zh"] = item["source_label_zh"]
                 view["help_zh"] = item.get("help_zh") or ""

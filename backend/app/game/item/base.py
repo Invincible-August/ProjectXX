@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from app.constants.inventory import Occupancy, bag_tab_for
+from app.domain.item_icon import resolve_item_icon
 from app.game.ability.grant import GrantSource
 from app.game.item.laws import can_stack_with as laws_can_stack_with
 from app.game.item.laws import can_trade as laws_can_trade
@@ -42,6 +43,13 @@ class Item(ABC):
     def get_def_id(self) -> str:
         """配置定义 id。"""
         return self._def_id
+
+    def get_icon(self) -> str:
+        """UI icon key (§0.0.4); defaults to def_id when catalog omits icon."""
+        return resolve_item_icon(
+            str(self._raw.get("icon") or self._raw.get("ui_key") or "") or None,
+            self._def_id,
+        )
 
     def get_stack_rules(self) -> dict[str, Any]:
         """绑定 / 唯一 / 可出售 / 堆叠摘要。"""

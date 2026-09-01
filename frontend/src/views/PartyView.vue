@@ -8,17 +8,12 @@ import AuthSessionBar from '../components/AuthSessionBar.vue'
 import PartyPanel from '../components/party/PartyPanel.vue'
 import { useCharacterStore } from '../stores/character'
 import { useChatStore } from '../stores/chat'
-import { useGameLogStore } from '../stores/gameLog'
-import { type GameLogEntry } from '../types/gameLog'
+import { useGameLogPush } from '../composables/useGameLogPush'
 
 const router = useRouter()
 const characterStore = useCharacterStore()
 const chatStore = useChatStore()
-const gameLogStore = useGameLogStore()
-
-function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
-  gameLogStore.push(message, level)
-}
+const { gameLogStore, pushLog } = useGameLogPush()
 
 onMounted(async () => {
   if (!characterStore.character) {

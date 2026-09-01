@@ -16,7 +16,7 @@ import ConstitutionPanel from '../components/ConstitutionPanel.vue'
 import { useAvatarStore } from '../stores/avatar'
 import { useCharacterStore } from '../stores/character'
 import type { CharacterPublic } from '../types/character'
-import { createLogEntry, type GameLogEntry } from '../types/gameLog'
+import { useGameLogPush } from '../composables/useGameLogPush'
 import { avatarAsCharacter } from '../utils/avatarAsCharacter'
 import { canEnterWudao } from '../utils/realm'
 
@@ -26,7 +26,7 @@ const characterStore = useCharacterStore()
 const avatarStore = useAvatarStore()
 
 const loadError = ref('')
-const logHint = ref<GameLogEntry[]>([])
+const { gameLogStore, pushLog } = useGameLogPush()
 const dismissBusy = ref(false)
 
 const actorView = computed<'main' | 'avatar'>(() =>
@@ -48,10 +48,6 @@ const avatarCharacter = computed((): CharacterPublic | null => {
   if (!ch || !av) return ch
   return avatarAsCharacter(ch, av)
 })
-
-function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
-  logHint.value = [...logHint.value.slice(-19), createLogEntry(message, level)]
-}
 
 function setActor(next: 'main' | 'avatar'): void {
   if (actorView.value === next) return
@@ -180,12 +176,12 @@ watch(
           <ConstitutionPanel @log="pushLog" />
           <CharacterTechniquesPanel @log="pushLog" />
           <DivineAbilityPanel @log="pushLog" />
-          <el-card v-if="logHint.length" shadow="never" class="character-log">
+          <el-card v-if="gameLogStore.entries.length" shadow="never" class="character-log">
             <template #header>
               <el-text tag="b" size="small">操作提示</el-text>
             </template>
             <el-text
-              v-for="e in logHint.slice(-5)"
+              v-for="e in gameLogStore.entries.slice(-5)"
               :key="e.id"
               size="small"
               class="log-line"
@@ -233,12 +229,12 @@ watch(
           <CharacterTechniquesPanel actor="avatar" @log="pushLog" />
           <DivineAbilityPanel actor="avatar" @log="pushLog" />
           <AvatarTransferPanel :avatar="avatar" @log="pushLog" />
-          <el-card v-if="logHint.length" shadow="never" class="character-log">
+          <el-card v-if="gameLogStore.entries.length" shadow="never" class="character-log">
             <template #header>
               <el-text tag="b" size="small">操作提示</el-text>
             </template>
             <el-text
-              v-for="e in logHint.slice(-5)"
+              v-for="e in gameLogStore.entries.slice(-5)"
               :key="e.id"
               size="small"
               class="log-line"

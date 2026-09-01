@@ -7,16 +7,11 @@ import { useRouter } from 'vue-router'
 import AuthSessionBar from '../components/AuthSessionBar.vue'
 import DualCultivationPanel from '../components/dual/DualCultivationPanel.vue'
 import { useCharacterStore } from '../stores/character'
-import { useGameLogStore } from '../stores/gameLog'
-import { type GameLogEntry } from '../types/gameLog'
+import { useGameLogPush } from '../composables/useGameLogPush'
 
 const router = useRouter()
 const characterStore = useCharacterStore()
-const gameLogStore = useGameLogStore()
-
-function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
-  gameLogStore.push(message, level)
-}
+const { pushLog } = useGameLogPush()
 
 onMounted(async () => {
   if (!characterStore.character) {

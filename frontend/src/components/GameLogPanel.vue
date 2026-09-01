@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 大厅事件日志：文字贴底、新条目往上顶；本会话全量保留，窗内滚动。
+ * 大厅事件日志：文字贴底、新条目往上顶；按角色本地持久化（约 24h），窗内滚动。
  */
 import { nextTick, ref, watch } from 'vue'
 import type { GameLogEntry } from '../types/gameLog'
@@ -46,7 +46,7 @@ function textType(level: GameLogEntry['level']): '' | 'success' | 'warning' | 'i
       <div class="log-header">
         <el-text tag="b">事件日志</el-text>
         <el-text type="info" size="small">
-          本会话 {{ entries.length }} 条 · 最新在下 · 上翻看更早
+          {{ entries.length }} 条（按角色保存约 24 小时）· 最新在下 · 上翻看更早
         </el-text>
       </div>
     </template>

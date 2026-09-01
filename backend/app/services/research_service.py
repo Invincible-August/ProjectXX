@@ -59,6 +59,8 @@ from app.domain.formation_blueprint import (
 )
 from app.domain.research_schema import is_valid_zh_label
 from app.domain.technique_craft import (
+    base_upgrade_cap_total,
+    base_upgrade_used,
     enrich_affix_slots_public,
     major_rank_label_zh,
     next_rank_id,
@@ -808,6 +810,13 @@ class ResearchService:
         # Pad empty breakthrough slots the same way cultivate does.
         from app.services.technique_craft_service import TechniqueCraftService
 
+        used = base_upgrade_used(payload)
+        create_bonus = int(payload.get("create_base_upgrade_bonus_per_rank") or 0)
+        cap = base_upgrade_cap_total(
+            major_rank=major_rank,
+            create_bonus_per_rank=create_bonus,
+        )
+
         return {
             "id": row.technique_id,
             "source": row.source,
@@ -835,6 +844,11 @@ class ResearchService:
             "next_rank_label_zh": major_rank_label_zh(next_rank) if next_rank else None,
             "breakthrough_points_required": breakthrough_points_required,
             "condition_bonus": condition_bonus,
+            "base_upgrade_used": used,
+            "base_upgrade_cap": cap,
+            "base_upgrade_remaining": max(0, cap - used),
+            "create_base_realm": payload.get("create_base_realm"),
+            "create_base_upgrade_bonus_per_rank": create_bonus,
         }
 
     @staticmethod

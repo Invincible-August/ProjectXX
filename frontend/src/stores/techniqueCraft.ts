@@ -9,6 +9,7 @@ import {
   breakthroughTechniqueApi,
   chooseCultivateAffixApi,
   chooseTechniqueAffixApi,
+  chooseTechniqueMilestoneApi,
   createTechniqueDraftApi,
   embedTechniqueCardApi,
   fetchTechniqueDraftsApi,
@@ -18,6 +19,7 @@ import {
   rerollTechniqueAffixApi,
   rollCultivateAffixApi,
   rollTechniqueAffixApi,
+  rollTechniqueMilestoneApi,
   setTechniqueConditionsApi,
   upgradeTechniqueAffixApi,
   upgradeTechniqueBaseApi,
@@ -74,6 +76,11 @@ function cloneOriginal(view: TechniqueOriginalView): TechniqueOriginalView {
           element_bonus: { ...(view.condition_bonus.element_bonus || {}) },
         }
       : undefined,
+    base_upgrade_used:
+      view.base_upgrade_used != null ? Number(view.base_upgrade_used) : null,
+    base_upgrade_cap: view.base_upgrade_cap != null ? Number(view.base_upgrade_cap) : null,
+    base_upgrade_remaining:
+      view.base_upgrade_remaining != null ? Number(view.base_upgrade_remaining) : null,
   }
 }
 
@@ -122,6 +129,16 @@ function mergeCultivate(
         ? data.breakthrough_points_required
         : prev?.breakthrough_points_required ?? null,
     condition_bonus: prev?.condition_bonus,
+    base_upgrade_used:
+      data.base_upgrade_used !== undefined
+        ? data.base_upgrade_used
+        : prev?.base_upgrade_used ?? null,
+    base_upgrade_cap:
+      data.base_upgrade_cap !== undefined ? data.base_upgrade_cap : prev?.base_upgrade_cap ?? null,
+    base_upgrade_remaining:
+      data.base_upgrade_remaining !== undefined
+        ? data.base_upgrade_remaining
+        : prev?.base_upgrade_remaining ?? null,
   }
 }
 
@@ -311,6 +328,45 @@ export const useTechniqueCraftStore = defineStore('techniqueCraft', () => {
     }
   }
 
+  async function rollMilestone(
+    milestone: 'tier5' | 'perfection',
+  ): Promise<string | null> {
+    if (!selectedDraft.value) return '没有选中的心法雏形'
+    loading.value = true
+    try {
+      const envelope = await rollTechniqueMilestoneApi(selectedDraft.value.id, milestone)
+      if (envelope.code !== 0 || !envelope.data) {
+        return envelope.message || '推演层数奖励失败'
+      }
+      applyDraft(envelope.data)
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function chooseMilestone(
+    milestone: 'tier5' | 'perfection',
+    bonusId: string,
+  ): Promise<string | null> {
+    if (!selectedDraft.value) return '没有选中的心法雏形'
+    loading.value = true
+    try {
+      const envelope = await chooseTechniqueMilestoneApi(
+        selectedDraft.value.id,
+        milestone,
+        bonusId,
+      )
+      if (envelope.code !== 0 || !envelope.data) {
+        return envelope.message || '选择层数奖励失败'
+      }
+      applyDraft(envelope.data)
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function finalize(labelZh: string): Promise<string | null> {
     if (!selectedDraft.value) return '没有选中的心法雏形'
     const draft = selectedDraft.value
@@ -393,6 +449,16 @@ export const useTechniqueCraftStore = defineStore('techniqueCraft', () => {
             ? row.breakthrough_points_required
             : cached.breakthrough_points_required ?? null,
         condition_bonus: row.condition_bonus || cached.condition_bonus,
+        base_upgrade_used:
+          row.base_upgrade_used !== undefined
+            ? row.base_upgrade_used
+            : cached.base_upgrade_used ?? null,
+        base_upgrade_cap:
+          row.base_upgrade_cap !== undefined ? row.base_upgrade_cap : cached.base_upgrade_cap ?? null,
+        base_upgrade_remaining:
+          row.base_upgrade_remaining !== undefined
+            ? row.base_upgrade_remaining
+            : cached.base_upgrade_remaining ?? null,
       }
       rememberCultivate(selectedOriginal.value)
       return
@@ -417,6 +483,11 @@ export const useTechniqueCraftStore = defineStore('techniqueCraft', () => {
           ? Number(row.breakthrough_points_required)
           : null,
       condition_bonus: row.condition_bonus,
+      base_upgrade_used:
+        row.base_upgrade_used != null ? Number(row.base_upgrade_used) : null,
+      base_upgrade_cap: row.base_upgrade_cap != null ? Number(row.base_upgrade_cap) : null,
+      base_upgrade_remaining:
+        row.base_upgrade_remaining != null ? Number(row.base_upgrade_remaining) : null,
     }
     rememberCultivate(selectedOriginal.value)
   }
@@ -578,6 +649,8 @@ export const useTechniqueCraftStore = defineStore('techniqueCraft', () => {
     rollAffix,
     chooseAffix,
     rerollAffix,
+    rollMilestone,
+    chooseMilestone,
     finalize,
     selectOriginalFromMine,
     upgradeBase,

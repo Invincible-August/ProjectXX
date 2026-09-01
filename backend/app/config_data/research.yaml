@@ -25,8 +25,10 @@ technique:
   extra_affix_roll: 12
   session_ttl_seconds: 86400
   track: spirit
-  max_level: 5
-  cost_per_level: [30, 60, 100, 160, 250]
+  # 可修炼层数上限 10；下标 level 对应「当前层→下一层」消耗（1→2 用 [1] … 9→10 用 [9]）
+  max_level: 10
+  cost_per_level: [30, 60, 100, 160, 250, 400, 600, 800, 1000, 1200]
+  perfection_cost: 1500
 
 formation:
   label_zh: 自研阵法
@@ -96,6 +98,20 @@ affixes:
 # 功法卡片自研（P1）：空白卡→类型/正式卡→镶嵌草稿；数值均为占位，禁止在代码 if 分支写死。
 technique_craft:
   help_zh: 于洞府储物开出属性/效能正式卡，点镶嵌格选卡入雏形，确认发动条件与词条后定稿可培养。
+  # 自创定稿默认可经资源分配修炼层数（1→10→大圆满）；定稿前须推演五层/圆满奖励三选
+  default_cultivable: true
+  perfection_cost: 1500
+  # 层数里程碑奖励测试库（milestone=tier5|perfection）；后台域 research 可改
+  level_bonus_catalog:
+    tb_atk_gray: { label_zh: 小攻残痕, milestone: tier5, rarity: gray, stats: { phys_atk: 1 } }
+    tb_hp_white: { label_zh: 体魄微光, milestone: tier5, rarity: white, stats: { hp: 8 } }
+    tb_def_green: { label_zh: 护体薄纱, milestone: tier5, rarity: green, stats: { phys_def: 2 } }
+    tb_matk_blue: { label_zh: 法意初凝, milestone: tier5, rarity: blue, stats: { magic_atk: 2 } }
+    pf_atk_white: { label_zh: 圆满锋刃, milestone: perfection, rarity: white, stats: { phys_atk: 3 } }
+    pf_hp_green: { label_zh: 圆满体魄, milestone: perfection, rarity: green, stats: { hp: 20 } }
+    pf_atk_blue: { label_zh: 圆满锋芒, milestone: perfection, rarity: blue, stats: { phys_atk: 4 } }
+    pf_matk_purple: { label_zh: 圆满法芒, milestone: perfection, rarity: purple, stats: { magic_atk: 4 } }
+  level_bonus_roll_weights: { gray: 10, white: 28, green: 26, blue: 24, purple: 8, orange: 3, red: 1 }
   blank_to_type_p_element: 0.5
   efficacy_weights:
     spell_attack: 1
@@ -111,7 +127,9 @@ technique_craft:
   affix_upgrade_points: [5, 10, 20]
   spirit_upgrade_cost: [20, 40, 80, 160]
   body_upgrade_cost: [20, 40, 80, 160]
-  affix_upgrade_cost: [15, 30, 60, 120]
+  # 词条升级消耗：下标=当前等级（0→1 用 [0]，1→2 用 [1]…）；超出表长用末项；× 稀有度 cost_mult
+  # 后台域 research → technique_craft.affix_upgrade_cost / affix_rarities.*.cost_mult 可改
+  affix_upgrade_cost: [15, 30, 60, 120, 200, 320, 480, 720]
   affix_reroll_cost: [10, 20, 40, 80]
   breakthrough_cost_cultivation: 50
   breakthrough_cost_body: 50
@@ -121,7 +139,8 @@ technique_craft:
   # 突破成功后，每个「已有」词条额外叠一层数值（新开空位不叠）；与稀有度 upgrade_mult 无关
   breakthrough_affix_bonus: 0.15
   base_stat_per_click: 1
-  # 各阶 upgrade_points_required = 突破「进入该阶」所需累计升级点（后台域 research 可改）
+  # 各阶 base_upgrade_cap = 进入/处于该功法阶时「本阶新增」的基础加成次数（累加，非累计总上限）
+  # 例：锻体 3、炼气再 +4 → 炼气阶共 7；创建境界额外见 base_upgrade_create_bonus_per_rank
   # affix_slots：创建时按人物境界取栏数；突破时若功法阶栏数更高则补空位
   ranks:
     body_tempering:
@@ -130,28 +149,38 @@ technique_craft:
       upgrade_points_required: 10
     qi_refining:
       affix_slots: 2
-      base_upgrade_cap: 6
+      base_upgrade_cap: 4
       upgrade_points_required: 100
     foundation:
       affix_slots: 2
-      base_upgrade_cap: 9
+      base_upgrade_cap: 4
       upgrade_points_required: 200
     jindan:
       affix_slots: 3
-      base_upgrade_cap: 12
+      base_upgrade_cap: 5
       upgrade_points_required: 350
     yuanying:
       affix_slots: 3
-      base_upgrade_cap: 15
+      base_upgrade_cap: 5
       upgrade_points_required: 500
     huashen:
       affix_slots: 4
-      base_upgrade_cap: 18
+      base_upgrade_cap: 6
       upgrade_points_required: 800
     true_immortal:
       affix_slots: 4
-      base_upgrade_cap: 21
+      base_upgrade_cap: 6
       upgrade_points_required: 1200
+  # 创建时人物境界 → 之后每达成一功法阶额外多给几次基础加成（后台域 research 可改）
+  # 法修（法术/修为修炼）读 major_realm；体修（武技/炼体修炼）读炼体大境对照的 unlock_major，勿混用
+  base_upgrade_create_bonus_per_rank:
+    body_tempering: 0
+    qi_refining: 1
+    foundation: 1
+    jindan: 2
+    yuanying: 2
+    huashen: 3
+    true_immortal: 4
   weapon_bonus:
     sword: { phys_atk: 2 }
     saber: { phys_atk: 2 }
@@ -163,52 +192,53 @@ technique_craft:
   # 属性限制加成：栏位预留，后续后台可配；当前为空
   element_bonus: {}
   # 词条稀有度：权重控制三选出现率；base/upgrade/cost_mult 控初始值、升级加成、升级消耗
+  # label_zh：粗糙→太古（前端芯片不写品阶字，只靠颜色；悬停/详情徽章用此文案）
   # 后台域 research 可改（口子已留）
   affix_rarities:
     gray:
-      label_zh: 灰
+      label_zh: 粗糙
       weight: 10
       base_mult: 0.7
       upgrade_mult: 0.7
       cost_mult: 0.75
       color: "#9e9e9e"
     white:
-      label_zh: 白
+      label_zh: 普通
       weight: 28
       base_mult: 1.0
       upgrade_mult: 1.0
       cost_mult: 1.0
       color: "#eceff1"
     green:
-      label_zh: 绿
+      label_zh: 优秀
       weight: 26
       base_mult: 1.2
       upgrade_mult: 1.2
       cost_mult: 1.25
       color: "#67c23a"
     blue:
-      label_zh: 蓝
+      label_zh: 精良
       weight: 24
       base_mult: 1.4
       upgrade_mult: 1.4
       cost_mult: 1.5
       color: "#409eff"
     purple:
-      label_zh: 紫
+      label_zh: 史诗
       weight: 8
       base_mult: 1.7
       upgrade_mult: 1.7
       cost_mult: 1.9
       color: "#a855f7"
     orange:
-      label_zh: 橙
+      label_zh: 传说
       weight: 3
       base_mult: 2.1
       upgrade_mult: 2.1
       cost_mult: 2.5
       color: "#e6a23c"
     red:
-      label_zh: 红
+      label_zh: 太古
       weight: 1
       base_mult: 2.8
       upgrade_mult: 2.8

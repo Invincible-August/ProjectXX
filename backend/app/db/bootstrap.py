@@ -113,6 +113,7 @@ _CRAFT_JOB_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
 
 _TECHNIQUE_TABLE_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
     ("source", "VARCHAR(16) NOT NULL DEFAULT 'system'"),
+    ("perfected", "BOOLEAN NOT NULL DEFAULT 0"),
 )
 
 _PRIVATE_TECHNIQUE_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
@@ -123,6 +124,7 @@ _PRIVATE_TECHNIQUE_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
 
 _TECHNIQUE_DRAFT_COLUMN_PATCHES: tuple[tuple[str, str], ...] = (
     ("conditions_confirmed", "BOOLEAN NOT NULL DEFAULT 0"),
+    ("milestones_json", "TEXT NOT NULL DEFAULT '{}'"),
 )
 
 # avatars 表 AVATAR-D03 体力 / 日行动补列 + 道友助战开关

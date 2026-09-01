@@ -7,6 +7,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PoolPickerGrid from '../character/PoolPickerGrid.vue'
 import ResearchMineList from './ResearchMineList.vue'
+import RarityBadge from '../common/RarityBadge.vue'
 import { usePlayWriteGate } from '../../composables/usePlayWriteGate'
 import { useTechniqueCraftStore } from '../../stores/techniqueCraft'
 import { useInventoryStore } from '../../stores/inventory'
@@ -20,7 +21,12 @@ import {
   TECHNIQUE_CRAFT_HELP_ZH,
   WEAPON_LIMIT_OPTIONS,
   affixLabelZh,
+  affixRarityAccentColor,
+  affixRarityChipStyle,
+  affixRarityPanelStyle,
+  affixRarityTextColor,
   affixSlotLabelZh,
+  formatAffixStatLines,
   formatAffixStats,
   asAffixSlots,
   efficacyLabelZh,
@@ -30,6 +36,7 @@ import {
   type TechniqueAffixSlot,
   type TechniqueAffixView,
   type TechniqueDraftPublic,
+  type TechniqueMilestoneCell,
   type TechniqueMineFields,
 } from '../../types/techniqueCraft'
 import { shortItemName } from '../../utils/itemHoverFormat'
@@ -63,6 +70,9 @@ const weaponLimit = ref('')
 const labelZh = ref('')
 /** Which embed slot is open for PoolPickerGrid: element | efficacy | null */
 const pickerKind = ref<'element' | 'efficacy' | null>(null)
+/** Cultivate affix detail dialog (click chip → inspect; upgrade is separate). */
+const affixDetailOpen = ref(false)
+const affixDetailSlot = ref<number | null>(null)
 
 const draft = computed(() => craftStore.selectedDraft)
 const original = computed(() => craftStore.selectedOriginal)
@@ -373,6 +383,48 @@ async function onReroll(slot: number): Promise<void> {
   })
 }
 
+async function onRollMilestone(milestone: 'tier5' | 'perfection'): Promise<void> {
+  await runBusy(async () => {
+    const err = await craftStore.rollMilestone(milestone)
+    if (err) {
+      fail(err)
+      return
+    }
+    emit('log', milestone === 'tier5' ? '已推演五层奖励' : '已推演大圆满奖励', 'info')
+  })
+}
+
+async function onChooseMilestone(
+  milestone: 'tier5' | 'perfection',
+  bonusId: string,
+): Promise<void> {
+  await runBusy(async () => {
+    const err = await craftStore.chooseMilestone(milestone, bonusId)
+    if (err) {
+      fail(err)
+      return
+    }
+    emit('log', `已选定层数奖励「${bonusId}」`, 'success')
+  })
+}
+
+function milestoneCell(key: 'tier5' | 'perfection'): TechniqueMilestoneCell {
+  return (draft.value?.milestones || {})[key] || { options: [], chosen_id: null }
+}
+
+function milestoneOptionLabel(cell: TechniqueMilestoneCell, opt: string, idx: number): string {
+  const views = cell.option_views || []
+  if (views[idx] && views[idx].id === opt) {
+    const stats = views[idx].stats || {}
+    const statText = Object.entries(stats)
+      .map(([k, v]) => `${k}+${v}`)
+      .join(' ')
+    return statText ? `${views[idx].label_zh}（${statText}）` : views[idx].label_zh
+  }
+  const hit = views.find((v) => v.id === opt)
+  return hit?.label_zh || opt
+}
+
 /** Highlight only the first matching option when duplicates exist. */
 function isAffixOptionChosen(
   slot: { chosen_id: string | null; options: string[] },
@@ -396,7 +448,8 @@ function optionViewFor(
 function optionButtonLabel(slot: TechniqueAffixSlot, opt: string, optIdx: number): string {
   const view = optionViewFor(slot, opt, optIdx)
   if (!view) return affixLabelZh(opt)
-  return `[${view.rarity_label_zh}] ${view.label_zh}（${formatAffixStats(view.stats)}）`
+  // Chip shows name + stats only; rarity is the border/left color bar.
+  return `${view.label_zh}（${formatAffixStats(view.stats)}）`
 }
 
 function optionButtonStyle(
@@ -405,23 +458,17 @@ function optionButtonStyle(
   optIdx: number,
 ): Record<string, string> {
   const view = optionViewFor(slot, opt, optIdx)
-  const color = view?.color || '#909399'
-  if (isAffixOptionChosen(slot, opt, optIdx)) {
-    return {
-      backgroundColor: color,
-      borderColor: color,
-      color: rarityTextColor(view?.rarity),
-    }
-  }
-  return {
-    borderColor: color,
-    color,
-  }
+  return affixRarityChipStyle(view?.rarity, isAffixOptionChosen(slot, opt, optIdx))
 }
 
-function rarityTextColor(rarity: string | undefined): string {
-  if (rarity === 'white' || rarity === 'gray') return '#303133'
-  return '#ffffff'
+function chosenChipStyle(slot: TechniqueAffixSlot): Record<string, string> | undefined {
+  if (!slot.chosen_view) return undefined
+  return affixRarityChipStyle(slot.chosen_view.rarity, true)
+}
+
+function chosenLineStyle(slot: TechniqueAffixSlot): Record<string, string> | undefined {
+  if (!slot.chosen_view) return undefined
+  return { color: affixRarityTextColor(slot.chosen_view.rarity) }
 }
 
 async function onFinalize(): Promise<void> {
@@ -492,6 +539,39 @@ async function onAffixUpgrade(slot: number): Promise<void> {
   })
 }
 
+const affixDetailCell = computed((): TechniqueAffixSlot | null => {
+  const idx = affixDetailSlot.value
+  if (idx == null) return null
+  return originalAffixSlots.value[idx] ?? null
+})
+
+const affixDetailView = computed((): TechniqueAffixView | null => {
+  const cell = affixDetailCell.value
+  if (!cell?.chosen_id) return null
+  return cell.chosen_view ?? null
+})
+
+function openAffixDetail(slot: number): void {
+  affixDetailSlot.value = slot
+  affixDetailOpen.value = true
+}
+
+function closeAffixDetail(): void {
+  affixDetailOpen.value = false
+  affixDetailSlot.value = null
+}
+
+function chosenAffixChipLabel(slot: TechniqueAffixSlot): string {
+  const name = slot.chosen_view?.label_zh || affixLabelZh(slot.chosen_id)
+  return `${name} Lv.${slot.chosen_level}`
+}
+
+async function onAffixDetailUpgrade(): Promise<void> {
+  const idx = affixDetailSlot.value
+  if (idx == null) return
+  await onAffixUpgrade(idx)
+}
+
 async function onCultivateRoll(slot: number): Promise<void> {
   await runBusy(async () => {
     const err = await craftStore.rollCultivateAffix(slot)
@@ -499,7 +579,7 @@ async function onCultivateRoll(slot: number): Promise<void> {
       fail(err)
       return
     }
-    emit('log', `${affixSlotLabelZh(slot)}已推演词条`, 'info')
+    emit('log', '已推演词条', 'info')
   })
 }
 
@@ -521,7 +601,7 @@ async function onCultivateReroll(slot: number): Promise<void> {
       fail(err)
       return
     }
-    emit('log', `${affixSlotLabelZh(slot)}已重新推演`, 'info')
+    emit('log', '已重新推演词条', 'info')
   })
 }
 
@@ -773,7 +853,7 @@ onMounted(() => {
                 v-for="(opt, optIdx) in slot.options"
                 :key="`${index}-${optIdx}-${opt}`"
                 size="small"
-                :type="isAffixOptionChosen(slot, opt, optIdx) ? 'primary' : 'default'"
+                class="affix-chip-btn"
                 :style="optionButtonStyle(slot, opt, optIdx)"
                 :disabled="writeBlocked"
                 @click="onChoose(index, opt)"
@@ -781,11 +861,16 @@ onMounted(() => {
                 {{ optionButtonLabel(slot, opt, optIdx) }}
               </el-button>
             </div>
-            <el-text v-if="slot.chosen_id" size="small" type="success">
+            <el-text
+              v-if="slot.chosen_id"
+              size="small"
+              class="chosen-affix-line"
+              :style="chosenLineStyle(slot)"
+            >
               已选
               {{
                 slot.chosen_view
-                  ? `[${slot.chosen_view.rarity_label_zh}] ${slot.chosen_view.label_zh}（${formatAffixStats(slot.chosen_view.stats)}）`
+                  ? `${slot.chosen_view.label_zh}（${formatAffixStats(slot.chosen_view.stats)}）`
                   : affixLabelZh(slot.chosen_id)
               }}
             </el-text>
@@ -798,6 +883,53 @@ onMounted(() => {
               重新推演
             </el-button>
           </template>
+        </div>
+
+        <el-divider content-position="left">层数奖励</el-divider>
+        <el-text size="small" type="info" class="block-hint">
+          定稿前须各推演一次并选定：修炼至五层、大圆满时生效的属性奖励（三选一）。
+        </el-text>
+        <div
+          v-for="row in [
+            { key: 'tier5' as const, title: '五层奖励' },
+            { key: 'perfection' as const, title: '大圆满奖励' },
+          ]"
+          :key="row.key"
+          class="affix-slot"
+        >
+          <div class="slot-head">
+            <el-text tag="b" size="small">{{ row.title }}</el-text>
+            <el-button
+              v-if="!(milestoneCell(row.key).options || []).length"
+              size="small"
+              :loading="busy"
+              :disabled="writeBlocked || !efficacyFilled"
+              @click="onRollMilestone(row.key)"
+            >
+              推演奖励
+            </el-button>
+          </div>
+          <div
+            v-if="(milestoneCell(row.key).options || []).length"
+            class="affix-options"
+          >
+            <el-button
+              v-for="(opt, optIdx) in milestoneCell(row.key).options"
+              :key="`${row.key}-${opt}-${optIdx}`"
+              size="small"
+              :type="milestoneCell(row.key).chosen_id === opt ? 'primary' : 'default'"
+              :disabled="writeBlocked"
+              @click="onChooseMilestone(row.key, opt)"
+            >
+              {{ milestoneOptionLabel(milestoneCell(row.key), opt, optIdx) }}
+            </el-button>
+          </div>
+          <el-text v-if="milestoneCell(row.key).chosen_id" size="small" type="success">
+            已选
+            {{
+              milestoneCell(row.key).chosen_label_zh || milestoneCell(row.key).chosen_id
+            }}
+          </el-text>
         </div>
 
         <el-divider content-position="left">定稿</el-divider>
@@ -878,12 +1010,24 @@ onMounted(() => {
               可装备为主功法或技法（装备时二选一）
             </el-text>
 
-            <el-divider content-position="left">基础属性（皆可升级）</el-divider>
+            <el-divider content-position="left">基础属性</el-divider>
+            <el-text size="small" type="info" class="help">
+              剩余可升级
+              {{
+                original.base_upgrade_remaining != null
+                  ? original.base_upgrade_remaining
+                  : '—'
+              }}
+              <template v-if="original.base_upgrade_cap != null">
+                （已用 {{ original.base_upgrade_used ?? 0 }} / 上限
+                {{ original.base_upgrade_cap }}）
+              </template>
+            </el-text>
             <div class="chip-row">
               <el-button
                 size="small"
                 :loading="busy"
-                :disabled="writeBlocked"
+                :disabled="writeBlocked || (original.base_upgrade_remaining ?? 1) <= 0"
                 @click="onBase('attack')"
               >
                 升级攻击（{{ original.base.attack || 0 }}）
@@ -891,7 +1035,7 @@ onMounted(() => {
               <el-button
                 size="small"
                 :loading="busy"
-                :disabled="writeBlocked"
+                :disabled="writeBlocked || (original.base_upgrade_remaining ?? 1) <= 0"
                 @click="onBase('defense')"
               >
                 升级防御（{{ original.base.defense || 0 }}）
@@ -899,7 +1043,7 @@ onMounted(() => {
               <el-button
                 size="small"
                 :loading="busy"
-                :disabled="writeBlocked"
+                :disabled="writeBlocked || (original.base_upgrade_remaining ?? 1) <= 0"
                 @click="onBase('speed')"
               >
                 升级速度（{{ original.base.speed || 0 }}）
@@ -907,89 +1051,194 @@ onMounted(() => {
             </div>
 
             <el-divider content-position="left">词条</el-divider>
-            <el-text size="small" type="info" class="help">
-              空位可在此推演补齐（突破补位）；已选词条可升级。突破成功会强化已有词条数值，新补空位不带强化。
-            </el-text>
-            <div
-              v-for="(slot, index) in originalAffixSlots"
-              :key="`cult-affix-${index}`"
-              class="affix-block"
-            >
-              <el-text size="small" tag="b">{{ affixSlotLabelZh(index) }}</el-text>
-              <template v-if="slot.chosen_id">
-                <div class="chip-row">
+            <div class="chip-row cultivate-affix-row">
+              <template
+                v-for="(slot, index) in originalAffixSlots"
+                :key="`cult-affix-${index}`"
+              >
+                <el-tooltip
+                  v-if="slot.chosen_id"
+                  placement="top"
+                  :show-after="200"
+                  effect="light"
+                  popper-class="affix-hover-popper"
+                >
+                  <template #content>
+                    <div class="affix-hover-tip">
+                      <div class="affix-hover-head">
+                        <RarityBadge
+                          v-if="slot.chosen_view"
+                          :rarity="slot.chosen_view.rarity"
+                          :label="slot.chosen_view.rarity_label_zh"
+                        />
+                        <span class="affix-hover-name">
+                          {{
+                            slot.chosen_view?.label_zh || affixLabelZh(slot.chosen_id)
+                          }}
+                        </span>
+                        <span class="affix-hover-lv">Lv.{{ slot.chosen_level }}</span>
+                      </div>
+                      <ul
+                        v-if="formatAffixStatLines(slot.chosen_view?.stats).length"
+                        class="affix-hover-stats"
+                      >
+                        <li
+                          v-for="line in formatAffixStatLines(slot.chosen_view?.stats)"
+                          :key="line.label"
+                        >
+                          <span>{{ line.label }}</span>
+                          <strong>{{ line.value }}</strong>
+                        </li>
+                      </ul>
+                      <p v-else class="affix-hover-empty">无属性加成</p>
+                      <p
+                        v-if="(slot.rank_boost || 0) > 0"
+                        class="affix-hover-meta"
+                      >
+                        阶强化 ×{{ slot.rank_boost }}
+                      </p>
+                      <p
+                        v-if="slot.next_upgrade_cost != null"
+                        class="affix-hover-meta affix-hover-cost"
+                      >
+                        下次升级耗 {{ slot.next_upgrade_cost }}
+                        <span class="affix-hover-cost-note">（随等级上涨）</span>
+                      </p>
+                      <p class="affix-hover-hint">点击查看详情并升级</p>
+                    </div>
+                  </template>
                   <el-button
+                    size="small"
+                    class="affix-chip-btn"
+                    :style="chosenChipStyle(slot)"
+                    @click="openAffixDetail(index)"
+                  >
+                    {{ chosenAffixChipLabel(slot) }}
+                  </el-button>
+                </el-tooltip>
+                <template v-else>
+                  <el-button
+                    v-if="!slot.options.length"
                     size="small"
                     :loading="busy"
                     :disabled="writeBlocked"
-                    :style="
-                      slot.chosen_view
-                        ? {
-                            borderColor: slot.chosen_view.color,
-                            color: slot.chosen_view.color,
-                          }
-                        : undefined
-                    "
-                    @click="onAffixUpgrade(index)"
+                    @click="onCultivateRoll(index)"
                   >
-                    升级 ·
-                    {{
-                      slot.chosen_view
-                        ? `[${slot.chosen_view.rarity_label_zh}] ${slot.chosen_view.label_zh}`
-                        : affixLabelZh(slot.chosen_id)
-                    }}
-                    Lv.{{ slot.chosen_level }}
-                    <template v-if="(slot.rank_boost || 0) > 0">
-                      · 阶强{{ slot.rank_boost }}
-                    </template>
-                    <template v-if="slot.next_upgrade_cost != null">
-                      （耗 {{ slot.next_upgrade_cost }}）
-                    </template>
+                    推演词条
                   </el-button>
-                </div>
-                <el-text size="small" class="help">
-                  {{
-                    slot.chosen_view
-                      ? formatAffixStats(slot.chosen_view.stats)
-                      : '已选'
-                  }}
-                </el-text>
-              </template>
-              <template v-else>
-                <el-button
-                  v-if="!slot.options.length"
-                  size="small"
-                  :loading="busy"
-                  :disabled="writeBlocked"
-                  @click="onCultivateRoll(index)"
-                >
-                  推演词条
-                </el-button>
-                <template v-else>
-                  <div class="chip-row affix-options">
+                  <div v-else class="affix-block empty-affix-pick">
+                    <div class="chip-row affix-options">
+                      <el-button
+                        v-for="(opt, optIdx) in slot.options"
+                        :key="`cult-${index}-${optIdx}-${opt}`"
+                        size="small"
+                        :style="optionButtonStyle(slot, opt, optIdx)"
+                        :disabled="writeBlocked"
+                        @click="onCultivateChoose(index, opt)"
+                      >
+                        {{ optionButtonLabel(slot, opt, optIdx) }}
+                      </el-button>
+                    </div>
                     <el-button
-                      v-for="(opt, optIdx) in slot.options"
-                      :key="`cult-${index}-${optIdx}-${opt}`"
                       size="small"
-                      :type="isAffixOptionChosen(slot, opt, optIdx) ? 'primary' : 'default'"
-                      :style="optionButtonStyle(slot, opt, optIdx)"
+                      :loading="busy"
                       :disabled="writeBlocked"
-                      @click="onCultivateChoose(index, opt)"
+                      @click="onCultivateReroll(index)"
                     >
-                      {{ optionButtonLabel(slot, opt, optIdx) }}
+                      重新推演
                     </el-button>
                   </div>
-                  <el-button
-                    size="small"
-                    :loading="busy"
-                    :disabled="writeBlocked"
-                    @click="onCultivateReroll(index)"
-                  >
-                    重新推演
-                  </el-button>
                 </template>
               </template>
             </div>
+
+            <el-dialog
+              v-model="affixDetailOpen"
+              title="词条详情"
+              width="360px"
+              destroy-on-close
+              @closed="closeAffixDetail"
+            >
+              <template v-if="affixDetailCell?.chosen_id">
+                <div
+                  class="affix-detail-panel"
+                  :style="
+                    affixDetailView
+                      ? affixRarityPanelStyle(affixDetailView.rarity)
+                      : undefined
+                  "
+                >
+                  <div class="affix-detail-head">
+                    <RarityBadge
+                      v-if="affixDetailView"
+                      :rarity="affixDetailView.rarity"
+                      :label="affixDetailView.rarity_label_zh"
+                      size="default"
+                    />
+                    <el-text
+                      tag="b"
+                      class="affix-detail-title"
+                      :style="
+                        affixDetailView
+                          ? { color: affixRarityAccentColor(affixDetailView.rarity) }
+                          : undefined
+                      "
+                    >
+                      {{
+                        affixDetailView
+                          ? affixDetailView.label_zh
+                          : affixLabelZh(affixDetailCell.chosen_id)
+                      }}
+                    </el-text>
+                  </div>
+                  <el-text size="small" class="affix-detail-line">
+                    等级 Lv.{{ affixDetailCell.chosen_level }}
+                    <template v-if="(affixDetailCell.rank_boost || 0) > 0">
+                      · 阶强化 {{ affixDetailCell.rank_boost }}
+                    </template>
+                  </el-text>
+                  <ul
+                    v-if="formatAffixStatLines(affixDetailView?.stats).length"
+                    class="affix-detail-stats"
+                  >
+                    <li
+                      v-for="line in formatAffixStatLines(affixDetailView?.stats)"
+                      :key="`d-${line.label}`"
+                    >
+                      <span>{{ line.label }}</span>
+                      <strong>{{ line.value }}</strong>
+                    </li>
+                  </ul>
+                  <el-text v-else size="small" class="affix-detail-line">效果：—</el-text>
+                  <el-text
+                    v-if="affixDetailCell.next_upgrade_cost != null"
+                    size="small"
+                    class="affix-detail-line affix-detail-cost"
+                  >
+                    下次升级消耗
+                    <strong>{{ affixDetailCell.next_upgrade_cost }}</strong>
+                    <span class="affix-detail-cost-note">（按当前等级计，升级后更贵）</span>
+                  </el-text>
+                  <el-text v-else size="small" type="info" class="affix-detail-line">
+                    暂无下次升级消耗
+                  </el-text>
+                </div>
+              </template>
+              <template #footer>
+                <el-button @click="closeAffixDetail">关闭</el-button>
+                <el-button
+                  type="primary"
+                  :loading="busy"
+                  :disabled="writeBlocked || !affixDetailCell?.chosen_id"
+                  @click="onAffixDetailUpgrade"
+                >
+                  升级
+                  <template v-if="affixDetailCell?.next_upgrade_cost != null">
+                    （耗 {{ affixDetailCell.next_upgrade_cost }}）
+                  </template>
+                </el-button>
+              </template>
+            </el-dialog>
 
             <el-divider content-position="left">发动条件加成（预留）</el-divider>
             <el-text
@@ -1180,6 +1429,87 @@ onMounted(() => {
   gap: 0.35rem;
   margin-bottom: 0.65rem;
 }
+.cultivate-affix-row {
+  align-items: flex-start;
+}
+.empty-affix-pick {
+  width: 100%;
+  margin-bottom: 0.35rem;
+}
+.affix-chip-btn {
+  --el-button-hover-text-color: #111827;
+  --el-button-hover-bg-color: #f9fafb;
+  --el-button-hover-border-color: inherit;
+  --el-button-text-color: #111827;
+  --el-button-bg-color: #ffffff;
+}
+.affix-chip-btn.el-button:hover,
+.affix-chip-btn.el-button:focus {
+  color: #111827 !important;
+  background-color: #f9fafb !important;
+  filter: none;
+  opacity: 1;
+}
+.chosen-affix-line {
+  font-weight: 700;
+  color: #111827;
+}
+.affix-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.15rem;
+}
+.affix-detail-panel {
+  margin-bottom: 0.15rem;
+}
+.affix-detail-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.affix-detail-line {
+  display: block;
+  margin-top: 0.45rem;
+  line-height: 1.45;
+}
+.affix-detail-stats {
+  margin: 0.55rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+.affix-detail-stats li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.28rem 0.45rem;
+  border-radius: 6px;
+  background: var(--el-fill-color-light);
+  font-size: 0.85rem;
+  color: var(--el-text-color-regular);
+}
+.affix-detail-stats strong {
+  color: var(--el-text-color-primary);
+  font-variant-numeric: tabular-nums;
+}
+.affix-detail-cost strong {
+  margin: 0 0.15rem;
+  color: #111827;
+  font-variant-numeric: tabular-nums;
+}
+.affix-detail-cost-note,
+.affix-hover-cost-note {
+  margin-left: 0.2rem;
+  color: var(--el-text-color-secondary);
+  font-weight: 400;
+}
+.affix-hover-cost {
+  color: #111827;
+  font-weight: 600;
+}
 .finalize-row {
   display: flex;
   flex-wrap: wrap;
@@ -1193,5 +1523,70 @@ onMounted(() => {
   .tech-bench {
     grid-template-columns: 1fr;
   }
+}
+</style>
+
+<style>
+/* Teleported tooltip — must be unscoped */
+.affix-hover-popper.el-popper {
+  max-width: 15rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--el-border-color-lighter);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.1);
+}
+.affix-hover-tip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  color: var(--el-text-color-primary);
+  line-height: 1.4;
+}
+.affix-hover-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+.affix-hover-name {
+  font-weight: 650;
+  font-size: 0.9rem;
+}
+.affix-hover-lv {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--el-text-color-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.affix-hover-stats {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.affix-hover-stats li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.85rem;
+  font-size: 0.8rem;
+  color: var(--el-text-color-regular);
+}
+.affix-hover-stats strong {
+  color: var(--el-text-color-primary);
+  font-variant-numeric: tabular-nums;
+}
+.affix-hover-empty,
+.affix-hover-meta {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--el-text-color-secondary);
+}
+.affix-hover-hint {
+  margin: 0.1rem 0 0;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--el-border-color-extra-light);
+  font-size: 0.72rem;
+  color: var(--el-text-color-placeholder);
 }
 </style>

@@ -36,6 +36,7 @@ from app.db.models.inventory_item import InventoryItem
 from app.domain.inventory_rules import apply_remove, can_add_to_stack, max_stack_for
 from app.game.item import ConsumableItem, item_from_inventory_row
 from app.schemas.common import AppError
+from app.domain.item_icon import resolve_item_icon
 from app.services.realm_config import get_game_config
 
 logger = logging.getLogger(__name__)
@@ -184,6 +185,11 @@ class InventoryService:
                     "item_type": row.item_type,
                     "item_id": row.item_id,
                     "name": display_name,
+                    "icon": (
+                        str(defn.icon)
+                        if defn is not None and str(defn.icon or "").strip()
+                        else resolve_item_icon(None, str(row.item_id))
+                    ),
                     "quantity": int(row.quantity),
                     "bag_kind": str(getattr(row, "bag_kind", None) or "normal"),
                     "meta": meta,

@@ -693,7 +693,7 @@ CRAFT_RECIPES_SCHEMA = DomainEditSchema(
     fields=(
         _f("main_crafting_bonus", "本体挂机加成", "制造业方向工坊效率乘区", "float"),
         _f("max_jobs_per_actor", "同时任务上限", "同一角色同时进行的工坊任务数", "int"),
-        _f("quality_by_level_delta", "品质档", "制作者等级差→品质权重", "json"),
+        _f("quality_by_level_delta", "造物品阶档", "制作者等级差→粗糙～太古权重（gray…red）", "json"),
         _f("recipes", "配方表", "recipe_id→配方定义", "json"),
     ),
     entry_path=("recipes",),
@@ -722,6 +722,10 @@ TECHNIQUES_SCHEMA = DomainEditSchema(
     entry_fields=(
         _ENTRY_COMMON_NAME,
         _f("track", "轨道", "spirit / body / crafting 等", "string"),
+        _f("cultivable", "可修炼", "资源分配层数至大圆满", "bool"),
+        _f("perfection_cost", "大圆满消耗", "10 层后再投入", "int"),
+        _f("milestone_tier5", "五层奖励", "level_bonus_catalog id", "string"),
+        _f("milestone_perfection", "大圆满奖励", "level_bonus_catalog id", "string"),
         _f("dice_mods", "骰子修正", "挂接修为骰通道", "json"),
         _f("effects", "效果", "挂机/战斗效果对象", "json"),
     ),

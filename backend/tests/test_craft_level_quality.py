@@ -34,10 +34,34 @@ def test_quality_weights_jump_with_level_delta() -> None:
     bands = get_game_config().craft_recipes.quality_by_level_delta
     low = resolve_quality_weights(0, bands)
     high = resolve_quality_weights(5, bands)
-    assert low["common"] > high["common"]
-    assert high.get("superb", 0) > low.get("superb", 0)
+    assert low["white"] > high["white"]
+    assert high.get("orange", 0) + high.get("red", 0) > low.get("orange", 0) + low.get(
+        "red",
+        0,
+    )
     rng = random.Random(1)
-    assert roll_craft_quality(5, bands, rng=rng) in {"common", "fine", "rare", "superb"}
+    assert roll_craft_quality(5, bands, rng=rng) in {
+        "gray",
+        "white",
+        "green",
+        "blue",
+        "purple",
+        "orange",
+        "red",
+    }
+
+
+def test_normalize_legacy_craft_quality() -> None:
+    from app.domain.craft_quality import normalize_craft_quality
+
+    assert normalize_craft_quality("common") == "white"
+    assert normalize_craft_quality("fine") == "green"
+    assert normalize_craft_quality("rare") == "blue"
+    assert normalize_craft_quality("superb") == "purple"
+    assert normalize_craft_quality("凡品") == "white"
+    assert normalize_craft_quality("极品") == "purple"
+    assert normalize_craft_quality("orange") == "orange"
+    assert normalize_craft_quality("") == "white"
 
 
 def test_craft_equip_slot_group_maps_catalog_kinds() -> None:

@@ -4,6 +4,7 @@
  */
 import type { PetPublic } from '../../types/pets'
 import { petDisplayName } from '../../utils/petDisplay'
+import { rarityChipStyle } from '../../utils/rarityDisplay'
 
 defineProps<{
   pets: PetPublic[]
@@ -13,7 +14,6 @@ defineProps<{
 const emit = defineEmits<{
   select: [pet: PetPublic]
 }>()
-
 </script>
 
 <template>
@@ -31,6 +31,7 @@ const emit = defineEmits<{
       :key="pet.id"
       class="pet-row"
       :class="{ focused: focusId === pet.id }"
+      :style="pet.rarity ? rarityChipStyle(pet.rarity) : undefined"
       @click="emit('select', pet)"
     >
       <el-text tag="b" size="small">{{ petDisplayName(pet) }}</el-text>
@@ -41,7 +42,6 @@ const emit = defineEmits<{
       <el-tag v-if="pet.race_name || pet.race" size="small">
         {{ pet.race_name || pet.race }}
       </el-tag>
-      <el-tag v-if="pet.rarity" size="small" type="info">{{ pet.rarity }}</el-tag>
       <el-tag v-if="pet.is_deploy_preferred" size="small" type="success">偏好上阵</el-tag>
       <el-text v-if="pet.stats" size="small" type="info">
         攻{{ pet.stats.atk }}/血{{ pet.stats.hp }}
@@ -65,11 +65,11 @@ const emit = defineEmits<{
   margin-bottom: 0.35rem;
   border-radius: 6px;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: filter 0.15s ease;
 }
 
 .pet-row:hover,
 .pet-row.focused {
-  background: rgba(64, 158, 255, 0.08);
+  filter: brightness(0.98);
 }
 </style>

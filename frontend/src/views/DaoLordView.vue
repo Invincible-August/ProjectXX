@@ -15,7 +15,7 @@ import { useCharacterStore } from '../stores/character'
 import { useDaoLordStore } from '../stores/daoLord'
 import { useWorldEventsStore } from '../stores/worldEvents'
 import { useWsStore } from '../stores/ws'
-import { createLogEntry, type GameLogEntry } from '../types/gameLog'
+import { useGameLogPush } from '../composables/useGameLogPush'
 import { canEnterWudao } from '../utils/realm'
 
 const route = useRoute()
@@ -26,7 +26,7 @@ const eventsStore = useWorldEventsStore()
 const wsStore = useWsStore()
 
 const loadError = ref('')
-const logEntries = ref<GameLogEntry[]>([])
+const { gameLogStore, pushLog } = useGameLogPush()
 const canWudao = computed(() => canEnterWudao(characterStore.character?.major_realm))
 let unsubWs: (() => void) | null = null
 
@@ -55,10 +55,6 @@ const showContestRegister = computed(() => {
     (s) => Boolean(s.lord_character_id && !s.is_self_lord && s.can_challenge),
   )
 })
-
-function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
-  logEntries.value = [...logEntries.value.slice(-49), createLogEntry(message, level)]
-}
 
 function setMode(next: 'board' | 'contest' | 'events'): void {
   void router.replace({ query: { ...route.query, mode: next } })
@@ -206,11 +202,11 @@ watch(mode, async (m) => {
 
     <WorldEventSkeletonPanel v-else @log="pushLog" />
 
-    <el-card v-if="logEntries.length" shadow="never" class="mt">
+    <el-card v-if="gameLogStore.entries.length" shadow="never" class="mt">
       <template #header>
         <el-text tag="b" size="small">本页日志</el-text>
       </template>
-      <div v-for="e in logEntries.slice(-8)" :key="e.id" class="log-line">
+      <div v-for="e in gameLogStore.entries.slice(-8)" :key="e.id" class="log-line">
         <el-text size="small">{{ e.message }}</el-text>
       </div>
     </el-card>

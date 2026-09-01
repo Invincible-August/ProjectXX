@@ -31,6 +31,12 @@ export interface EquipmentSlotPublic {
   item_uid: string | null
   item_id: string | null
   item_label_zh: string | null
+  /** §0.0.4 icon key; asset optional — UI falls back to name */
+  icon?: string | null
+  /** Craft quality id (gray…red); UI via rarityDisplay */
+  rarity?: string | null
+  /** Chinese label e.g. 普通/精良/太古 */
+  rarity_label_zh?: string | null
   stats_preview: Record<string, EquipmentStatPreview>
   channel_enabled: boolean
   channel_label_zh: string
@@ -43,6 +49,9 @@ export interface BagEquipmentItem {
   name: string
   slot_hint: string | null
   compatible_slots?: string[]
+  icon?: string | null
+  rarity?: string | null
+  rarity_label_zh?: string | null
   stats_preview?: Record<string, EquipmentStatPreview>
   quantity: number
   item_type?: string

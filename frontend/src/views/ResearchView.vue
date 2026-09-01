@@ -13,7 +13,7 @@ import { usePlayWriteGate } from '../composables/usePlayWriteGate'
 import { CAVE_LAB_PATH } from '../constants/cave'
 import { useCharacterStore } from '../stores/character'
 import { useResearchStore } from '../stores/research'
-import { createLogEntry, type GameLogEntry } from '../types/gameLog'
+import { useGameLogPush } from '../composables/useGameLogPush'
 
 type ResearchMode = 'technique' | 'formation' | 'talisman'
 
@@ -26,7 +26,7 @@ const researchStore = useResearchStore()
 const { writeBlocked, writeBlockReason } = usePlayWriteGate()
 
 const loadError = ref('')
-const logEntries = ref<GameLogEntry[]>([])
+const { gameLogStore, pushLog } = useGameLogPush()
 
 const mode = computed<ResearchMode>(() => {
   const m = route.query.mode
@@ -50,10 +50,6 @@ async function setMode(next: ResearchMode): Promise<void> {
   }
   researchStore.clearSession()
   void router.replace({ path: CAVE_LAB_PATH, query: { mode: next } })
-}
-
-function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
-  logEntries.value = [...logEntries.value.slice(-49), createLogEntry(message, level)]
 }
 
 onMounted(async () => {
@@ -148,12 +144,12 @@ watch(mode, () => {
         <ResearchMineList v-if="mode !== 'technique'" :kind="mode" />
       </div>
       <aside v-if="mode !== 'technique'" class="main-side">
-        <el-card v-if="logEntries.length" shadow="never">
+        <el-card v-if="gameLogStore.entries.length" shadow="never">
           <template #header>
             <el-text tag="b" size="small">本页日志</el-text>
           </template>
           <el-text
-            v-for="e in logEntries.slice(-12)"
+            v-for="e in gameLogStore.entries.slice(-12)"
             :key="e.id"
             size="small"
             class="log-line"
@@ -164,7 +160,7 @@ watch(mode, () => {
       </aside>
     </div>
     <el-card
-      v-if="mode === 'technique' && logEntries.length"
+      v-if="mode === 'technique' && gameLogStore.entries.length"
       shadow="never"
       class="tech-log"
     >
@@ -172,7 +168,7 @@ watch(mode, () => {
         <el-text tag="b" size="small">本页日志</el-text>
       </template>
       <el-text
-        v-for="e in logEntries.slice(-12)"
+        v-for="e in gameLogStore.entries.slice(-12)"
         :key="e.id"
         size="small"
         class="log-line"

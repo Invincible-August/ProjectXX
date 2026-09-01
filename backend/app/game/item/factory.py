@@ -41,6 +41,7 @@ def _raw_from_def(defn: Any, fallback_type: str) -> dict[str, Any]:
         "item_type": str(getattr(defn, "item_type", None) or fallback_type),
         "name": getattr(defn, "name", None),
         "label_zh": getattr(defn, "label_zh", None),
+        "icon": getattr(defn, "icon", None),
         "max_stack": getattr(defn, "max_stack", None),
         "tradable": getattr(defn, "tradable", True),
         "bound": getattr(defn, "bound", False),

@@ -35,6 +35,7 @@ from app.services.technique_service import TechniqueService
 from app.domain.technique_craft import (
     affix_upgrade_cost_multiplier,
     filter_affixes,
+    next_affix_upgrade_cost,
     payload_attr_grants,
     roll_three,
 )
@@ -580,6 +581,8 @@ def test_affix_rarity_scales_stats_and_upgrade_cost() -> None:
     from app.domain.technique_craft import (
         affix_upgrade_cost_multiplier,
         effective_affix_stats,
+        enrich_affix_slots_public,
+        next_affix_upgrade_cost,
     )
 
     clear_game_config_cache()
@@ -589,6 +592,31 @@ def test_affix_rarity_scales_stats_and_upgrade_cost() -> None:
     assert affix_upgrade_cost_multiplier("red") > affix_upgrade_cost_multiplier("white")
     leveled = effective_affix_stats("is_dao", level=2, rarity="red")
     assert leveled["magic_atk"] > red["magic_atk"]
+
+    # Level index into affix_upgrade_cost × rarity cost_mult (admin/YAML live config)
+    craft = get_game_config().research.technique_craft
+    costs = tuple(int(x) for x in craft.affix_upgrade_cost)
+    assert len(costs) >= 2
+    c0 = next_affix_upgrade_cost(level=0, rarity="white")
+    c1 = next_affix_upgrade_cost(level=1, rarity="white")
+    assert c0 == int(round(costs[0] * affix_upgrade_cost_multiplier("white")))
+    assert c1 == int(round(costs[1] * affix_upgrade_cost_multiplier("white")))
+    assert c1 > c0
+    assert next_affix_upgrade_cost(level=0, rarity="red") > c0
+
+    enriched = enrich_affix_slots_public(
+        [
+            {
+                "options": ["sa_edge"],
+                "chosen_id": "sa_edge",
+                "chosen_rarity": "white",
+                "chosen_level": 1,
+                "upgrade_count": 1,
+                "reroll_count": 0,
+            }
+        ]
+    )
+    assert enriched[0]["next_upgrade_cost"] == c1
 
 
 def test_affix_roll_three_duplicates_when_pool_has_one() -> None:
@@ -745,7 +773,7 @@ async def _ready_chosen_draft(
     elements: list[str],
     efficacy: str,
 ):
-    """Embed both cards, confirm empty conditions, roll and lock slot 0."""
+    """Embed both cards, confirm empty conditions, roll and lock slot 0 + milestones."""
     draft_id = await _ready_embedded_draft(
         session, char, svc, elements=elements, efficacy=efficacy
     )
@@ -753,6 +781,12 @@ async def _ready_chosen_draft(
     rolled = await svc.roll_affix(char, draft_id, slot=0)
     pick = str(rolled["affixes"][0]["options"][0])
     await svc.choose_affix(char, draft_id, slot=0, affix_id=pick)
+    for milestone in ("tier5", "perfection"):
+        rolled_m = await svc.roll_milestone(char, draft_id, milestone)
+        cell = (rolled_m.get("milestones") or {}).get(milestone) or {}
+        options = cell.get("options") or []
+        assert options, f"expected milestone options for {milestone}"
+        await svc.choose_milestone(char, draft_id, milestone, str(options[0]))
     await session.commit()
     return draft_id, pick
 
@@ -779,6 +813,57 @@ def test_finalize_requires_affix(
                 with pytest.raises(AppError) as exc:
                     await svc.finalize_draft(char, draft_id, label_zh="玄铁吐纳残篇")
                 assert exc.value.code == ERR_CRAFT_FINALIZE
+
+    _run(_body())
+
+
+def test_finalize_requires_milestones(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """可修炼定稿前须选定五层与大圆满奖励。"""
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "fin_ms.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "finms@test.com", "定稿里程碑测")
+                svc = TechniqueCraftService(session)
+                draft_id = await _ready_embedded_draft(
+                    session, char, svc, elements=["metal"], efficacy="spell_attack"
+                )
+                await svc.set_conditions(char, draft_id)
+                rolled = await svc.roll_affix(char, draft_id, slot=0)
+                pick = str(rolled["affixes"][0]["options"][0])
+                await svc.choose_affix(char, draft_id, slot=0, affix_id=pick)
+                await session.commit()
+                with pytest.raises(AppError) as exc:
+                    await svc.finalize_draft(char, draft_id, label_zh="缺奖励残篇")
+                assert exc.value.code == ERR_CRAFT_FINALIZE
+                assert "五层" in exc.value.message or "圆满" in exc.value.message
+
+                for milestone in ("tier5", "perfection"):
+                    rolled_m = await svc.roll_milestone(char, draft_id, milestone)
+                    cell = (rolled_m.get("milestones") or {}).get(milestone) or {}
+                    await svc.choose_milestone(
+                        char, draft_id, milestone, str(cell["options"][0])
+                    )
+                out = await svc.finalize_draft(char, draft_id, label_zh="有奖励残篇")
+                await session.commit()
+                assert out["phase"] == "finalized"
+                tech_id = str((out.get("private") or {}).get("id") or out.get("technique_id") or "")
+                private = (
+                    await session.execute(
+                        select(PrivateTechnique).where(PrivateTechnique.technique_id == tech_id)
+                    )
+                ).scalar_one()
+                payload = json.loads(private.payload_json or "{}")
+                assert payload.get("cultivable") is True
+                assert payload.get("milestone_tier5_id")
+                assert payload.get("milestone_perfection_id")
 
     _run(_body())
 
@@ -1252,12 +1337,7 @@ def test_affix_upgrade_fail_keeps_level_still_charges(
                 payload = json.loads(private.payload_json or "{}")
                 cell0 = (payload.get("affixes") or [{}])[0]
                 rarity = str(cell0.get("chosen_rarity") or "white")
-                cost = int(
-                    round(
-                        int(craft.affix_upgrade_cost[0])
-                        * affix_upgrade_cost_multiplier(rarity)
-                    )
-                )
+                cost = next_affix_upgrade_cost(level=0, rarity=rarity)
                 before = int(char.cultivation_points)
                 level_before = int(cell0.get("chosen_level") or 0)
 
@@ -1513,7 +1593,7 @@ def test_use_manual_learns_frozen_copy_and_consumes_book(
                     row
                     for row in listed
                     if str(row.get("author_character_id") or 0) == str(author.id)
-                    and row.get("cultivable") is False
+                    and row.get("lab_cultivable") is False
                 ]
                 assert len(copies) == 1
                 copy_item = copies[0]
@@ -1526,7 +1606,8 @@ def test_use_manual_learns_frozen_copy_and_consumes_book(
                     )
                 ).scalar_one()
                 assert learned.source == "chance"
-                assert copy_item["cultivable"] is False
+                assert copy_item["lab_cultivable"] is False
+                assert copy_item.get("cultivable") is True  # layer allocate still allowed via payload
 
                 b_private = await _load_private(session, str(copy_item["id"]))
                 assert int(b_private.character_id) == int(learner.id)
@@ -1584,6 +1665,7 @@ def test_copied_technique_cannot_upgrade_or_print(
                 assert original is not None
                 assert original["source"] == "research"
                 assert original["cultivable"] is True
+                assert original.get("lab_cultivable") is True
 
                 listed = await TechniqueService(session).list_my_techniques(learner)
                 copies = [
@@ -1594,7 +1676,7 @@ def test_copied_technique_cannot_upgrade_or_print(
                 assert len(copies) == 1
                 copy_item = copies[0]
                 assert copy_item["source"] == "chance"
-                assert copy_item["cultivable"] is False
+                assert copy_item["lab_cultivable"] is False
 
                 mine = await ResearchService(session).list_mine(learner)
                 mine_copy = next((t for t in mine if t["id"] == copy_item["id"]), None)
@@ -1701,7 +1783,7 @@ def test_abolish_removes_author_keeps_learner_copy(
                 copies = [
                     row
                     for row in await TechniqueService(session).list_my_techniques(learner)
-                    if row.get("cultivable") is False
+                    if row.get("lab_cultivable") is False
                     and str(row.get("author_character_id") or 0) == str(author.id)
                 ]
                 assert len(copies) == 1
@@ -1741,6 +1823,82 @@ def test_abolish_removes_author_keeps_learner_copy(
                     )
                 ).scalar_one()
                 assert learner_ct.source == "chance"
+
+    _run(_body())
+
+
+def test_base_upgrade_cap_uses_rank_grants_and_create_spirit_bonus(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Spirit create freezes major_realm bonus; body track must not use major_realm."""
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "base_cap.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "basecap@test.com", "基础上限测")
+                char.major_realm = "huashen"
+                # Body temper still low — spirit technique must ignore it.
+                char.body_temper_stage = "refine_skin"
+                char.cultivation_points = 50_000
+                await session.commit()
+                svc = TechniqueCraftService(session)
+                tech_id = await _finalize_spell_attack(session, char, svc)
+                private = await _load_private(session, tech_id)
+                payload = json.loads(private.payload_json or "{}")
+                assert payload.get("create_base_realm") == "huashen"
+                assert int(payload.get("create_base_upgrade_bonus_per_rank") or 0) == 3
+                out = await svc.upgrade_base(char, tech_id, stat="attack")
+                assert out["base_upgrade_cap"] == 3 + 3  # body_tempering grant + create bonus
+                assert out["base_upgrade_used"] == 1
+                assert out["base_upgrade_remaining"] == 5
+
+                # Exhaust remaining clicks then refuse.
+                for _ in range(5):
+                    await svc.upgrade_base(char, tech_id, "defense")
+                with pytest.raises(AppError) as exc:
+                    await svc.upgrade_base(char, tech_id, "speed")
+                assert exc.value.code == ERR_CRAFT_CULTIVATE
+
+    _run(_body())
+
+
+def test_base_upgrade_body_track_uses_body_temper_unlock_major(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Martial technique freezes body-temper unlock_major, not cultivation realm."""
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "base_body.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "basebody@test.com", "体修上限测")
+                char.major_realm = "huashen"
+                char.body_temper_stage = "refine_skin"  # unlock_major = body_tempering → bonus 0
+                char.body_tempering_points = 10_000
+                await session.commit()
+                svc = TechniqueCraftService(session)
+                draft_id, _ = await _ready_chosen_draft(
+                    session, char, svc, elements=["metal"], efficacy="martial_attack"
+                )
+                out = await svc.finalize_draft(char, draft_id, label_zh="铁骨碎拳残篇")
+                await session.commit()
+                tech_id = str((out.get("private") or {}).get("id") or out.get("technique_id") or "")
+                private = await _load_private(session, tech_id)
+                payload = json.loads(private.payload_json or "{}")
+                assert payload.get("create_base_realm") == "body_tempering"
+                assert int(payload.get("create_base_upgrade_bonus_per_rank") or 0) == 0
+                cult = await svc.upgrade_base(char, tech_id, "attack")
+                assert cult["base_upgrade_cap"] == 3
+                assert cult["base_upgrade_remaining"] == 2
 
     _run(_body())
 

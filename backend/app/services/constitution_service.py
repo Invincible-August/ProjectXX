@@ -272,6 +272,11 @@ class ConstitutionService:
             "id": item.id,
             "def_id": item.def_id,
             "name": item_def.name if item_def else item.def_id,
+            "icon": (
+                str(item_def.icon)
+                if item_def is not None and str(item_def.icon or "").strip()
+                else str(item.def_id)
+            ),
             "quality": item.quality,
             "grade": item.grade,
             "kind": item.kind,
@@ -328,6 +333,13 @@ class ConstitutionService:
                 "active_effects": dict(active),
                 "active_effects_zh": self._format_effects_zh(active) if equipped_item else "",
             }
+            if equipped_item is not None:
+                slot_info["name"] = item_def.name if item_def else equipped_item.def_id
+                slot_info["icon"] = (
+                    str(item_def.icon)
+                    if item_def is not None and str(item_def.icon or "").strip()
+                    else str(equipped_item.def_id)
+                )
             slots.append(slot_info)
             if equipped_item is not None:
                 equipped_summary.append(
@@ -336,6 +348,11 @@ class ConstitutionService:
                         "slot_index": slot.slot_index,
                         "def_id": equipped_item.def_id,
                         "name": item_def.name if item_def else equipped_item.def_id,
+                        "icon": (
+                            str(item_def.icon)
+                            if item_def is not None and str(item_def.icon or "").strip()
+                            else str(equipped_item.def_id)
+                        ),
                     },
                 )
 

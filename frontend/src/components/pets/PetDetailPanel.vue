@@ -7,6 +7,7 @@ import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { usePetsStore } from '../../stores/pets'
 import PetDeployToggle from './PetDeployToggle.vue'
+import RarityBadge from '../common/RarityBadge.vue'
 import type { PetAffixPublic, PetPublic } from '../../types/pets'
 import { petDisplayName } from '../../utils/petDisplay'
 
@@ -235,7 +236,10 @@ async function onLearnBook(): Promise<void> {
     <el-descriptions :column="1" size="small" border>
       <el-descriptions-item label="物种">{{ pet.species_name || pet.species_id }}</el-descriptions-item>
       <el-descriptions-item label="种族">{{ pet.race_name || pet.race || '—' }}</el-descriptions-item>
-      <el-descriptions-item label="稀有度">{{ pet.rarity || '—' }}</el-descriptions-item>
+      <el-descriptions-item label="稀有度">
+        <RarityBadge v-if="pet.rarity" :rarity="pet.rarity" size="default" />
+        <template v-else>—</template>
+      </el-descriptions-item>
       <el-descriptions-item label="品阶">
         {{ pet.grade_name || pet.grade || '—' }}
         <template v-if="pet.affix_slot_cap">（词条槽 {{ pet.affix_slot_cap }}）</template>

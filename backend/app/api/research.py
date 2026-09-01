@@ -25,6 +25,8 @@ from app.schemas.technique_craft import (
     TechniqueConditionsRequest,
     TechniqueEmbedRequest,
     TechniqueFinalizeRequest,
+    TechniqueMilestoneChooseRequest,
+    TechniqueMilestoneRollRequest,
 )
 from app.services.play_gate import PlayGate
 from app.services.research_service import ResearchService
@@ -293,6 +295,39 @@ async def technique_reroll_affix(
     """Pay reroll cost, clear levels, and draw three new affix options."""
     character = await _prepare_research_write(gate, current_user)
     data = await service.reroll_affix(character, draft_id, payload.slot)
+    return success(data)
+
+
+@router.post("/technique/drafts/{draft_id}/milestone/roll", response_model=None)
+async def technique_roll_milestone(
+    draft_id: int,
+    payload: TechniqueMilestoneRollRequest,
+    gate: PlayGate = Depends(get_play_gate),
+    service: TechniqueCraftService = Depends(get_technique_craft_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Generate three level-bonus options for tier5 or perfection."""
+    character = await _prepare_research_write(gate, current_user)
+    data = await service.roll_milestone(character, draft_id, payload.milestone)
+    return success(data)
+
+
+@router.post("/technique/drafts/{draft_id}/milestone/choose", response_model=None)
+async def technique_choose_milestone(
+    draft_id: int,
+    payload: TechniqueMilestoneChooseRequest,
+    gate: PlayGate = Depends(get_play_gate),
+    service: TechniqueCraftService = Depends(get_technique_craft_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Lock one rolled level-bonus option."""
+    character = await _prepare_research_write(gate, current_user)
+    data = await service.choose_milestone(
+        character,
+        draft_id,
+        payload.milestone,
+        payload.bonus_id,
+    )
     return success(data)
 
 

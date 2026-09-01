@@ -68,18 +68,27 @@ from app.db.models.technique import CharacterTechnique
 from app.db.models.technique_craft import TechniqueResearchDraft
 from app.domain.research_schema import is_valid_zh_label
 from app.domain.technique_craft import (
-    affix_upgrade_cost_multiplier,
+    CULTIVABLE_MAX_LEVEL,
+    base_upgrade_cap_total,
+    base_upgrade_used,
     can_breakthrough,
+    create_base_upgrade_bonus_per_rank,
+    empty_milestones,
     enrich_affix_slots_public,
     filter_affixes,
+    level_bonus_entry,
+    level_bonus_label_zh,
     learner_meets_manual_rank,
     major_rank_label_zh,
+    next_affix_upgrade_cost,
     next_rank_id,
     payload_attr_grants,
     resolve_affix_rarity,
+    resolve_create_base_realm,
     roll_affix_upgrade_success,
     roll_breakthrough_success,
     roll_embed_success,
+    roll_level_bonus_options,
     roll_three_weighted,
     upgrade_points_for_affix_level,
     upgrade_points_for_base_level,
@@ -123,6 +132,7 @@ class TechniqueCraftService:
             weapon_limit=None,
             base_json=json.dumps({CREATE_AFFIX_SLOTS_KEY: create_slots}, ensure_ascii=False),
             affixes_json=json.dumps(slots, ensure_ascii=False),
+            milestones_json=json.dumps(empty_milestones(), ensure_ascii=False),
             upgrade_points=0,
             major_rank=CRAFT_INITIAL_RANK,
             conditions_confirmed=False,
@@ -384,6 +394,97 @@ class TechniqueCraftService:
         )
         return self._draft_public(row)
 
+    async def roll_milestone(
+        self,
+        character: Character,
+        draft_id: int,
+        milestone: str,
+    ) -> dict[str, Any]:
+        """
+        Generate three level-bonus options for ``tier5`` or ``perfection``.
+
+        Free; requires efficacy embedded. Idempotent refuse if options already set.
+
+        Args:
+            character: Acting character.
+            draft_id: Draft primary key.
+            milestone: ``tier5`` or ``perfection``.
+
+        Returns:
+            dict[str, Any]: Public draft with ``milestones``.
+        """
+        row = await self._require_draft(character, draft_id)
+        if not row.efficacy:
+            raise AppError(ERR_CRAFT_EMBED, "须先镶嵌效能", http_status=400)
+        key = str(milestone or "").strip()
+        if key not in {"tier5", "perfection"}:
+            raise AppError(ERR_CRAFT_EMBED, "未知里程碑类型", http_status=400)
+        data = self._load_milestones(row)
+        cell = data.setdefault(key, {"options": [], "chosen_id": None})
+        if cell.get("options"):
+            raise AppError(ERR_CRAFT_EMBED, "该档奖励已推演", http_status=400)
+        try:
+            cell["options"] = roll_level_bonus_options(key)
+        except ValueError as exc:
+            raise AppError(ERR_CRAFT_EMBED, str(exc), http_status=400) from exc
+        cell["chosen_id"] = None
+        row.milestones_json = json.dumps(data, ensure_ascii=False)
+        await self._session.flush()
+        logger.info(
+            "technique craft milestone roll character_id=%s draft_id=%s milestone=%s",
+            character.id,
+            row.id,
+            key,
+        )
+        return self._draft_public(row)
+
+    async def choose_milestone(
+        self,
+        character: Character,
+        draft_id: int,
+        milestone: str,
+        bonus_id: str,
+    ) -> dict[str, Any]:
+        """
+        Lock one rolled level-bonus option onto the draft milestone cell.
+
+        Args:
+            character: Acting character.
+            draft_id: Draft primary key.
+            milestone: ``tier5`` or ``perfection``.
+            bonus_id: Must appear in that cell's ``options``.
+
+        Returns:
+            dict[str, Any]: Public draft payload.
+        """
+        row = await self._require_draft(character, draft_id)
+        key = str(milestone or "").strip()
+        if key not in {"tier5", "perfection"}:
+            raise AppError(ERR_CRAFT_EMBED, "未知里程碑类型", http_status=400)
+        data = self._load_milestones(row)
+        cell = data.get(key) or {}
+        options = [str(x) for x in (cell.get("options") or [])]
+        pick = str(bonus_id or "").strip()
+        if not options:
+            raise AppError(ERR_CRAFT_EMBED, "该档尚未推演奖励", http_status=400)
+        if pick not in options:
+            raise AppError(ERR_RESEARCH_AFFIX_SLOTS, "奖励不在候选中", http_status=400)
+        entry = level_bonus_entry(pick)
+        if entry is None or str(entry.milestone) != key:
+            raise AppError(ERR_CRAFT_EMBED, "奖励与里程碑不符", http_status=400)
+        cell["chosen_id"] = pick
+        data[key] = cell
+        row.milestones_json = json.dumps(data, ensure_ascii=False)
+        await self._session.flush()
+        logger.info(
+            "technique craft milestone choose character_id=%s draft_id=%s milestone=%s bonus_id=%s",
+            character.id,
+            row.id,
+            key,
+            pick,
+        )
+        return self._draft_public(row)
+
     async def reroll_affix(
         self,
         character: Character,
@@ -632,6 +733,20 @@ class TechniqueCraftService:
         pool = set(self._affix_pool_ids(row))
         if any(cid not in pool for cid in chosen_ids):
             raise AppError(ERR_CRAFT_FINALIZE, "词条与当前效能或发动条件不符", http_status=400)
+        craft = get_game_config().research.technique_craft
+        layer_cultivable = bool(craft.default_cultivable)
+        milestones = self._load_milestones(row)
+        tier5_id = str((milestones.get("tier5") or {}).get("chosen_id") or "").strip()
+        perf_id = str((milestones.get("perfection") or {}).get("chosen_id") or "").strip()
+        if layer_cultivable:
+            if not tier5_id or not perf_id:
+                raise AppError(
+                    ERR_CRAFT_FINALIZE,
+                    "可修炼功法定稿前须选定五层与大圆满奖励",
+                    http_status=400,
+                )
+            if level_bonus_entry(tier5_id) is None or level_bonus_entry(perf_id) is None:
+                raise AppError(ERR_CRAFT_FINALIZE, "里程碑奖励无效", http_status=400)
         if not is_valid_zh_label(label_zh):
             raise AppError(ERR_CRAFT_FINALIZE, "请使用二至十六字中文名称", http_status=400)
         name = label_zh.strip()
@@ -647,20 +762,30 @@ class TechniqueCraftService:
         base = dict(base_raw) if isinstance(base_raw, dict) else {}
         create_slots = self._create_affix_slots_from_draft(row)
         base.pop(CREATE_AFFIX_SLOTS_KEY, None)
+        efficacy = str(row.efficacy)
+        create_realm = resolve_create_base_realm(efficacy=efficacy, character=character)
+        create_bonus = create_base_upgrade_bonus_per_rank(create_realm)
         payload = {
             "elements": elements,
-            "efficacy": str(row.efficacy),
+            "efficacy": efficacy,
             "element_limit": row.element_limit,
             "weapon_limit": row.weapon_limit,
             "base": base,
             "affixes": slots,
             "upgrade_points": int(row.upgrade_points or 0),
             "create_affix_slots": create_slots,
+            "create_base_realm": create_realm,
+            "create_base_upgrade_bonus_per_rank": create_bonus,
+            "cultivable": layer_cultivable,
+            "milestone_tier5_id": tier5_id or None,
+            "milestone_perfection_id": perf_id or None,
+            "perfection_cost": int(
+                cfg.research.technique.perfection_cost or craft.perfection_cost or 0
+            ),
         }
         stats = payload_attr_grants(payload)
         slug = secrets.token_hex(4)
         technique_id = f"{PRIVATE_ID_PREFIX}:technique:{character.id}:{slug}"
-        efficacy = str(row.efficacy)
         # 定稿一律从最低阶起，须逐步突破；草稿里若曾写入人物境界也强制覆盖
         row.major_rank = CRAFT_INITIAL_RANK
         private = PrivateTechnique(
@@ -675,7 +800,7 @@ class TechniqueCraftService:
             major_rank=CRAFT_INITIAL_RANK,
             author_character_id=int(character.id),
             track="spirit" if efficacy in SPELL_EFFICACIES else "body",
-            max_level=int(cfg.research.technique.max_level),
+            max_level=CULTIVABLE_MAX_LEVEL if layer_cultivable else int(cfg.research.technique.max_level),
             source=RESEARCH_SOURCE_CUSTOM,
         )
         self._session.add(private)
@@ -692,7 +817,8 @@ class TechniqueCraftService:
                 CharacterTechnique(
                     character_id=character.id,
                     technique_id=technique_id,
-                    level=1,
+                    level=1 if layer_cultivable else 1,
+                    perfected=False,
                     source=TECHNIQUE_SOURCE_RESEARCH,
                 )
             )
@@ -764,13 +890,12 @@ class TechniqueCraftService:
         craft = get_game_config().research.technique_craft
         base_raw = payload.get("base") or {}
         base = dict(base_raw) if isinstance(base_raw, dict) else {}
-        total = (
-            int(base.get("attack") or 0)
-            + int(base.get("defense") or 0)
-            + int(base.get("speed") or 0)
+        total = base_upgrade_used(payload)
+        create_bonus = int(payload.get("create_base_upgrade_bonus_per_rank") or 0)
+        cap = base_upgrade_cap_total(
+            major_rank=str(private.major_rank or CRAFT_INITIAL_RANK),
+            create_bonus_per_rank=create_bonus,
         )
-        rank = craft.ranks.get(str(private.major_rank)) or craft.ranks.get("body_tempering")
-        cap = int(rank.base_upgrade_cap) if rank is not None else 0
         if total + 1 > cap:
             raise AppError(ERR_CRAFT_CULTIVATE, "基础加成次数已达当前阶上限", http_status=400)
         efficacy = str(payload.get("efficacy") or "")
@@ -824,12 +949,7 @@ class TechniqueCraftService:
         rarity = str(cell.get("chosen_rarity") or "").strip() or resolve_affix_rarity(
             str(cell.get("chosen_id") or "")
         )
-        cost = int(
-            round(
-                self._table_cost(craft.affix_upgrade_cost, level)
-                * affix_upgrade_cost_multiplier(rarity)
-            )
-        )
+        cost = next_affix_upgrade_cost(level=level, rarity=rarity)
         efficacy = str(payload.get("efficacy") or "")
         self._deduct_reroll_cost(character, efficacy, cost)
         ok = bool(roll_affix_upgrade_success(float(craft.affix_upgrade_fail_rate)))
@@ -1480,6 +1600,13 @@ class TechniqueCraftService:
                 getattr(craft.ranks[nxt], "upgrade_points_required", 0) or 0
             )
         create_slots = payload.get("create_affix_slots")
+        used = base_upgrade_used(payload)
+        create_bonus = int(payload.get("create_base_upgrade_bonus_per_rank") or 0)
+        cap = base_upgrade_cap_total(
+            major_rank=major_rank,
+            create_bonus_per_rank=create_bonus,
+        )
+        remaining = max(0, cap - used)
         return {
             "technique_id": private.technique_id,
             "major_rank": major_rank,
@@ -1492,6 +1619,11 @@ class TechniqueCraftService:
             "next_rank_label_zh": major_rank_label_zh(nxt) if nxt else None,
             "breakthrough_points_required": breakthrough_points_required,
             "create_affix_slots": int(create_slots) if create_slots is not None else None,
+            "base_upgrade_used": used,
+            "base_upgrade_cap": cap,
+            "base_upgrade_remaining": remaining,
+            "create_base_realm": payload.get("create_base_realm"),
+            "create_base_upgrade_bonus_per_rank": create_bonus,
         }
 
     async def _load_embed_card(
@@ -1560,6 +1692,53 @@ class TechniqueCraftService:
         return row
 
     @staticmethod
+    def _load_milestones(row: TechniqueResearchDraft) -> dict[str, Any]:
+        """Parse ``milestones_json`` into tier5/perfection cells."""
+        try:
+            raw = json.loads(getattr(row, "milestones_json", None) or "{}")
+        except json.JSONDecodeError:
+            raw = {}
+        data = dict(raw) if isinstance(raw, dict) else {}
+        base = empty_milestones()
+        for key in ("tier5", "perfection"):
+            cell = data.get(key)
+            if not isinstance(cell, dict):
+                continue
+            base[key] = {
+                "options": [str(x) for x in (cell.get("options") or []) if str(x)],
+                "chosen_id": (
+                    str(cell.get("chosen_id")).strip()
+                    if cell.get("chosen_id")
+                    else None
+                ),
+            }
+        return base
+
+    @staticmethod
+    def _milestones_public(data: dict[str, Any]) -> dict[str, Any]:
+        """Enrich milestone cells with option labels for UI."""
+        out: dict[str, Any] = {}
+        for key in ("tier5", "perfection"):
+            cell = data.get(key) or {}
+            options = [str(x) for x in (cell.get("options") or [])]
+            chosen = str(cell.get("chosen_id") or "").strip() or None
+            out[key] = {
+                "options": options,
+                "option_views": [
+                    {
+                        "id": oid,
+                        "label_zh": level_bonus_label_zh(oid) or oid,
+                        "rarity": getattr(level_bonus_entry(oid), "rarity", None),
+                        "stats": dict(getattr(level_bonus_entry(oid), "stats", {}) or {}),
+                    }
+                    for oid in options
+                ],
+                "chosen_id": chosen,
+                "chosen_label_zh": level_bonus_label_zh(chosen) if chosen else None,
+            }
+        return out
+
+    @staticmethod
     def _draft_public(row: TechniqueResearchDraft) -> dict[str, Any]:
         elements = TechniqueCraftService._draft_elements(row)
         try:
@@ -1571,11 +1750,21 @@ class TechniqueCraftService:
         # Pad columns for UI without requiring a service instance.
         affixes = TechniqueCraftService._load_affix_slots(row)
         chosen = any(str(cell.get("chosen_id") or "").strip() for cell in affixes)
+        milestones = TechniqueCraftService._load_milestones(row)
+        craft = get_game_config().research.technique_craft
+        layer_cultivable = bool(craft.default_cultivable)
+        milestones_ok = True
+        if layer_cultivable:
+            milestones_ok = bool(
+                str((milestones.get("tier5") or {}).get("chosen_id") or "").strip()
+                and str((milestones.get("perfection") or {}).get("chosen_id") or "").strip()
+            )
         can_finalize = bool(
             elements
             and str(row.efficacy or "").strip()
             and bool(getattr(row, "conditions_confirmed", False))
             and chosen
+            and milestones_ok
             and row.phase == DRAFT_PHASE_EMBEDDING
         )
         return TechniqueDraftPublic(
@@ -1591,4 +1780,5 @@ class TechniqueCraftService:
             upgrade_points=int(row.upgrade_points or 0),
             base=base,
             affixes=enrich_affix_slots_public(affixes),
+            milestones=TechniqueCraftService._milestones_public(milestones),
         ).model_dump()

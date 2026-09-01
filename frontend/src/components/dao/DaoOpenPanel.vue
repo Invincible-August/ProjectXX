@@ -8,6 +8,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useDaoStore } from '../../stores/dao'
 import { useCharacterStore } from '../../stores/character'
 import type { DaoCatalogEntry } from '../../types/dao'
+import RarityBadge from '../common/RarityBadge.vue'
+import { rarityChipStyle } from '../../utils/rarityDisplay'
 
 const emit = defineEmits<{
   log: [message: string, level?: 'info' | 'success' | 'warning' | 'system']
@@ -148,13 +150,20 @@ function onSelectCard(entry: DaoCatalogEntry): void {
           :key="opt.dao_id"
           class="dao-card"
           :class="{ selected: selectedId === opt.dao_id }"
-          :style="{ animationDelay: `${idx * 80}ms` }"
+          :style="{
+            animationDelay: `${idx * 80}ms`,
+            ...rarityChipStyle(opt.rarity || opt.rarity_label, selectedId === opt.dao_id),
+          }"
           @click="onSelectCard(opt)"
         >
           <el-text tag="b">{{ opt.label }}</el-text>
-          <el-text size="small" type="info">
-            {{ opt.category_label }} · {{ opt.rarity_label }}
-          </el-text>
+          <div class="dao-meta">
+            <el-text size="small" type="info">{{ opt.category_label }}</el-text>
+            <RarityBadge
+              :rarity="opt.rarity || opt.rarity_label"
+              :label="opt.rarity_label"
+            />
+          </div>
           <el-text v-if="opt.description" size="small">{{ opt.description }}</el-text>
           <el-tag v-if="opt.owned" size="small" type="success">已在道池</el-tag>
           <el-button
@@ -217,19 +226,24 @@ function onSelectCard(entry: DaoCatalogEntry): void {
   flex-direction: column;
   gap: 0.4rem;
   padding: 0.75rem;
-  border: 1px solid var(--el-border-color);
   border-radius: 6px;
   cursor: pointer;
   animation: dao-flip-in 0.35s ease both;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: filter 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dao-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .dao-card:hover {
-  border-color: var(--el-color-primary-light-3);
+  filter: brightness(0.98);
 }
 
 .dao-card.selected {
-  border-color: var(--el-color-primary);
   box-shadow: 0 0 0 1px var(--el-color-primary-light-5);
 }
 

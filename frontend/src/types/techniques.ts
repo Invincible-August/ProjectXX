@@ -17,6 +17,8 @@ export interface TechniqueSkillChip {
 export interface TechniqueItem {
   id: string
   name: string
+  /** §0.0.4 icon key */
+  icon?: string | null
   track: string
   level: number
   max_level: number
@@ -29,6 +31,12 @@ export interface TechniqueItem {
   help_zh?: string
   skills_main?: TechniqueSkillChip[]
   skills_art?: TechniqueSkillChip[]
+  cultivable?: boolean
+  perfected?: boolean
+  perfection_cost?: number
+  level_label_zh?: string
+  milestone_tier5_label_zh?: string | null
+  milestone_perfection_label_zh?: string | null
 }
 
 export interface TechniqueSlotView {
@@ -37,6 +45,7 @@ export interface TechniqueSlotView {
   label_zh?: string
   technique_id: string | null
   name?: string
+  icon?: string | null
   level?: number
   max_level?: number
   source?: string

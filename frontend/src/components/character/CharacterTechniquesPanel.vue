@@ -20,8 +20,8 @@ import type { PoolCandidate } from '../../types/itemHover'
 import {
   hoverFromTechnique,
   hoverFromTechniqueSlot,
-  shortItemName,
 } from '../../utils/itemHoverFormat'
+import ItemSlotVisual from '../common/ItemSlotVisual.vue'
 import ItemHoverTip from './ItemHoverTip.vue'
 import PoolPickerGrid from './PoolPickerGrid.vue'
 
@@ -75,10 +75,6 @@ function isSelected(slot: TechniqueSlotView): boolean {
     selectedSlot.value?.slot_type === slot.slot_type &&
     selectedSlot.value?.slot_index === slot.slot_index
   )
-}
-
-function shortName(name: string): string {
-  return shortItemName(name)
 }
 
 function firstBorder(slot: TechniqueSlotView): string | undefined {
@@ -140,7 +136,8 @@ const pickerCandidates = computed((): PoolCandidate[] => {
     .filter((it) => !equipped.has(it.id) || it.id === currentId)
     .map((it) => ({
       key: it.id,
-      shortName: shortItemName(it.name),
+      name: it.name,
+      icon: it.icon || it.id,
       worn: Boolean(currentId && it.id === currentId),
       hover: hoverFromTechnique(it),
       border: it.elements?.[0]?.border,
@@ -274,7 +271,11 @@ async function onUnequip(): Promise<void> {
                 @click="onClickSlot(slot)"
               >
                 <span class="cell-caption">
-                  {{ slot.name ? shortName(slot.name) : '空' }}
+                  <ItemSlotVisual
+                    :name="slot.name || ''"
+                    :icon="slot.technique_id ? slot.icon || slot.technique_id : null"
+                    empty-text="空"
+                  />
                 </span>
               </button>
             </el-tooltip>
@@ -305,7 +306,11 @@ async function onUnequip(): Promise<void> {
                 @click="onClickSlot(slot)"
               >
                 <span class="cell-caption">
-                  {{ slot.name ? shortName(slot.name) : '' }}
+                  <ItemSlotVisual
+                    :name="slot.name || ''"
+                    :icon="slot.technique_id ? slot.icon || slot.technique_id : null"
+                    empty-text=""
+                  />
                 </span>
               </button>
             </el-tooltip>
@@ -425,14 +430,10 @@ async function onUnequip(): Promise<void> {
 }
 
 .cell-caption {
-  font-size: 12px;
-  line-height: 1.15;
-  text-align: center;
+  display: block;
+  width: 100%;
+  height: 100%;
   color: var(--el-text-color-regular);
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
 }
 
 .skill-row {

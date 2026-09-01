@@ -25,6 +25,7 @@ from app.constants.inventory import (
     USE_EFFECT_KIND_LABEL_ZH,
     normalize_inspect_element,
 )
+from app.domain.item_icon import resolve_item_icon
 
 if TYPE_CHECKING:
     from app.domain.formation_blueprint import (
@@ -493,6 +494,24 @@ class TechniqueConfig:
     learn_requires: dict[str, Any] = field(default_factory=dict)
     skills_main: tuple[TechniqueSkillConfig, ...] = ()
     skills_art: tuple[TechniqueSkillConfig, ...] = ()
+    # 可经资源分配修炼层数（1→10→大圆满）；false 仅可装备
+    cultivable: bool = False
+    perfection_cost: int = 0
+    milestone_tier5: str | None = None
+    milestone_perfection: str | None = None
+    # §0.0.4 物品/内容 UI 键；缺省=technique_id
+    icon: str = ""
+
+
+@dataclass(frozen=True)
+class TechniqueLevelBonusDef:
+    """technique_craft.level_bonus_catalog entry (layer / perfection milestone)."""
+
+    bonus_id: str
+    label_zh: str
+    milestone: str
+    rarity: str
+    stats: dict[str, float]
 
 
 @dataclass(frozen=True)
@@ -514,6 +533,8 @@ class DivineAbilityConfig:
     help_zh: str = ""
     effect_zh: str = ""
     elements: tuple[str, ...] = ()
+    # §0.0.4 UI 键；缺省=ability_id
+    icon: str = ""
 
 
 @dataclass(frozen=True)
@@ -608,6 +629,8 @@ class ConstitutionItemDef:
     main_effects: dict[str, float]
     # 旁支槽生效
     sub_effects: dict[str, float]
+    # §0.0.4 UI 键；缺省=def_id
+    icon: str = ""
 
     @property
     def effects(self) -> dict[str, float]:
@@ -1345,6 +1368,8 @@ class InventoryItemDef:
     unlock_recipe_id: str | None = None
     # 官方符箓成品挂效果白名单 id（工坊筛选 kind、领取写入 meta.effect_id）
     talisman_effect_id: str | None = None
+    # §0.0.4 物品 UI 键；缺省=item_id（前端有资源则出图，否则出名称）
+    icon: str = ""
     inspect: ItemInspectDef = field(
         default_factory=lambda: ItemInspectDef(
             realm_req_zh=INSPECT_REALM_NONE_ZH,
@@ -1377,6 +1402,8 @@ class EquipmentItemDef:
     idle_mods: dict[str, float]
     grants: tuple[str, ...]
     required_major_realm: str | None = None
+    # §0.0.4 UI 键；缺省=item_id（可与 inventory.icon 对齐）
+    icon: str = ""
 
 
 @dataclass(frozen=True)
@@ -1413,6 +1440,7 @@ class ResearchTechniqueConfig:
     track: str
     max_level: int
     cost_per_level: tuple[int, ...]
+    perfection_cost: int = 0
 
 
 @dataclass(frozen=True)
@@ -1528,9 +1556,14 @@ class TechniqueCraftConfig:
     breakthrough_affix_bonus: float
     base_stat_per_click: float
     ranks: dict[str, TechniqueCraftRankConfig]
+    base_upgrade_create_bonus_per_rank: dict[str, int]
     weapon_bonus: dict[str, dict[str, float]]
     affix_rarities: dict[str, TechniqueCraftAffixRarityDef]
     affixes: dict[str, TechniqueCraftAffixDef]
+    default_cultivable: bool = True
+    perfection_cost: int = 0
+    level_bonus_catalog: dict[str, TechniqueLevelBonusDef] = field(default_factory=dict)
+    level_bonus_roll_weights: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -2569,6 +2602,7 @@ def _parse_divine_abilities(raw: dict[str, Any]) -> dict[str, DivineAbilityConfi
             help_zh=str(body.get("help_zh") or ""),
             effect_zh=str(body.get("effect_zh") or ""),
             elements=tuple(str(x) for x in list(elements_raw) if str(x).strip()),
+            icon=resolve_item_icon(body.get("icon") or body.get("ui_key"), str(ability_id)),
         )
     return result
 
@@ -2629,6 +2663,19 @@ def _parse_techniques(raw: dict[str, Any]) -> dict[str, TechniqueConfig]:
             learn_requires=dict(learn_raw) if isinstance(learn_raw, dict) else {},
             skills_main=_parse_technique_skills(skills_raw.get("as_main")),
             skills_art=_parse_technique_skills(skills_raw.get("as_art")),
+            cultivable=bool(body.get("cultivable", False)),
+            perfection_cost=int(body.get("perfection_cost") or 0),
+            milestone_tier5=(
+                str(body.get("milestone_tier5")).strip()
+                if body.get("milestone_tier5")
+                else None
+            ),
+            milestone_perfection=(
+                str(body.get("milestone_perfection")).strip()
+                if body.get("milestone_perfection")
+                else None
+            ),
+            icon=resolve_item_icon(body.get("icon") or body.get("ui_key"), str(tech_id)),
         )
     return result
 
@@ -2773,6 +2820,7 @@ def _parse_constitution(raw: dict[str, Any]) -> ConstitutionConfig:
             base_attrs={str(k): int(v) for k, v in base_attrs.items()},
             main_effects=main_effects,
             sub_effects=sub_effects,
+            icon=resolve_item_icon(body.get("icon") or body.get("ui_key"), str(def_id)),
         )
     return ConstitutionConfig(
         main_slots=int(slot_defaults.get("main", 1)),
@@ -3923,6 +3971,7 @@ def _parse_inventory(raw: dict[str, Any]) -> InventoryConfig:
                 if body.get("talisman_effect_id")
                 else None
             ),
+            icon=resolve_item_icon(body.get("icon") or body.get("ui_key"), str(item_id)),
             inspect=_parse_item_inspect(body if isinstance(body, dict) else {}),
         )
     by_type = {
@@ -3974,6 +4023,7 @@ def _parse_equipment(raw: dict[str, Any], *, combat_attrs: CombatAttrsConfig) ->
             idle_mods=idle_mods,
             grants=grants,
             required_major_realm=str(req) if req else None,
+            icon=resolve_item_icon(body.get("icon") or body.get("ui_key"), str(item_id)),
         )
     return EquipmentConfig(items=items)
 
@@ -4064,7 +4114,7 @@ def _parse_technique_craft(
 
     rarities_src = body.get("affix_rarities") or {
         "gray": {
-            "label_zh": "灰",
+            "label_zh": "粗糙",
             "weight": 10,
             "base_mult": 0.7,
             "upgrade_mult": 0.7,
@@ -4072,7 +4122,7 @@ def _parse_technique_craft(
             "color": "#9e9e9e",
         },
         "white": {
-            "label_zh": "白",
+            "label_zh": "普通",
             "weight": 28,
             "base_mult": 1.0,
             "upgrade_mult": 1.0,
@@ -4080,7 +4130,7 @@ def _parse_technique_craft(
             "color": "#eceff1",
         },
         "green": {
-            "label_zh": "绿",
+            "label_zh": "优秀",
             "weight": 26,
             "base_mult": 1.2,
             "upgrade_mult": 1.2,
@@ -4088,7 +4138,7 @@ def _parse_technique_craft(
             "color": "#67c23a",
         },
         "blue": {
-            "label_zh": "蓝",
+            "label_zh": "精良",
             "weight": 24,
             "base_mult": 1.4,
             "upgrade_mult": 1.4,
@@ -4096,7 +4146,7 @@ def _parse_technique_craft(
             "color": "#409eff",
         },
         "purple": {
-            "label_zh": "紫",
+            "label_zh": "史诗",
             "weight": 8,
             "base_mult": 1.7,
             "upgrade_mult": 1.7,
@@ -4104,7 +4154,7 @@ def _parse_technique_craft(
             "color": "#a855f7",
         },
         "orange": {
-            "label_zh": "橙",
+            "label_zh": "传说",
             "weight": 3,
             "base_mult": 2.1,
             "upgrade_mult": 2.1,
@@ -4112,7 +4162,7 @@ def _parse_technique_craft(
             "color": "#e6a23c",
         },
         "red": {
-            "label_zh": "红",
+            "label_zh": "太古",
             "weight": 1,
             "base_mult": 2.8,
             "upgrade_mult": 2.8,
@@ -4256,12 +4306,97 @@ def _parse_technique_craft(
             1.0 if body.get("base_stat_per_click") is None else float(body.get("base_stat_per_click"))
         ),
         ranks=ranks,
+        base_upgrade_create_bonus_per_rank=_parse_create_base_bonus(
+            body.get("base_upgrade_create_bonus_per_rank"),
+        ),
         weapon_bonus=weapon_bonus,
         affix_rarities=affix_rarities,
         affixes=affixes,
+        default_cultivable=bool(
+            True if body.get("default_cultivable") is None else body.get("default_cultivable")
+        ),
+        perfection_cost=int(body.get("perfection_cost") or 0),
+        level_bonus_catalog=_parse_level_bonus_catalog(
+            body.get("level_bonus_catalog"),
+            combat_attrs=combat_attrs,
+        ),
+        level_bonus_roll_weights=_parse_level_bonus_weights(
+            body.get("level_bonus_roll_weights"),
+        ),
     )
 
 
+def _parse_level_bonus_catalog(
+    raw: Any,
+    *,
+    combat_attrs: CombatAttrsConfig,
+) -> dict[str, TechniqueLevelBonusDef]:
+    """Parse technique_craft.level_bonus_catalog; stats must be registered ATTR keys."""
+    from app.config_source.validate_content import assert_attr_stats, registered_attr_keys
+
+    if not isinstance(raw, dict):
+        return {}
+    attr_keys = registered_attr_keys(combat_attrs)
+    out: dict[str, TechniqueLevelBonusDef] = {}
+    for bonus_id, body in raw.items():
+        if not isinstance(body, dict):
+            continue
+        stats = {str(k): float(v) for k, v in (body.get("stats") or {}).items()}
+        assert_attr_stats(
+            f"research.technique_craft.level_bonus_catalog.{bonus_id}.stats",
+            stats,
+            attr_keys,
+        )
+        milestone = str(body.get("milestone") or "").strip()
+        if milestone not in {"tier5", "perfection"}:
+            continue
+        rarity = str(body.get("rarity") or "white").strip() or "white"
+        out[str(bonus_id)] = TechniqueLevelBonusDef(
+            bonus_id=str(bonus_id),
+            label_zh=str(body.get("label_zh") or bonus_id),
+            milestone=milestone,
+            rarity=rarity,
+            stats=stats,
+        )
+    return out
+
+
+def _parse_level_bonus_weights(raw: Any) -> dict[str, int]:
+    """Parse rarity → weight map for milestone three-choose rolls."""
+    defaults = {
+        "gray": 10,
+        "white": 28,
+        "green": 26,
+        "blue": 24,
+        "purple": 8,
+        "orange": 3,
+        "red": 1,
+    }
+    if not isinstance(raw, dict):
+        return dict(defaults)
+    out = dict(defaults)
+    for key, val in raw.items():
+        out[str(key)] = max(0, int(val or 0))
+    return out
+
+
+def _parse_create_base_bonus(raw: Any) -> dict[str, int]:
+    """Parse create-realm → extra base-upgrade clicks per technique rank."""
+    defaults = {
+        "body_tempering": 0,
+        "qi_refining": 1,
+        "foundation": 1,
+        "jindan": 2,
+        "yuanying": 2,
+        "huashen": 3,
+        "true_immortal": 4,
+    }
+    if not isinstance(raw, dict):
+        return dict(defaults)
+    out = dict(defaults)
+    for key, val in raw.items():
+        out[str(key)] = max(0, int(val or 0))
+    return out
 
 
 def _parse_research(raw: dict[str, Any], *, combat_attrs: CombatAttrsConfig) -> ResearchConfig:
@@ -4294,6 +4429,7 @@ def _parse_research(raw: dict[str, Any], *, combat_attrs: CombatAttrsConfig) -> 
         track=str(tech_raw.get("track") or "spirit"),
         max_level=int(tech_raw.get("max_level") or 5),
         cost_per_level=tuple(int(x) for x in (tech_raw.get("cost_per_level") or [])),
+        perfection_cost=int(tech_raw.get("perfection_cost") or 0),
     )
     allowed_keys = set(combat_attrs.attrs.keys())
     affixes: dict[str, ResearchAffixDef] = {}

@@ -20,6 +20,8 @@ import {
   hoverFromSlotPublic,
   shortItemName,
 } from '../../utils/itemHoverFormat'
+import { rarityChipStyle } from '../../utils/rarityDisplay'
+import ItemSlotVisual from '../common/ItemSlotVisual.vue'
 import ItemHoverTip from './ItemHoverTip.vue'
 import PoolPickerGrid from './PoolPickerGrid.vue'
 import { usePlayWriteGate } from '../../composables/usePlayWriteGate'
@@ -176,6 +178,9 @@ interface SlotCandidate {
   item_uid: string
   name: string
   worn: boolean
+  icon?: string | null
+  rarity?: string | null
+  rarity_label_zh?: string | null
   stats?: Record<string, EquipmentStatPreview>
 }
 
@@ -195,6 +200,9 @@ const slotCandidates = computed((): SlotCandidate[] => {
       item_uid: cell.item_uid,
       name: cell.item_label_zh,
       worn: true,
+      icon: cell.icon,
+      rarity: cell.rarity,
+      rarity_label_zh: cell.rarity_label_zh,
       stats: cell.stats_preview,
     })
   }
@@ -206,6 +214,9 @@ const slotCandidates = computed((): SlotCandidate[] => {
       item_uid: item.item_uid,
       name: item.name,
       worn: false,
+      icon: item.icon,
+      rarity: item.rarity,
+      rarity_label_zh: item.rarity_label_zh,
       stats: statsPreviewOf(item.stats_preview),
     })
   }
@@ -216,12 +227,17 @@ const pickerCandidates = computed((): PoolCandidate[] => {
   const slotLabel = selectedCell.value?.slot_label_zh
   return slotCandidates.value.map((row) => ({
     key: row.item_uid,
+    name: row.name,
     shortName: shortItemName(row.name),
     worn: row.worn,
+    icon: row.icon,
+    rarity: row.rarity,
     hover: hoverFromEquipment({
       name: row.name,
       slotLabelZh: slotLabel,
       stats: row.stats,
+      rarity: row.rarity,
+      rarityLabelZh: row.rarity_label_zh,
     }),
   }))
 })
@@ -231,6 +247,38 @@ function slotHover(id: EquipmentSlot) {
     return hoverFromSlotPublic(slotById.value.get('weapon_1'))
   }
   return hoverFromSlotPublic(slotById.value.get(id))
+}
+
+function slotHasItem(id: EquipmentSlot): boolean {
+  return Boolean(slotById.value.get(id)?.item_uid)
+}
+
+function slotRarity(id: EquipmentSlot): string | null | undefined {
+  if (id === 'weapon_2' && weaponShared.value) {
+    return slotById.value.get('weapon_1')?.rarity
+  }
+  return slotById.value.get(id)?.rarity
+}
+
+/** Filled slots: rarity chip colors; empty stay dashed. Two-hand off stays red. */
+function slotButtonStyle(
+  id: EquipmentSlot,
+  opts?: { twoHandOff?: boolean },
+): Record<string, string> | undefined {
+  if (opts?.twoHandOff) return undefined
+  const rarity = slotRarity(id)
+  if (!rarity || !slotHasItem(id)) return undefined
+  return rarityChipStyle(rarity, selectedSlot.value === id)
+}
+
+function slotTipEffect(id: EquipmentSlot): 'dark' | 'light' {
+  return slotRarity(id) && slotHasItem(id) ? 'light' : 'dark'
+}
+
+function slotTipClass(id: EquipmentSlot): string {
+  return slotTipEffect(id) === 'light'
+    ? 'game-hover-tip item-hover-tip item-hover-tip-light'
+    : 'game-hover-tip item-hover-tip'
 }
 
 async function onPickCandidate(item: PoolCandidate): Promise<void> {
@@ -274,6 +322,13 @@ function slotCaption(id: EquipmentSlot): string {
     return main?.item_label_zh || cell.item_label_zh || cell.slot_label_zh
   }
   return cell.item_label_zh || cell.slot_label_zh
+}
+
+function slotIcon(id: EquipmentSlot): string | null | undefined {
+  if (id === 'weapon_2' && weaponShared.value) {
+    return slotById.value.get('weapon_1')?.icon
+  }
+  return slotById.value.get(id)?.icon
 }
 
 function onTogglePuppetPicker(): void {
@@ -488,10 +543,10 @@ async function onConfirmTalismanLoadout(): Promise<void> {
             :style="{ gridColumn: 1, gridRow: idx + 1 }"
           >
             <el-tooltip
-              effect="dark"
+              :effect="slotTipEffect(id)"
               placement="top"
               :show-after="200"
-              popper-class="game-hover-tip item-hover-tip"
+              :popper-class="slotTipClass(id)"
             >
               <template #content>
                 <ItemHoverTip :model="slotHover(id)" />
@@ -503,10 +558,18 @@ async function onConfirmTalismanLoadout(): Promise<void> {
                   'slot-filled': Boolean(slotById.get(id)?.item_uid),
                   'slot-flash': flashSlot === id,
                   'slot-selected': selectedSlot === id,
+                  'slot-rarity': Boolean(slotRarity(id) && slotById.get(id)?.item_uid),
                 }"
+                :style="slotButtonStyle(id)"
                 @click="onClickSlot(id)"
               >
-                <span class="slot-caption">{{ slotCaption(id) }}</span>
+                <span class="slot-caption">
+                  <ItemSlotVisual
+                    :name="slotCaption(id)"
+                    :icon="slotHasItem(id) ? slotIcon(id) : null"
+                    :empty-text="slotById.get(id)?.slot_label_zh || '空'"
+                  />
+                </span>
               </button>
             </el-tooltip>
           </div>
@@ -528,10 +591,10 @@ async function onConfirmTalismanLoadout(): Promise<void> {
             :style="{ gridColumn: 3, gridRow: idx + 1 }"
           >
             <el-tooltip
-              effect="dark"
+              :effect="slotTipEffect(id)"
               placement="top"
               :show-after="200"
-              popper-class="game-hover-tip item-hover-tip"
+              :popper-class="slotTipClass(id)"
             >
               <template #content>
                 <ItemHoverTip :model="slotHover(id)" />
@@ -543,10 +606,18 @@ async function onConfirmTalismanLoadout(): Promise<void> {
                   'slot-filled': Boolean(slotById.get(id)?.item_uid),
                   'slot-flash': flashSlot === id,
                   'slot-selected': selectedSlot === id,
+                  'slot-rarity': Boolean(slotRarity(id) && slotById.get(id)?.item_uid),
                 }"
+                :style="slotButtonStyle(id)"
                 @click="onClickSlot(id)"
               >
-                <span class="slot-caption">{{ slotCaption(id) }}</span>
+                <span class="slot-caption">
+                  <ItemSlotVisual
+                    :name="slotCaption(id)"
+                    :icon="slotHasItem(id) ? slotIcon(id) : null"
+                    :empty-text="slotById.get(id)?.slot_label_zh || '空'"
+                  />
+                </span>
               </button>
             </el-tooltip>
           </div>
@@ -557,10 +628,10 @@ async function onConfirmTalismanLoadout(): Promise<void> {
             <el-tooltip
               v-for="id in DOLL_WEAPONS"
               :key="id"
-              effect="dark"
+              :effect="slotTipEffect(id)"
               placement="top"
               :show-after="200"
-              popper-class="game-hover-tip item-hover-tip"
+              :popper-class="slotTipClass(id)"
             >
               <template #content>
                 <ItemHoverTip :model="slotHover(id)" />
@@ -573,10 +644,26 @@ async function onConfirmTalismanLoadout(): Promise<void> {
                   'slot-flash': flashSlot === id,
                   'slot-selected': selectedSlot === id,
                   'slot-two-hand-off': weaponShared && id === 'weapon_2',
+                  'slot-rarity': Boolean(
+                    slotRarity(id) &&
+                      slotById.get(id)?.item_uid &&
+                      !(weaponShared && id === 'weapon_2'),
+                  ),
                 }"
+                :style="
+                  slotButtonStyle(id, {
+                    twoHandOff: Boolean(weaponShared && id === 'weapon_2'),
+                  })
+                "
                 @click="onClickSlot(id)"
               >
-                <span class="slot-caption">{{ slotCaption(id) }}</span>
+                <span class="slot-caption">
+                  <ItemSlotVisual
+                    :name="slotCaption(id)"
+                    :icon="slotHasItem(id) ? slotIcon(id) : null"
+                    :empty-text="slotById.get(id)?.slot_label_zh || '空'"
+                  />
+                </span>
               </button>
             </el-tooltip>
             </div>
@@ -879,20 +966,24 @@ async function onConfirmTalismanLoadout(): Promise<void> {
 }
 
 .slot-flash,
-.slot-selected {
+.slot-selected:not(.slot-rarity) {
+  box-shadow: 0 0 0 2px #c9930f;
+}
+
+.slot-rarity.slot-selected,
+.slot-rarity.slot-flash {
   box-shadow: 0 0 0 2px #c9930f;
 }
 
 .slot-caption {
-  font-size: 11px;
-  line-height: 1.15;
-  text-align: center;
+  display: block;
+  width: 100%;
+  height: 100%;
   color: var(--el-text-color-regular);
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  word-break: break-all;
+}
+
+.slot-rarity .slot-caption {
+  color: #111827;
 }
 
 .slot-picker {

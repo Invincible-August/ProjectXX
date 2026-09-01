@@ -14,7 +14,7 @@ import { useCharacterStore } from '../stores/character'
 import { useInventoryStore } from '../stores/inventory'
 import type { CraftActor, CraftBranch } from '../types/craft'
 import { CRAFT_BRANCH_TABS } from '../types/craft'
-import { createLogEntry, type GameLogEntry } from '../types/gameLog'
+import { useGameLogPush } from '../composables/useGameLogPush'
 
 const route = useRoute()
 const router = useRouter()
@@ -24,7 +24,7 @@ const inventoryStore = useInventoryStore()
 const { writeBlocked, writeBlockReason } = usePlayWriteGate()
 
 const loadError = ref('')
-const logEntries = ref<GameLogEntry[]>([])
+const { pushLog } = useGameLogPush()
 
 const BRANCH_KEYS = new Set<string>(CRAFT_BRANCH_TABS.map((tab) => tab.key))
 
@@ -47,10 +47,6 @@ watch(
     workshopBranch.value = normalizeBranch(b)
   },
 )
-
-function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
-  logEntries.value = [...logEntries.value.slice(-49), createLogEntry(message, level)]
-}
 
 watch(
   () => route.query.actor,

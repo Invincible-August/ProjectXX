@@ -261,6 +261,37 @@ export async function rerollTechniqueAffixApi(
   }
 }
 
+export async function rollTechniqueMilestoneApi(
+  draftId: number,
+  milestone: 'tier5' | 'perfection',
+): Promise<ApiResponse<TechniqueDraftPublic>> {
+  try {
+    const response = await http.post<ApiResponse<TechniqueDraftPublic>>(
+      `${TECH}/drafts/${draftId}/milestone/roll`,
+      { milestone },
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<TechniqueDraftPublic>(error)
+  }
+}
+
+export async function chooseTechniqueMilestoneApi(
+  draftId: number,
+  milestone: 'tier5' | 'perfection',
+  bonusId: string,
+): Promise<ApiResponse<TechniqueDraftPublic>> {
+  try {
+    const response = await http.post<ApiResponse<TechniqueDraftPublic>>(
+      `${TECH}/drafts/${draftId}/milestone/choose`,
+      { milestone, bonus_id: bonusId },
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<TechniqueDraftPublic>(error)
+  }
+}
+
 export async function finalizeTechniqueDraftApi(
   draftId: number,
   labelZh: string,

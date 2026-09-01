@@ -153,7 +153,7 @@ def test_learn_from_manual_meta_source_sect(
                 copy_item = next((t for t in listed if t["id"] == copy_id), None)
                 assert copy_item is not None
                 assert copy_item["source"] == "sect"
-                assert copy_item["cultivable"] is False
+                assert copy_item.get("lab_cultivable") is False
 
     _run(_body())
 
@@ -796,7 +796,7 @@ def test_scripture_exchange_learns_sect_copy_and_charges(
                 copy_item = next((t for t in mine if t["id"] == copy_id), None)
                 assert copy_item is not None
                 assert copy_item["source"] == "sect"
-                assert copy_item["cultivable"] is False
+                assert copy_item.get("lab_cultivable") is False
 
                 listed2 = await SectFacilityService(session).scripture_list(peer_user)
                 listed2_entry = next(

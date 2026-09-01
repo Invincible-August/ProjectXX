@@ -33,25 +33,54 @@ from app.constants.equipment import (
     canonical_equipment_slot,
 )
 
-# 造物品质（机读；展示用 CRAFT_QUALITY_LABEL_ZH）
-CRAFT_QUALITY_COMMON: Final[str] = "common"  # 凡品
-CRAFT_QUALITY_FINE: Final[str] = "fine"  # 良品
-CRAFT_QUALITY_RARE: Final[str] = "rare"  # 上品
-CRAFT_QUALITY_SUPERB: Final[str] = "superb"  # 极品
+# 造物品阶（与 §0.0.3 物品稀有度同键：粗糙～太古）
+CRAFT_QUALITY_GRAY: Final[str] = "gray"  # 粗糙
+CRAFT_QUALITY_WHITE: Final[str] = "white"  # 普通
+CRAFT_QUALITY_GREEN: Final[str] = "green"  # 优秀
+CRAFT_QUALITY_BLUE: Final[str] = "blue"  # 精良
+CRAFT_QUALITY_PURPLE: Final[str] = "purple"  # 史诗
+CRAFT_QUALITY_ORANGE: Final[str] = "orange"  # 传说
+CRAFT_QUALITY_RED: Final[str] = "red"  # 太古
+
+CRAFT_QUALITY_DEFAULT: Final[str] = CRAFT_QUALITY_WHITE
 
 CRAFT_QUALITIES: Final[tuple[str, ...]] = (
-    CRAFT_QUALITY_COMMON,
-    CRAFT_QUALITY_FINE,
-    CRAFT_QUALITY_RARE,
-    CRAFT_QUALITY_SUPERB,
+    CRAFT_QUALITY_GRAY,
+    CRAFT_QUALITY_WHITE,
+    CRAFT_QUALITY_GREEN,
+    CRAFT_QUALITY_BLUE,
+    CRAFT_QUALITY_PURPLE,
+    CRAFT_QUALITY_ORANGE,
+    CRAFT_QUALITY_RED,
 )
 
 CRAFT_QUALITY_LABEL_ZH: Final[dict[str, str]] = {
-    CRAFT_QUALITY_COMMON: "凡品",
-    CRAFT_QUALITY_FINE: "良品",
-    CRAFT_QUALITY_RARE: "上品",
-    CRAFT_QUALITY_SUPERB: "极品",
+    CRAFT_QUALITY_GRAY: "粗糙",
+    CRAFT_QUALITY_WHITE: "普通",
+    CRAFT_QUALITY_GREEN: "优秀",
+    CRAFT_QUALITY_BLUE: "精良",
+    CRAFT_QUALITY_PURPLE: "史诗",
+    CRAFT_QUALITY_ORANGE: "传说",
+    CRAFT_QUALITY_RED: "太古",
 }
+
+# 旧四档（凡品/良品/上品/极品）→ 七档；读存量 meta / 旧 YAML 权重时归一
+LEGACY_CRAFT_QUALITY_MAP: Final[dict[str, str]] = {
+    "common": CRAFT_QUALITY_WHITE,
+    "fine": CRAFT_QUALITY_GREEN,
+    "rare": CRAFT_QUALITY_BLUE,
+    "superb": CRAFT_QUALITY_PURPLE,
+    "凡品": CRAFT_QUALITY_WHITE,
+    "良品": CRAFT_QUALITY_GREEN,
+    "上品": CRAFT_QUALITY_BLUE,
+    "极品": CRAFT_QUALITY_PURPLE,
+}
+
+# 兼容旧常量名（请改用七档 id）
+CRAFT_QUALITY_COMMON: Final[str] = CRAFT_QUALITY_WHITE
+CRAFT_QUALITY_FINE: Final[str] = CRAFT_QUALITY_GREEN
+CRAFT_QUALITY_RARE: Final[str] = CRAFT_QUALITY_BLUE
+CRAFT_QUALITY_SUPERB: Final[str] = CRAFT_QUALITY_PURPLE
 
 # 制作等级不足（开工拒绝）
 ERR_CRAFT_LEVEL: Final[int] = 40086

@@ -9,17 +9,12 @@ import AuthSessionBar from '../components/AuthSessionBar.vue'
 import FriendListPanel from '../components/social/FriendListPanel.vue'
 import { useCharacterStore } from '../stores/character'
 import { useFriendsStore } from '../stores/friends'
-import { useGameLogStore } from '../stores/gameLog'
-import { type GameLogEntry } from '../types/gameLog'
+import { useGameLogPush } from '../composables/useGameLogPush'
 
 const router = useRouter()
 const characterStore = useCharacterStore()
 const friendsStore = useFriendsStore()
-const gameLogStore = useGameLogStore()
-
-function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
-  gameLogStore.push(message, level)
-}
+const { gameLogStore, pushLog } = useGameLogPush()
 
 onMounted(async () => {
   if (!characterStore.character) {

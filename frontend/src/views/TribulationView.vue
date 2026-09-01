@@ -14,7 +14,7 @@ import TribulationStatusPanel from '../components/tribulation/TribulationStatusP
 import TribulationVeilPanel from '../components/tribulation/TribulationVeilPanel.vue'
 import { useCharacterStore } from '../stores/character'
 import { useTribulationStore } from '../stores/tribulation'
-import { createLogEntry, type GameLogEntry } from '../types/gameLog'
+import { useGameLogPush } from '../composables/useGameLogPush'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,7 +22,7 @@ const characterStore = useCharacterStore()
 const tribulationStore = useTribulationStore()
 
 const loadError = ref('')
-const logEntries = ref<GameLogEntry[]>([])
+const { gameLogStore, pushLog } = useGameLogPush()
 const resultVisible = ref(false)
 const beginning = ref(false)
 
@@ -39,10 +39,6 @@ const showFinished = computed(() => {
   return p === 'won' || p === 'failed' || p === 'fallen'
 })
 const isWon = computed(() => session.value?.phase === 'won')
-
-function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
-  logEntries.value = [...logEntries.value.slice(-49), createLogEntry(message, level)]
-}
 
 async function onBegin(): Promise<void> {
   if (beginning.value) return
@@ -220,11 +216,11 @@ onMounted(async () => {
       />
     </template>
 
-    <el-card v-if="logEntries.length" shadow="never" class="page-log">
+    <el-card v-if="gameLogStore.entries.length" shadow="never" class="page-log">
       <template #header>
         <el-text tag="b" size="small">本页日志</el-text>
       </template>
-      <div v-for="entry in logEntries" :key="entry.id" class="log-line">
+      <div v-for="entry in gameLogStore.entries" :key="entry.id" class="log-line">
         <el-text size="small">{{ entry.message }}</el-text>
       </div>
     </el-card>

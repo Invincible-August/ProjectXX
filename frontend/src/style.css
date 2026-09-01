@@ -1046,6 +1046,18 @@ button {
   color: #f0f2f5;
 }
 
+.item-hover-tip .item-hover-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.item-hover-tip .item-hover-name {
+  font-weight: 600;
+}
+
 .item-hover-tip .item-hover-head {
   display: flex;
   justify-content: space-between;
@@ -1056,6 +1068,7 @@ button {
 .item-hover-tip .item-hover-corner {
   color: #c0c4cc;
   font-weight: 400;
+  flex-shrink: 0;
 }
 
 .item-hover-tip .item-hover-sub,
@@ -1100,6 +1113,55 @@ button {
   gap: 0.75rem;
   font-weight: 400;
   color: #e6e8eb;
+}
+
+/* §0.0.3 light hover for rarity equipment (matches affix / pet detail tone) */
+.item-hover-tip-light.el-popper {
+  max-width: 16rem !important;
+  padding: 0.45rem 0.55rem !important;
+  border: 1px solid var(--el-border-color-lighter);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.1);
+  color: #111827 !important;
+  background: #ffffff !important;
+}
+
+.item-hover-tip-light .item-hover-card {
+  color: #111827;
+  min-width: 9rem;
+}
+
+.item-hover-tip-light .item-hover-card.has-rarity {
+  margin: -0.1rem;
+}
+
+.item-hover-tip-light .item-hover-corner,
+.item-hover-tip-light .item-hover-sub,
+.item-hover-tip-light .item-hover-help,
+.item-hover-tip-light .item-hover-stat,
+.item-hover-tip-light .item-hover-muted,
+.item-hover-tip-light .item-hover-block-label,
+.item-hover-tip-light .item-hover-realm {
+  color: var(--el-text-color-regular);
+}
+
+.item-hover-tip-light .item-hover-stat span:last-child {
+  color: #111827;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.item-hover-tip-light .item-hover-chip {
+  color: #111827;
+  border-color: var(--el-border-color);
+  background: #ffffff;
+}
+
+.item-hover-tip-light .item-hover-section {
+  border-top-color: var(--el-border-color-extra-light);
+}
+
+.item-hover-tip-light .item-hover-section-title {
+  color: var(--el-text-color-secondary);
 }
 
 .craft-inspect-tip {

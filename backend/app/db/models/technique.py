@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -31,6 +31,8 @@ class CharacterTechnique(Base):
     )
     technique_id: Mapped[str] = mapped_column(String(64), nullable=False)
     level: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # 可修炼功法：层数满 10 后再投入 perfection_cost 置 true（大圆满）
+    perfected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # 五源：system / sect / mentor / research / chance
     source: Mapped[str] = mapped_column(String(16), nullable=False, default="system")
     created_at: Mapped[datetime] = mapped_column(

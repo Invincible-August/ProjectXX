@@ -74,6 +74,8 @@ export function hoverFromEquipment(args: {
   name: string
   slotLabelZh?: string
   stats?: Record<string, EquipmentStatPreview>
+  rarity?: string | null
+  rarityLabelZh?: string | null
   empty?: boolean
 }): ItemHoverModel {
   if (args.empty) {
@@ -82,6 +84,8 @@ export function hoverFromEquipment(args: {
   return {
     name: args.name,
     cornerZh: args.slotLabelZh,
+    rarity: args.rarity,
+    rarityLabelZh: args.rarityLabelZh,
     stats: statsFromPreview(args.stats),
   }
 }
@@ -95,6 +99,8 @@ export function hoverFromSlotPublic(cell: EquipmentSlotPublic | undefined): Item
     name: cell.item_label_zh || '装备',
     slotLabelZh: cell.slot_label_zh,
     stats: cell.stats_preview,
+    rarity: cell.rarity,
+    rarityLabelZh: cell.rarity_label_zh,
   })
 }
 

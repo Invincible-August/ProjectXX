@@ -3,6 +3,7 @@
  * 灵宠图鉴：注册表投影 + seen/caught（N4）。
  */
 import type { PetCatalogSpecies } from '../../types/pets'
+import { rarityChipStyle } from '../../utils/rarityDisplay'
 
 defineProps<{
   species: PetCatalogSpecies[]
@@ -30,11 +31,15 @@ function statusType(status: string): 'success' | 'warning' | 'info' {
       物种来自配置注册表；后台/YAML 新增后刷新即可同步。
     </el-text>
     <el-empty v-if="species.length === 0" description="图鉴为空" :image-size="48" />
-    <div v-for="item in species" :key="item.species_id" class="dex-row">
+    <div
+      v-for="item in species"
+      :key="item.species_id"
+      class="dex-row"
+      :style="item.rarity ? rarityChipStyle(item.rarity) : undefined"
+    >
       <div class="dex-main">
         <el-text tag="b" size="small">{{ item.name }}</el-text>
         <el-tag size="small">{{ item.race_name || item.race }}</el-tag>
-        <el-tag size="small" type="warning">{{ item.rarity }}</el-tag>
         <el-tag size="small" :type="statusType(item.status)">
           {{ statusLabel(item.status) }}
         </el-tag>
@@ -58,7 +63,6 @@ function statusType(status: string): 'success' | 'warning' | 'info' {
   padding: 0.5rem;
   margin-bottom: 0.35rem;
   border-radius: 6px;
-  background: rgba(0, 0, 0, 0.03);
 }
 .dex-main {
   display: flex;

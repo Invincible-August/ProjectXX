@@ -1,8 +1,11 @@
 <script setup lang="ts">
 /**
  * Compact wrap grid for learned/collection pickers (not one full-width row per item).
+ * §0.0.4: ItemSlotVisual (icon or full name); rarity chips when rarity set.
  */
 import type { PoolCandidate } from '../../types/itemHover'
+import { rarityChipStyle } from '../../utils/rarityDisplay'
+import ItemSlotVisual from '../common/ItemSlotVisual.vue'
 import ItemHoverTip from './ItemHoverTip.vue'
 
 defineProps<{
@@ -15,6 +18,16 @@ defineProps<{
 const emit = defineEmits<{
   pick: [item: PoolCandidate]
 }>()
+
+function cellStyle(item: PoolCandidate): Record<string, string> | undefined {
+  if (item.rarity) {
+    return rarityChipStyle(item.rarity, item.worn)
+  }
+  if (item.border) {
+    return { borderColor: item.border }
+  }
+  return undefined
+}
 </script>
 
 <template>
@@ -27,10 +40,14 @@ const emit = defineEmits<{
       <el-tooltip
         v-for="item in items"
         :key="item.key"
-        effect="dark"
+        :effect="item.rarity ? 'light' : 'dark'"
         placement="top"
         :show-after="200"
-        popper-class="game-hover-tip item-hover-tip"
+        :popper-class="
+          item.rarity
+            ? 'game-hover-tip item-hover-tip item-hover-tip-light'
+            : 'game-hover-tip item-hover-tip'
+        "
       >
         <template #content>
           <ItemHoverTip :model="item.hover" />
@@ -38,12 +55,15 @@ const emit = defineEmits<{
         <button
           type="button"
           class="pool-cell"
-          :class="{ 'pool-worn': item.worn }"
-          :style="item.border ? { borderColor: item.border } : undefined"
+          :class="{ 'pool-worn': item.worn, 'pool-rarity': Boolean(item.rarity) }"
+          :style="cellStyle(item)"
           :disabled="busy"
           @click="emit('pick', item)"
         >
-          <span class="pool-caption">{{ item.shortName }}</span>
+          <ItemSlotVisual
+            :name="item.name || item.shortName || ''"
+            :icon="item.icon"
+          />
         </button>
       </el-tooltip>
     </div>
@@ -84,6 +104,7 @@ const emit = defineEmits<{
   display: flex;
   align-items: center;
   justify-content: center;
+  color: var(--el-text-color-regular);
 }
 
 .pool-cell:disabled {
@@ -91,20 +112,17 @@ const emit = defineEmits<{
   opacity: 0.65;
 }
 
-.pool-worn {
+.pool-worn:not(.pool-rarity) {
   border-style: solid;
   border-color: #c9930f;
   box-shadow: 0 0 0 2px #c9930f;
 }
 
-.pool-caption {
-  font-size: 12px;
-  line-height: 1.15;
-  text-align: center;
-  color: var(--el-text-color-regular);
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+.pool-worn.pool-rarity {
+  box-shadow: 0 0 0 2px #c9930f;
+}
+
+.pool-rarity {
+  color: #111827;
 }
 </style>

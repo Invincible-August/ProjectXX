@@ -4,6 +4,8 @@
  */
 import { computed } from 'vue'
 import type { DaoCatalogEntry } from '../../types/dao'
+import RarityBadge from '../common/RarityBadge.vue'
+import { rarityChipStyle } from '../../utils/rarityDisplay'
 
 const props = defineProps<{
   catalog: DaoCatalogEntry[]
@@ -39,13 +41,18 @@ const sorted = computed(() => {
           muted: !entry.owned,
           focus: focusId === entry.dao_id,
         }"
+        :style="rarityChipStyle(entry.rarity || entry.rarity_label)"
       >
         <el-text tag="b" :type="entry.owned ? 'primary' : 'info'">
           {{ entry.label }}
         </el-text>
-        <el-text size="small" type="info">
-          {{ entry.category_label }} · {{ entry.rarity_label }}
-        </el-text>
+        <div class="cell-meta">
+          <el-text size="small" type="info">{{ entry.category_label }}</el-text>
+          <RarityBadge
+            :rarity="entry.rarity || entry.rarity_label"
+            :label="entry.rarity_label"
+          />
+        </div>
         <el-tag v-if="entry.owned" size="small" type="success">已收藏</el-tag>
         <el-tag v-else size="small" type="info">未获</el-tag>
         <el-text v-if="entry.description" size="small" class="desc">
@@ -70,15 +77,17 @@ const sorted = computed(() => {
 .cell {
   padding: 0.65rem;
   border-radius: 6px;
-  border: 1px solid var(--el-border-color-lighter);
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
   transition: transform 0.15s ease;
 }
 
-.cell.owned {
-  background: rgba(103, 194, 58, 0.06);
+.cell-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .cell.muted {

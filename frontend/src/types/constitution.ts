@@ -6,6 +6,7 @@ export interface ConstitutionBag {
   id: number
   def_id: string
   name: string
+  icon?: string | null
   kind: string
   quality?: string
   grade?: string
@@ -21,6 +22,8 @@ export interface ConstitutionSlotView {
   slot_index: number
   item_id: number | null
   label_zh?: string
+  name?: string
+  icon?: string | null
   active_effects_zh?: string
 }
 

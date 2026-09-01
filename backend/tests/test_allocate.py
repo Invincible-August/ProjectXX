@@ -135,7 +135,7 @@ def test_allocate_body_temper_overflow_kept(tmp_path: Path) -> None:
 
 
 def test_allocate_technique_level_up(tmp_path: Path) -> None:
-    """分配淬体度升炼体功法等级。"""
+    """分配淬体度升炼体功法层数（可修炼从 1 层起，1→2 用 cost[1]）。"""
 
     async def _body() -> None:
         async with open_test_session_factory(tmp_path / "alloc_tech.db") as factory:
@@ -151,11 +151,115 @@ def test_allocate_technique_level_up(tmp_path: Path) -> None:
                     user,
                     target_type="technique",
                     target_id="iron_body_art",
-                    amount=20,
+                    amount=40,
                 )
                 await session.commit()
                 assert data["levels_gained"] == 1
-                assert data["character"]["body_tempering_points"] == 30
+                assert data["character"]["body_tempering_points"] == 10
+
+    _run(_body())
+
+
+def test_allocate_technique_not_cultivable_rejected(tmp_path: Path) -> None:
+    """不可修炼功法拒绝资源分配。"""
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "alloc_nc.db") as factory:
+            async with factory() as session:
+                user = await _prepare(session, "nocult@example.com")
+                character = await character_service.get_character_by_user_id(session, user.id)
+                assert character is not None
+                character.cultivation_points = 500
+                await session.commit()
+                with pytest.raises(AppError) as exc_info:
+                    await allocate_service.allocate_resources(
+                        session,
+                        user,
+                        target_type="technique",
+                        target_id="beginner_alchemy",
+                        amount=30,
+                    )
+                assert exc_info.value.code == 40033
+                assert "不可修炼" in exc_info.value.message
+
+    _run(_body())
+
+
+def test_allocate_technique_to_perfection(tmp_path: Path) -> None:
+    """10 层后再投入 perfection_cost 置大圆满。"""
+
+    async def _body() -> None:
+        from app.db.models.technique import CharacterTechnique
+        from app.services.technique_service import TechniqueService
+
+        async with open_test_session_factory(tmp_path / "alloc_perf.db") as factory:
+            async with factory() as session:
+                user = await _prepare(session, "perf@example.com")
+                character = await character_service.get_character_by_user_id(session, user.id)
+                assert character is not None
+                character.cultivation_points = 5000
+                await session.commit()
+                await TechniqueService(session).ensure_default_techniques(character.id)
+                row = (
+                    await session.execute(
+                        select(CharacterTechnique).where(
+                            CharacterTechnique.character_id == character.id,
+                            CharacterTechnique.technique_id == "basic_qi_art",
+                        )
+                    )
+                ).scalar_one()
+                row.level = 10
+                row.perfected = False
+                await session.commit()
+
+                data = await allocate_service.allocate_resources(
+                    session,
+                    user,
+                    target_type="technique",
+                    target_id="basic_qi_art",
+                    amount=1200,
+                )
+                await session.commit()
+                assert data["levels_gained"] == 1
+                await session.refresh(row)
+                assert row.perfected is True
+                assert row.level == 10
+
+                with pytest.raises(AppError) as exc_info:
+                    await allocate_service.allocate_resources(
+                        session,
+                        user,
+                        target_type="technique",
+                        target_id="basic_qi_art",
+                        amount=1200,
+                    )
+                assert "大圆满" in exc_info.value.message
+
+    _run(_body())
+
+
+def test_technique_combat_stacks_milestones(tmp_path: Path) -> None:
+    """五层与大圆满叠里程碑 ATTR。"""
+
+    async def _body() -> None:
+        from app.services.technique_service import TechniqueService
+
+        async with open_test_session_factory(tmp_path / "combat_ms.db") as factory:
+            async with factory() as session:
+                user = await _prepare(session, "combatms@example.com")
+                character = await character_service.get_character_by_user_id(session, user.id)
+                assert character is not None
+                items = await TechniqueService(session).list_my_techniques(character)
+                qi = next(i for i in items if i["id"] == "basic_qi_art")
+                qi["level"] = 5
+                qi["perfected"] = False
+                mid = TechniqueService.compute_technique_combat_amounts([qi])
+                # level*1 atk + tier5 tb_atk_gray phys_atk 1
+                assert mid["phys_atk"] == pytest.approx(5 + 1)
+                qi["perfected"] = True
+                full = TechniqueService.compute_technique_combat_amounts([qi])
+                # + pf_atk_blue phys_atk 4
+                assert full["phys_atk"] == pytest.approx(5 + 1 + 4)
 
     _run(_body())
 

@@ -36,7 +36,9 @@ export interface DaoCatalogEntry {
   label: string
   /** 大类中文，如「元素」 */
   category_label: string
-  /** 稀有度中文 */
+  /** 稀有度机读键（如 common / rare）；展示走 RarityBadge */
+  rarity?: string
+  /** 稀有度中文（域内 label，如凡品/天品） */
   rarity_label: string
   /** 是否已在道池 */
   owned: boolean

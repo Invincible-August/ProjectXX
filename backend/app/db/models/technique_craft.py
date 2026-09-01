@@ -37,6 +37,8 @@ class TechniqueResearchDraft(Base):
     weapon_limit: Mapped[str | None] = mapped_column(String(32), nullable=True, default=None)
     base_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     affixes_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    # tier5 / perfection：各 { options[], chosen_id }；定稿前须两档均选定
+    milestones_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     upgrade_points: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     major_rank: Mapped[str] = mapped_column(String(32), nullable=False, default="body_tempering")
     conditions_confirmed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

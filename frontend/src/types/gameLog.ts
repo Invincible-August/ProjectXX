@@ -1,13 +1,15 @@
 /**
- * 大厅游戏日志条目类型（M0 客户端本地事件流；后续可接服务端推送）。
+ * 大厅游戏日志条目类型（客户端本地事件流；按角色持久化）。
  */
 export type GameLogLevel = 'info' | 'success' | 'warning' | 'system'
 
 export interface GameLogEntry {
   /** 稳定唯一键（用于 v-for） */
   id: string
-  /** ISO 时间或本地可读时间 */
+  /** 展示用 HH:mm:ss */
   time: string
+  /** 写入时刻（毫秒时间戳；TTL / 排序） */
+  ts: number
   /** 日志正文 */
   message: string
   /** 展示级别 */
@@ -30,6 +32,7 @@ export function createLogEntry(
   return {
     id: `${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
     time,
+    ts: now.getTime(),
     message,
     level,
   }

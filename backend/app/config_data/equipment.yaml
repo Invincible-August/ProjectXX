@@ -2,6 +2,7 @@
 # 用途：装备样本定义（槽位 / stats / 挂机 / 骰子修正）
 # 加载时机：M8 R0 穿戴校验与 ATTR 喂入；须与 inventory.yaml 同 id
 # 槽位：17 区指针 id（weapon_1 / armor_chest / fabao_1 …）；无旧五槽名
+# 图标：可选 icon（§0.0.4）；缺省=item_id；可覆盖 inventory.icon
 # =====================================================================
 
 items:

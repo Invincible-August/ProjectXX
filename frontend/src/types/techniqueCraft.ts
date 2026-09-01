@@ -3,6 +3,22 @@
  * Align with backend app.constants.technique_craft / TechniqueDraftPublic.
  */
 
+import {
+  affixRarityLabelZh,
+  affixRarityAccentColor,
+  affixRarityBadgeStyle,
+  affixRarityChipStyle,
+  affixRarityPanelStyle,
+  affixRarityTextColor,
+  rarityAccentColor,
+  rarityBadgeStyle,
+  rarityChipStyle,
+  rarityLabelZh,
+  rarityPanelStyle,
+  rarityTextColor,
+  resolveRarityTier,
+} from '../utils/rarityDisplay'
+
 /** Blank / type / formal catalog ids. */
 export const TECH_CARD_BLANK_ID = 'tech_card_blank'
 export const TECH_CARD_TYPE_ELEMENT_ID = 'tech_card_type_element'
@@ -174,6 +190,20 @@ export interface TechniqueAffixSlot {
   next_upgrade_cost?: number | null
 }
 
+export interface TechniqueMilestoneOptionView {
+  id: string
+  label_zh: string
+  rarity?: string | null
+  stats?: Record<string, number>
+}
+
+export interface TechniqueMilestoneCell {
+  options: string[]
+  option_views?: TechniqueMilestoneOptionView[]
+  chosen_id: string | null
+  chosen_label_zh?: string | null
+}
+
 export interface TechniqueDraftPublic {
   id: number
   phase: string
@@ -187,6 +217,10 @@ export interface TechniqueDraftPublic {
   upgrade_points: number
   base: Record<string, number>
   affixes: TechniqueAffixSlot[]
+  milestones?: {
+    tier5?: TechniqueMilestoneCell
+    perfection?: TechniqueMilestoneCell
+  }
   technique_id?: string
   /** Present on finalize response only. */
   private?: TechniqueMineFields
@@ -219,6 +253,9 @@ export interface TechniqueMineFields {
     element_bonus?: Record<string, number>
     help_zh?: string
   }
+  base_upgrade_used?: number | null
+  base_upgrade_cap?: number | null
+  base_upgrade_remaining?: number | null
 }
 
 export interface TechniqueOriginalView {
@@ -238,6 +275,9 @@ export interface TechniqueOriginalView {
   next_rank_label_zh?: string | null
   breakthrough_points_required?: number | null
   condition_bonus?: TechniqueMineFields['condition_bonus']
+  base_upgrade_used?: number | null
+  base_upgrade_cap?: number | null
+  base_upgrade_remaining?: number | null
 }
 
 export interface TechniqueCultivatePublic {
@@ -251,6 +291,9 @@ export interface TechniqueCultivatePublic {
   next_rank?: string | null
   next_rank_label_zh?: string | null
   breakthrough_points_required?: number | null
+  base_upgrade_used?: number | null
+  base_upgrade_cap?: number | null
+  base_upgrade_remaining?: number | null
 }
 
 export function elementLabelZh(id: string): string {
@@ -289,6 +332,33 @@ export function formatAffixStats(stats: Record<string, number> | undefined): str
     .join(' ')
 }
 
+// Re-export shared rarity display (canonical source: utils/rarityDisplay.ts)
+export {
+  affixRarityAccentColor,
+  affixRarityBadgeStyle,
+  affixRarityChipStyle,
+  affixRarityLabelZh,
+  affixRarityPanelStyle,
+  affixRarityTextColor,
+  rarityAccentColor,
+  rarityBadgeStyle,
+  rarityChipStyle,
+  rarityLabelZh,
+  rarityPanelStyle,
+  rarityTextColor,
+  resolveRarityTier,
+}
+
+export function formatAffixStatLines(
+  stats: Record<string, number> | undefined,
+): Array<{ label: string; value: string }> {
+  if (!stats || !Object.keys(stats).length) return []
+  return Object.entries(stats).map(([k, v]) => ({
+    label: attrLabelZh(k),
+    value: `+${Number(v).toFixed(1).replace(/\.0$/, '')}`,
+  }))
+}
+
 export function weaponLabelZh(id: string | null | undefined): string {
   if (!id) return '不选'
   return WEAPON_LIMIT_OPTIONS.find((w) => w.id === id)?.label_zh || id
@@ -323,7 +393,10 @@ function asAffixView(raw: unknown): TechniqueAffixView | null {
     id,
     label_zh: String(row.label_zh || AFFIX_LABELS[id] || '未知词条'),
     rarity: String(row.rarity || 'white'),
-    rarity_label_zh: String(row.rarity_label_zh || row.rarity || '白'),
+    rarity_label_zh: affixRarityLabelZh(
+      String(row.rarity || 'white'),
+      row.rarity_label_zh == null ? null : String(row.rarity_label_zh),
+    ),
     color: String(row.color || '#eceff1'),
     stats,
   }

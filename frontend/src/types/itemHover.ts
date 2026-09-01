@@ -28,6 +28,10 @@ export interface ItemHoverModel {
   cornerZh?: string
   /** Line under name: lv.3/lv.10 */
   subtitle?: string
+  /** Craft / domain rarity id for RarityBadge (§0.0.3) */
+  rarity?: string | null
+  /** Optional API label_zh (粗糙…太古); color names / English ids ignored */
+  rarityLabelZh?: string | null
   elements?: ItemHoverElement[]
   stats?: ItemHoverStat[]
   /** 工坊成品：功效 + 境界使用条件 */
@@ -37,8 +41,16 @@ export interface ItemHoverModel {
 
 export interface PoolCandidate {
   key: string
-  shortName: string
+  /** Full Chinese name for §0.0.4 name fallback */
+  name?: string
+  /** @deprecated Prefer name + ItemSlotVisual; kept for legacy pickers */
+  shortName?: string
   worn: boolean
   hover: ItemHoverModel
+  /** @deprecated Prefer rarity + rarityChipStyle */
   border?: string
+  /** Craft quality / rarity id — list chips use color only */
+  rarity?: string | null
+  /** §0.0.4 icon key */
+  icon?: string | null
 }

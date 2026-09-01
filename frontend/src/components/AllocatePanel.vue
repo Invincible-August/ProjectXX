@@ -49,6 +49,21 @@ const selectedTech = computed(
   () => techniques.value.find((t) => t.id === selectedTechId.value) ?? null,
 )
 
+/** Only layer-cultivable techniques appear in the allocate list. */
+const cultivableTechniques = computed(() =>
+  techniques.value.filter((t) => t.cultivable === true),
+)
+
+function techniqueSelectLabel(t: TechniqueItem): string {
+  const track = TRACK_NAME[t.track] || t.track
+  const pool = TRACK_POOL_LABEL[t.track] || '池'
+  if (t.perfected) {
+    return `${t.name} 大圆满（${track}·${pool}）`
+  }
+  const layer = t.level_label_zh || `Lv.${t.level}`
+  return `${t.name} ${layer}/${t.max_level}（${track}·${pool}）`
+}
+
 /** 当前分配将消耗的池说明 */
 const activePoolHint = computed(() => {
   if (tab.value === 'realm') {
@@ -143,8 +158,9 @@ async function loadTechniques(): Promise<void> {
   const envelope = await fetchMyTechniquesApi()
   if (envelope.code === 0 && envelope.data?.items) {
     techniques.value = envelope.data.items
-    if (!selectedTechId.value && techniques.value.length) {
-      selectedTechId.value = techniques.value[0].id
+    const list = cultivableTechniques.value
+    if (!list.some((t) => t.id === selectedTechId.value)) {
+      selectedTechId.value = list[0]?.id || ''
     }
   }
 }
@@ -248,20 +264,34 @@ async function submit(): Promise<void> {
 
       <el-form label-position="top" size="small" class="form">
         <el-form-item v-if="tab === 'technique'" label="功法">
-          <el-select v-model="selectedTechId" style="width: 100%">
+          <el-select v-model="selectedTechId" style="width: 100%" placeholder="选择可修炼功法">
             <el-option
-              v-for="t in techniques"
+              v-for="t in cultivableTechniques"
               :key="t.id"
-              :label="`${t.name} Lv.${t.level}/${t.max_level}（${TRACK_NAME[t.track] || t.track}·${TRACK_POOL_LABEL[t.track] || '池'}）`"
+              :label="techniqueSelectLabel(t)"
               :value="t.id"
             />
           </el-select>
+          <el-text v-if="!cultivableTechniques.length" size="small" type="warning">
+            暂无可修炼功法（目录需 cultivable，自创定稿后默认可修炼）
+          </el-text>
           <el-text
-            v-if="selectedTech?.next_cost != null || selectedTech?.cost_next != null"
+            v-else-if="selectedTech?.perfected"
+            size="small"
+            type="success"
+          >
+            已大圆满
+          </el-text>
+          <el-text
+            v-else-if="selectedTech?.next_cost != null || selectedTech?.cost_next != null"
             size="small"
             type="info"
           >
-            下一级需
+            {{
+              selectedTech && selectedTech.level >= (selectedTech.max_level || 10)
+                ? '大圆满需'
+                : '下一层需'
+            }}
             {{ selectedTech?.next_cost ?? selectedTech?.cost_next }}
             点{{ TRACK_POOL_LABEL[selectedTech?.track || ''] || '对应池' }}
           </el-text>

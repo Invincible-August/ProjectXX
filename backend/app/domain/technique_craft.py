@@ -353,9 +353,26 @@ def affix_public_view(
 
 
 def affix_upgrade_cost_multiplier(rarity: str | None) -> float:
-    """Multiply table upgrade cost by rarity ``cost_mult``."""
+    """Multiply table upgrade cost by rarity ``cost_mult`` (from admin/YAML)."""
     rare = affix_rarity_def(rarity)
     return float(getattr(rare, "cost_mult", 1.0) or 1.0)
+
+
+def next_affix_upgrade_cost(*, level: int, rarity: str | None) -> int:
+    """
+    Resource cost to upgrade an affix from ``level`` to ``level+1``.
+
+    Reads live ``technique_craft.affix_upgrade_cost[level]`` (clamped to last
+    entry when the table is shorter) × rarity ``cost_mult``. Both knobs are
+    admin-editable under domain ``research``.
+    """
+    craft = get_game_config().research.technique_craft
+    costs = tuple(int(x) for x in craft.affix_upgrade_cost)
+    if not costs:
+        return 0
+    idx = min(max(int(level), 0), len(costs) - 1)
+    table_cost = int(costs[idx])
+    return int(round(table_cost * affix_upgrade_cost_multiplier(rarity)))
 
 
 def roll_affix_upgrade_success(fail_rate: float, rng: Any = None) -> bool:
@@ -418,6 +435,95 @@ def next_rank_id(current_rank: str) -> str | None:
         return None
     nxt = getattr(major, "next_major", None)
     return str(nxt) if nxt else None
+
+
+def craft_rank_path_to(current_rank: str) -> list[str]:
+    """
+    Technique-craft ranks from ``body_tempering`` up to ``current_rank`` inclusive.
+
+    Stops if the chain leaves configured ``technique_craft.ranks`` or loops.
+    Unknown current falls back to ``[body_tempering]``.
+    """
+    from app.constants.technique_craft import CRAFT_INITIAL_RANK
+
+    craft = get_game_config().research.technique_craft
+    target = str(current_rank or CRAFT_INITIAL_RANK)
+    if target not in craft.ranks:
+        target = CRAFT_INITIAL_RANK
+    path: list[str] = []
+    cursor = CRAFT_INITIAL_RANK
+    seen: set[str] = set()
+    while cursor and cursor not in seen:
+        seen.add(cursor)
+        if cursor in craft.ranks:
+            path.append(cursor)
+        if cursor == target:
+            return path
+        cursor = next_rank_id(cursor) or ""
+    return path or [CRAFT_INITIAL_RANK]
+
+
+def resolve_create_base_realm(*, efficacy: str, character: Any) -> str:
+    """
+    Create-time realm id used for base-upgrade bonus lookup.
+
+    Spirit efficacies (spell / idle_spirit) use ``character.major_realm``.
+    Body efficacies (martial / idle_body) map ``body_temper_stage`` → its
+    ``unlock_major`` so the two tracks never mix.
+    """
+    from app.constants.technique_craft import CRAFT_INITIAL_RANK, SPELL_EFFICACIES
+
+    if str(efficacy or "") in SPELL_EFFICACIES:
+        return str(getattr(character, "major_realm", None) or CRAFT_INITIAL_RANK)
+    stage = str(getattr(character, "body_temper_stage", None) or "").strip()
+    body_cfg = get_game_config().body_temper
+    major = body_cfg.majors.get(stage) if stage else None
+    if major is not None and str(getattr(major, "unlock_major", "") or "").strip():
+        return str(major.unlock_major)
+    return CRAFT_INITIAL_RANK
+
+
+def create_base_upgrade_bonus_per_rank(realm_id: str) -> int:
+    """YAML lookup: extra base clicks granted per technique rank at create realm."""
+    table = get_game_config().research.technique_craft.base_upgrade_create_bonus_per_rank
+    key = str(realm_id or "body_tempering")
+    if key in table:
+        return max(0, int(table[key]))
+    return 0
+
+
+def base_upgrade_cap_total(
+    *,
+    major_rank: str,
+    create_bonus_per_rank: int = 0,
+) -> int:
+    """
+    Total allowed base-upgrade clicks at the technique's current rank.
+
+    ``sum(ranks[r].base_upgrade_cap for r in path) + create_bonus * len(path)``.
+    Each ``base_upgrade_cap`` is a per-rank grant (admin-configurable), not a
+    cumulative ceiling.
+    """
+    craft = get_game_config().research.technique_craft
+    path = craft_rank_path_to(major_rank)
+    base = 0
+    for rid in path:
+        rank = craft.ranks.get(rid)
+        if rank is not None:
+            base += max(0, int(rank.base_upgrade_cap or 0))
+    bonus = max(0, int(create_bonus_per_rank)) * len(path)
+    return base + bonus
+
+
+def base_upgrade_used(payload: Mapping[str, Any]) -> int:
+    """Sum of attack/defense/speed click counts on the payload."""
+    base_raw = payload.get("base") or {}
+    base = dict(base_raw) if isinstance(base_raw, Mapping) else {}
+    return (
+        int(base.get("attack") or 0)
+        + int(base.get("defense") or 0)
+        + int(base.get("speed") or 0)
+    )
 
 
 def major_rank_label_zh(rank_id: str | None) -> str:
@@ -492,14 +598,15 @@ def enrich_affix_slots_public(slots: Sequence[Any]) -> list[dict[str, Any]]:
     """
     Attach option_views / chosen_view / next_upgrade_cost for player UI.
 
+    ``next_upgrade_cost`` uses ``next_affix_upgrade_cost`` (YAML/admin
+    ``affix_upgrade_cost`` × rarity ``cost_mult``).
+
     Args:
         slots: Raw affix slot dicts from draft or payload.
 
     Returns:
         list[dict[str, Any]]: Enriched copies (does not mutate input items).
     """
-    craft = get_game_config().research.technique_craft
-    costs = tuple(int(x) for x in craft.affix_upgrade_cost)
     out: list[dict[str, Any]] = []
     for raw in slots:
         if not isinstance(raw, Mapping):
@@ -521,9 +628,9 @@ def enrich_affix_slots_public(slots: Sequence[Any]) -> list[dict[str, Any]]:
             cell["chosen_view"] = affix_public_view(
                 chosen, level=level, rarity=rarity, rank_boost=rank_boost
             )
-            table_cost = int(costs[min(max(level, 0), len(costs) - 1)]) if costs else 0
-            cell["next_upgrade_cost"] = int(
-                round(table_cost * affix_upgrade_cost_multiplier(rarity))
+            cell["next_upgrade_cost"] = next_affix_upgrade_cost(
+                level=level,
+                rarity=rarity,
             )
         else:
             cell["chosen_view"] = None
@@ -577,4 +684,98 @@ def payload_attr_grants(payload: Mapping[str, Any]) -> dict[str, float]:
             ).items():
                 _add(str(key), float(amount))
     return totals
+
+
+# ---------------------------------------------------------------------------
+# Cultivable layers (allocate) / milestone bonuses
+# ---------------------------------------------------------------------------
+
+CULTIVABLE_MAX_LEVEL: int = 10
+
+_LEVEL_LABEL_ZH: tuple[str, ...] = (
+    "",
+    "一层",
+    "二层",
+    "三层",
+    "四层",
+    "五层",
+    "六层",
+    "七层",
+    "八层",
+    "九层",
+    "十层",
+)
+
+
+def technique_level_label_zh(*, level: int, perfected: bool) -> str:
+    """Chinese layer label; perfected overrides to 大圆满."""
+    if perfected:
+        return "大圆满"
+    lv = max(0, int(level))
+    if 1 <= lv <= CULTIVABLE_MAX_LEVEL:
+        return _LEVEL_LABEL_ZH[lv]
+    if lv <= 0:
+        return "未修"
+    return f"{lv}层"
+
+
+def level_bonus_entry(bonus_id: str | None) -> Any | None:
+    """Lookup ``technique_craft.level_bonus_catalog`` entry, or None."""
+    bid = str(bonus_id or "").strip()
+    if not bid:
+        return None
+    return get_game_config().research.technique_craft.level_bonus_catalog.get(bid)
+
+
+def level_bonus_stats(bonus_id: str | None) -> dict[str, float]:
+    """ATTR stats for a milestone bonus id (empty if missing)."""
+    entry = level_bonus_entry(bonus_id)
+    if entry is None:
+        return {}
+    return {str(k): float(v) for k, v in (entry.stats or {}).items()}
+
+
+def level_bonus_label_zh(bonus_id: str | None) -> str | None:
+    """Chinese label for a milestone bonus id."""
+    entry = level_bonus_entry(bonus_id)
+    if entry is None:
+        return None
+    return str(entry.label_zh or entry.bonus_id)
+
+
+def roll_level_bonus_options(milestone: str, *, count: int = 3, rng: Any = None) -> list[str]:
+    """
+    Weighted three-choose from catalog entries matching ``milestone``.
+
+    Uses ``level_bonus_roll_weights`` by rarity. Requires at least ``count``
+    distinct catalog ids for that milestone.
+    """
+    craft = get_game_config().research.technique_craft
+    key = str(milestone or "").strip()
+    pool = [
+        bid
+        for bid, entry in craft.level_bonus_catalog.items()
+        if str(entry.milestone) == key
+    ]
+    if len(pool) < count:
+        raise ValueError(f"level_bonus_catalog has fewer than {count} entries for {key}")
+    weights = {
+        bid: float(craft.level_bonus_roll_weights.get(str(entry.rarity), 1) or 1)
+        for bid, entry in ((b, craft.level_bonus_catalog[b]) for b in pool)
+    }
+    options = roll_three_weighted(pool, weights, rng=rng)
+    return options[:count]
+
+
+def empty_milestone_cell() -> dict[str, Any]:
+    """Default draft milestone cell."""
+    return {"options": [], "chosen_id": None}
+
+
+def empty_milestones() -> dict[str, Any]:
+    """Default draft milestones_json shape."""
+    return {
+        "tier5": empty_milestone_cell(),
+        "perfection": empty_milestone_cell(),
+    }
 

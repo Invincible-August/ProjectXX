@@ -10,7 +10,7 @@ import BazaarPanel from '../components/market/BazaarPanel.vue'
 import MarketView from './MarketView.vue'
 import { useCharacterStore } from '../stores/character'
 import { useCommerceStore } from '../stores/commerce'
-import { createLogEntry, type GameLogEntry } from '../types/gameLog'
+import { useGameLogPush } from '../composables/useGameLogPush'
 
 type ShopHubMode = 'bazaar' | 'auction' | 'tiandao'
 
@@ -21,7 +21,7 @@ const router = useRouter()
 const characterStore = useCharacterStore()
 const commerceStore = useCommerceStore()
 
-const logEntries = ref<GameLogEntry[]>([])
+const { gameLogStore, pushLog } = useGameLogPush()
 const busy = ref(false)
 const sandboxAmount = ref(500)
 const tiandaoTab = ref<'member' | 'shelf'>('member')
@@ -37,10 +37,6 @@ const mode = computed<ShopHubMode>(() => {
   }
   return 'bazaar'
 })
-
-function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
-  logEntries.value = [...logEntries.value.slice(-49), createLogEntry(message, level)]
-}
 
 function setMode(next: ShopHubMode): void {
   const query: Record<string, string> = { mode: next }
@@ -258,11 +254,11 @@ onMounted(async () => {
       </div>
 
       <aside class="main-side">
-        <el-card v-if="logEntries.length" shadow="never">
+        <el-card v-if="gameLogStore.entries.length" shadow="never">
           <template #header>
             <el-text tag="b" size="small">本页日志</el-text>
           </template>
-          <div v-for="e in logEntries.slice(-8)" :key="e.id" class="log-line">
+          <div v-for="e in gameLogStore.entries.slice(-8)" :key="e.id" class="log-line">
             <el-text size="small">{{ e.message }}</el-text>
           </div>
         </el-card>

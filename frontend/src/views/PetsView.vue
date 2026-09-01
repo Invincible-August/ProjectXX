@@ -15,7 +15,7 @@ import PetList from '../components/pets/PetList.vue'
 import { useCharacterStore } from '../stores/character'
 import { usePetsStore } from '../stores/pets'
 import type { PetPublic } from '../types/pets'
-import { createLogEntry, type GameLogEntry } from '../types/gameLog'
+import { useGameLogPush } from '../composables/useGameLogPush'
 
 const route = useRoute()
 const router = useRouter()
@@ -26,7 +26,7 @@ const loadError = ref('')
 const captureBusy = ref(false)
 const isDev = import.meta.env.DEV
 const selected = ref<PetPublic | null>(null)
-const logEntries = ref<GameLogEntry[]>([])
+const { pushLog } = useGameLogPush()
 const activeTab = ref<'owned' | 'dex' | 'hatch' | 'duel' | 'explore'>('owned')
 
 const focusId = computed(() => {
@@ -39,10 +39,6 @@ const holdLabel = computed(() => {
   const n = petsStore.pets.length
   return `持有 ${n}/${petsStore.cap}`
 })
-
-function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
-  logEntries.value = [...logEntries.value.slice(-49), createLogEntry(message, level)]
-}
 
 function selectPet(pet: PetPublic): void {
   selected.value = pet

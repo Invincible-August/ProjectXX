@@ -39,6 +39,19 @@ class TechniqueFinalizeRequest(BaseModel):
     label_zh: str = Field(..., min_length=2, max_length=16)
 
 
+class TechniqueMilestoneRollRequest(BaseModel):
+    """POST .../milestone/roll body."""
+
+    milestone: str = Field(..., pattern="^(tier5|perfection)$")
+
+
+class TechniqueMilestoneChooseRequest(BaseModel):
+    """POST .../milestone/choose body."""
+
+    milestone: str = Field(..., pattern="^(tier5|perfection)$")
+    bonus_id: str = Field(..., min_length=1, max_length=64)
+
+
 class TechniqueBaseUpgradeRequest(BaseModel):
     """POST /cave/lab/technique/techniques/{id}/base-upgrade body."""
 
@@ -66,3 +79,4 @@ class TechniqueDraftPublic(BaseModel):
     upgrade_points: int = 0
     base: dict[str, Any] = Field(default_factory=dict)
     affixes: list[Any] = Field(default_factory=list)
+    milestones: dict[str, Any] = Field(default_factory=dict)

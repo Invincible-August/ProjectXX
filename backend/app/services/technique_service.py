@@ -35,7 +35,13 @@ from app.constants.technique_craft import ERR_CRAFT_EQUIP_ROLE, IDLE_EFFICACIES
 from app.db.models.character import Character
 from app.db.models.technique import CharacterTechnique, CharacterTechniqueSlot
 from app.db.models.avatar_loadout import AvatarTechniqueSlot
-from app.domain.technique_craft import payload_attr_grants
+from app.domain.technique_craft import (
+    CULTIVABLE_MAX_LEVEL,
+    level_bonus_label_zh,
+    level_bonus_stats,
+    payload_attr_grants,
+    technique_level_label_zh,
+)
 from app.schemas.common import AppError
 from app.services.realm_config import get_game_config
 
@@ -69,13 +75,15 @@ class TechniqueService:
         character_id: int,
     ) -> None:
         """
-        Grant all configured starter techniques at level 0 if missing.
+        Grant all configured starter techniques if missing.
+
+        Cultivable catalog techniques start at layer 1; others stay at 0.
 
         Args:
             character_id: Character primary key.
         """
         cfg = get_game_config()
-        for tech_id in cfg.techniques:
+        for tech_id, tech in cfg.techniques.items():
             existing = await self._session.execute(
                 select(CharacterTechnique.id)
                 .where(
@@ -86,16 +94,41 @@ class TechniqueService:
             )
             if existing.scalar_one_or_none() is not None:
                 continue
+            start_level = 1 if bool(tech.cultivable) else 0
             self._session.add(
                 CharacterTechnique(
                     character_id=character_id,
                     technique_id=tech_id,
-                    level=0,
+                    level=start_level,
+                    perfected=False,
                     source=TECHNIQUE_SOURCE_SYSTEM,
                 ),
             )
         await self._session.flush()
         logger.info("default techniques granted character_id=%s", character_id)
+
+    @staticmethod
+    def _next_layer_cost(
+        *,
+        level: int,
+        perfected: bool,
+        cultivable: bool,
+        cost_per_level: tuple[int, ...] | list[int],
+        perfection_cost: int,
+        max_level: int,
+    ) -> int | None:
+        """Next allocate spend for a cultivable technique, or None if done."""
+        if not cultivable or perfected:
+            return None
+        layer_cap = min(int(max_level), CULTIVABLE_MAX_LEVEL)
+        if int(level) < layer_cap:
+            idx = int(level)
+            costs = tuple(int(x) for x in cost_per_level)
+            if 0 <= idx < len(costs):
+                return int(costs[idx])
+            return None
+        perf = int(perfection_cost or 0)
+        return perf if perf > 0 else None
 
     async def list_my_techniques(
         self,
@@ -123,19 +156,26 @@ class TechniqueService:
             if tech is None:
                 missing_ids.append(str(row.technique_id))
                 continue
-            next_cost = None
-            if row.level < tech.max_level:
-                idx = row.level
-                costs = tech.cost_per_level
-                if 0 <= idx < len(costs):
-                    next_cost = int(costs[idx])
+            perfected = bool(getattr(row, "perfected", False))
+            cultivable = bool(tech.cultivable)
+            next_cost = self._next_layer_cost(
+                level=int(row.level),
+                perfected=perfected,
+                cultivable=cultivable,
+                cost_per_level=tech.cost_per_level,
+                perfection_cost=int(tech.perfection_cost or 0),
+                max_level=int(tech.max_level),
+            )
             source = normalize_technique_source(getattr(row, "source", None))
+            tier5_active = cultivable and int(row.level) >= 5
+            perf_active = cultivable and perfected
             items.append(
                 {
                     "id": row.technique_id,
                     "name": tech.name,
+                    "icon": str(tech.icon or row.technique_id),
                     "level": row.level,
-                    "max_level": tech.max_level,
+                    "max_level": CULTIVABLE_MAX_LEVEL if cultivable else tech.max_level,
                     "track": tech.track,
                     "next_cost": next_cost,
                     "source": source,
@@ -159,6 +199,22 @@ class TechniqueService:
                         }
                         for sk in tech.skills_art
                     ],
+                    "cultivable": cultivable,
+                    "perfected": perfected,
+                    "perfection_cost": int(tech.perfection_cost or 0),
+                    "level_label_zh": technique_level_label_zh(
+                        level=int(row.level),
+                        perfected=perfected,
+                    ),
+                    "milestone_tier5_id": tech.milestone_tier5,
+                    "milestone_perfection_id": tech.milestone_perfection,
+                    "milestone_tier5_label_zh": level_bonus_label_zh(tech.milestone_tier5),
+                    "milestone_perfection_label_zh": level_bonus_label_zh(
+                        tech.milestone_perfection,
+                    ),
+                    "milestone_tier5_active": tier5_active and bool(tech.milestone_tier5),
+                    "milestone_perfection_active": perf_active
+                    and bool(tech.milestone_perfection),
                 },
             )
         if missing_ids:
@@ -169,21 +225,43 @@ class TechniqueService:
                 missing_ids,
             )
             levels = {str(row.technique_id): int(row.level) for row in rows}
+            perfected_map = {
+                str(row.technique_id): bool(getattr(row, "perfected", False))
+                for row in rows
+            }
             sources = {
                 str(row.technique_id): normalize_technique_source(
                     getattr(row, "source", None)
                 )
                 for row in rows
             }
+            craft = cfg.research.technique_craft
+            tech_branch = cfg.research.technique
             for tech_id, private in privates.items():
                 level = levels.get(tech_id, 1)
+                perfected = perfected_map.get(tech_id, False)
                 source = sources.get(tech_id, TECHNIQUE_SOURCE_RESEARCH)
-                next_cost = None
-                costs = cfg.research.technique.cost_per_level
-                if level < int(private.max_level) and 0 <= level < len(costs):
-                    next_cost = int(costs[level])
-                stats = {}
                 payload = TechniqueService._private_payload(private)
+                layer_cultivable = bool(
+                    payload["cultivable"]
+                    if "cultivable" in payload
+                    else craft.default_cultivable
+                )
+                costs = tuple(int(x) for x in tech_branch.cost_per_level)
+                perfection_cost = int(
+                    payload.get("perfection_cost")
+                    if payload.get("perfection_cost") is not None
+                    else (tech_branch.perfection_cost or craft.perfection_cost or 0)
+                )
+                next_cost = self._next_layer_cost(
+                    level=level,
+                    perfected=perfected,
+                    cultivable=layer_cultivable,
+                    cost_per_level=costs,
+                    perfection_cost=perfection_cost,
+                    max_level=CULTIVABLE_MAX_LEVEL,
+                )
+                stats = {}
                 if payload.get("efficacy"):
                     stats = payload_attr_grants(payload)
                 else:
@@ -195,12 +273,15 @@ class TechniqueService:
                     getattr(private, "author_character_id", None)
                     or private.character_id
                 )
+                tier5_id = str(payload.get("milestone_tier5_id") or "").strip() or None
+                perf_id = str(payload.get("milestone_perfection_id") or "").strip() or None
                 items.append(
                     {
                         "id": tech_id,
                         "name": private.label_zh,
+                        "icon": str(tech_id),
                         "level": level,
-                        "max_level": int(private.max_level),
+                        "max_level": CULTIVABLE_MAX_LEVEL if layer_cultivable else int(private.max_level),
                         "track": private.track,
                         "next_cost": next_cost,
                         "source": source,
@@ -218,8 +299,26 @@ class TechniqueService:
                         "stats": stats,
                         "efficacy": TechniqueService._private_efficacy_of(private),
                         "author_character_id": author_id,
-                        "cultivable": author_id == int(character.id)
+                        # lab cultivate (author only) — separate from layer cultivable
+                        "lab_cultivable": author_id == int(character.id)
                         and source == TECHNIQUE_SOURCE_RESEARCH,
+                        "cultivable": layer_cultivable,
+                        "perfected": perfected,
+                        "perfection_cost": perfection_cost,
+                        "level_label_zh": technique_level_label_zh(
+                            level=level,
+                            perfected=perfected,
+                        ),
+                        "milestone_tier5_id": tier5_id,
+                        "milestone_perfection_id": perf_id,
+                        "milestone_tier5_label_zh": level_bonus_label_zh(tier5_id),
+                        "milestone_perfection_label_zh": level_bonus_label_zh(perf_id),
+                        "milestone_tier5_active": layer_cultivable
+                        and level >= 5
+                        and bool(tier5_id),
+                        "milestone_perfection_active": layer_cultivable
+                        and perfected
+                        and bool(perf_id),
                     },
                 )
         return items
@@ -382,6 +481,7 @@ class TechniqueService:
             }
             if item:
                 view["name"] = item["name"]
+                view["icon"] = item.get("icon") or tech_id
                 view["level"] = item["level"]
                 view["max_level"] = item["max_level"]
                 view["source"] = item["source"]
@@ -583,6 +683,9 @@ class TechniqueService:
         """
         Sum combat-key bonuses from official placeholders and custom research stats.
 
+        Layer milestones: ``level >= 5`` stacks tier5 ATTR; ``perfected`` stacks
+        perfection ATTR (catalog binding or private payload chosen ids).
+
         Args:
             techniques: Technique list with id, level, and optional stats.
 
@@ -592,26 +695,42 @@ class TechniqueService:
         cfg = get_game_config()
         allowed = set(COMBAT_FINAL_KEYS)
         totals: dict[str, float] = {}
+
+        def _add(key: str, amount: float) -> None:
+            if key not in allowed or abs(amount) <= 1e-9:
+                return
+            totals[key] = totals.get(key, 0.0) + amount
+
         for item in techniques:
             tech = cfg.techniques.get(item["id"])
             level = int(item["level"])
+            perfected = bool(item.get("perfected"))
             if tech is not None:
                 effects = tech.effects_placeholder
                 atk = float(effects.get("atk_bonus_per_level", 0) or 0) * level
                 hp = float(effects.get("hp_bonus_per_level", 0) or 0) * level
-                if abs(atk) > 1e-9:
-                    totals["phys_atk"] = totals.get("phys_atk", 0.0) + atk
-                if abs(hp) > 1e-9:
-                    totals["hp"] = totals.get("hp", 0.0) + hp
+                _add("phys_atk", atk)
+                _add("hp", hp)
+                if bool(tech.cultivable) and level >= 5:
+                    for key, val in level_bonus_stats(tech.milestone_tier5).items():
+                        _add(str(key), float(val))
+                if bool(tech.cultivable) and perfected:
+                    for key, val in level_bonus_stats(tech.milestone_perfection).items():
+                        _add(str(key), float(val))
                 continue
             stats = item.get("stats") or {}
             scale = max(level, 1)
             for key, raw in stats.items():
-                if str(key) not in allowed:
-                    continue
-                value = float(raw or 0) * scale
-                if abs(value) > 1e-9:
-                    totals[str(key)] = totals.get(str(key), 0.0) + value
+                _add(str(key), float(raw or 0) * scale)
+            cultivable = bool(item.get("cultivable", True))
+            if cultivable and level >= 5:
+                for key, val in level_bonus_stats(item.get("milestone_tier5_id")).items():
+                    _add(str(key), float(val))
+            if cultivable and perfected:
+                for key, val in level_bonus_stats(
+                    item.get("milestone_perfection_id"),
+                ).items():
+                    _add(str(key), float(val))
         return totals
 
     @staticmethod

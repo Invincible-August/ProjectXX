@@ -41,6 +41,9 @@ from app.constants.equipment import (
     canonical_equipment_slot,
     compatible_pointer_slots,
 )
+from app.constants.craft import CRAFT_QUALITY_LABEL_ZH
+from app.domain.craft_quality import normalize_craft_quality
+from app.domain.item_icon import resolve_item_icon
 from app.constants.inventory import ITEM_TYPE_EQUIPMENT, ItemType, Occupancy
 from app.constants.puppet import PUPPET_DEF_TRIAL_WOOD
 from app.db.models.character import Character
@@ -252,6 +255,41 @@ class EquipmentService:
     def _equip_def(self, item_id: str) -> EquipmentItemDef | None:
         return get_game_config().equipment.items.get(item_id)
 
+    def _parse_meta(self, inv: InventoryItem | None) -> dict[str, Any]:
+        """Parse inventory ``meta_json``; empty dict on missing/invalid JSON."""
+        if inv is None:
+            return {}
+        try:
+            raw = json.loads(inv.meta_json or "{}")
+        except json.JSONDecodeError:
+            return {}
+        return raw if isinstance(raw, dict) else {}
+
+    def _equip_rarity_fields(self, inv: InventoryItem | None) -> dict[str, str]:
+        """
+        Item craft quality → rarity display fields (§0.0.3).
+
+        Workshop writes ``quality`` (gray…red / 粗糙～太古) into meta;
+        legacy common/fine/rare/superb are normalized. Missing → 普通.
+        """
+        meta = self._parse_meta(inv)
+        qid = normalize_craft_quality(str(meta.get("quality") or ""))
+        return {
+            "rarity": qid,
+            "rarity_label_zh": CRAFT_QUALITY_LABEL_ZH.get(qid, qid),
+        }
+
+    def _item_icon(self, item_id: str) -> str:
+        """§0.0.4 icon key: equipment.yaml overrides inventory.yaml; else def id."""
+        cfg = get_game_config()
+        eq = cfg.equipment.items.get(item_id)
+        inv = cfg.inventory.items.get(item_id)
+        if eq is not None and str(eq.icon or "").strip():
+            return str(eq.icon)
+        if inv is not None and str(inv.icon or "").strip():
+            return str(inv.icon)
+        return resolve_item_icon(None, item_id)
+
     def _stats_preview(self, eq: EquipmentItemDef | None) -> dict[str, Any]:
         """Build player-facing stat lines; never expose raw attr ids."""
         if eq is None:
@@ -349,18 +387,20 @@ class EquipmentService:
                 hint = eq.slot if eq else None
                 name = eq.label_zh if eq else (defn.name if defn else row.item_id)
                 preview = self._stats_preview(eq)
-            items.append(
-                {
-                    "item_uid": row.item_uid,
-                    "item_id": row.item_id,
-                    "name": name,
-                    "slot_hint": hint,
-                    "compatible_slots": list(compatible_pointer_slots(hint or "")),
-                    "stats_preview": preview,
-                    "quantity": int(row.quantity),
-                    "item_type": row.item_type,
-                },
-            )
+            row_body: dict[str, Any] = {
+                "item_uid": row.item_uid,
+                "item_id": row.item_id,
+                "name": name,
+                "slot_hint": hint,
+                "compatible_slots": list(compatible_pointer_slots(hint or "")),
+                "stats_preview": preview,
+                "quantity": int(row.quantity),
+                "item_type": row.item_type,
+                "icon": self._item_icon(str(row.item_id)),
+            }
+            if row.item_type != ItemType.PET:
+                row_body.update(self._equip_rarity_fields(row))
+            items.append(row_body)
         return items
 
     async def list_puppet_rows(self, character_id: int) -> list[InventoryItem]:
@@ -719,11 +759,7 @@ class EquipmentService:
         if slot == EQUIPMENT_SLOT_PET:
             inv_cfg = get_game_config().inventory
             defn = inv_cfg.items.get(str(inv.item_id))
-            meta: dict[str, Any] = {}
-            try:
-                meta = json.loads(inv.meta_json or "{}")
-            except json.JSONDecodeError:
-                meta = {}
+            meta = self._parse_meta(inv)
             label = (
                 str(meta.get("nickname") or "")
                 or (defn.name if defn else "")
@@ -735,6 +771,7 @@ class EquipmentService:
                     "item_id": inv.item_id,
                     "item_label_zh": label,
                     "pet_id": meta.get("pet_id"),
+                    "icon": self._item_icon(str(inv.item_id)),
                 },
             )
             return body
@@ -747,6 +784,8 @@ class EquipmentService:
                 "item_id": inv.item_id,
                 "item_label_zh": eq.label_zh,
                 "stats_preview": self._stats_preview(eq),
+                "icon": self._item_icon(str(inv.item_id)),
+                **self._equip_rarity_fields(inv),
             },
         )
         return body

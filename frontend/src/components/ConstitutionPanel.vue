@@ -12,7 +12,8 @@ import {
 } from '../api/constitution'
 import type { ConstitutionBag, ConstitutionSlotView, ConstitutionState } from '../types/constitution'
 import type { PoolCandidate } from '../types/itemHover'
-import { hoverFromConstitution, shortItemName } from '../utils/itemHoverFormat'
+import { hoverFromConstitution } from '../utils/itemHoverFormat'
+import ItemSlotVisual from './common/ItemSlotVisual.vue'
 import ItemHoverTip from './character/ItemHoverTip.vue'
 import PoolPickerGrid from './character/PoolPickerGrid.vue'
 import { useCharacterStore } from '../stores/character'
@@ -69,10 +70,6 @@ function itemInSlot(slot: ConstitutionSlotView): ConstitutionBag | null {
   return collection.value.find((b) => b.id === slot.item_id) ?? null
 }
 
-function shortName(name: string): string {
-  return shortItemName(name)
-}
-
 function slotHover(slot: ConstitutionSlotView) {
   const item = itemInSlot(slot)
   if (!item) return { name: slotPhrase(slot.slot_type, slot.slot_index), helpZh: '空' }
@@ -90,7 +87,8 @@ const pickerCandidates = computed((): PoolCandidate[] => {
     .filter((item) => !item.is_equipped || item.id === currentId)
     .map((item) => ({
       key: String(item.id),
-      shortName: shortItemName(item.name),
+      name: item.name,
+      icon: item.icon || item.def_id,
       worn: Boolean(currentId && item.id === currentId),
       hover: hoverFromConstitution(item),
     }))
@@ -255,7 +253,11 @@ async function onUnequip(): Promise<void> {
                 @click="onClickSlot(slot)"
               >
                 <span class="cell-caption">
-                  {{ itemInSlot(slot) ? shortName(itemInSlot(slot)!.name) : '空' }}
+                  <ItemSlotVisual
+                    :name="itemInSlot(slot)?.name || ''"
+                    :icon="itemInSlot(slot) ? (itemInSlot(slot)!.icon || itemInSlot(slot)!.def_id) : null"
+                    empty-text="空"
+                  />
                 </span>
               </button>
             </el-tooltip>
@@ -285,7 +287,11 @@ async function onUnequip(): Promise<void> {
                 @click="onClickSlot(slot)"
               >
                 <span class="cell-caption">
-                  {{ itemInSlot(slot) ? shortName(itemInSlot(slot)!.name) : '' }}
+                  <ItemSlotVisual
+                    :name="itemInSlot(slot)?.name || ''"
+                    :icon="itemInSlot(slot) ? (itemInSlot(slot)!.icon || itemInSlot(slot)!.def_id) : null"
+                    empty-text=""
+                  />
                 </span>
               </button>
             </el-tooltip>
@@ -397,13 +403,9 @@ async function onUnequip(): Promise<void> {
 }
 
 .cell-caption {
-  font-size: 12px;
-  line-height: 1.15;
-  text-align: center;
+  display: block;
+  width: 100%;
+  height: 100%;
   color: var(--el-text-color-regular);
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
 }
 </style>

@@ -14,7 +14,7 @@ import type { DaoActor } from '../api/dao'
 import { useAvatarStore } from '../stores/avatar'
 import { useCharacterStore } from '../stores/character'
 import { useDaoStore } from '../stores/dao'
-import { createLogEntry, type GameLogEntry } from '../types/gameLog'
+import { useGameLogPush } from '../composables/useGameLogPush'
 import { canEnterWudao } from '../utils/realm'
 
 const route = useRoute()
@@ -24,7 +24,7 @@ const avatarStore = useAvatarStore()
 const daoStore = useDaoStore()
 
 const loadError = ref('')
-const logEntries = ref<GameLogEntry[]>([])
+const { gameLogStore, pushLog } = useGameLogPush()
 
 const actor = computed<DaoActor>(() =>
   route.query.actor === 'avatar' ? 'avatar' : 'main',
@@ -43,10 +43,6 @@ const backPath = computed(() =>
   actor.value === 'avatar' ? { path: '/character', query: { actor: 'avatar' } } : '/character',
 )
 const backLabel = computed(() => (actor.value === 'avatar' ? '化身' : '本尊'))
-
-function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
-  logEntries.value = [...logEntries.value.slice(-49), createLogEntry(message, level)]
-}
 
 function setMode(next: 'open' | 'pool'): void {
   void router.replace({ query: { ...route.query, mode: next } })
@@ -177,11 +173,11 @@ watch(actor, async (next) => {
       <aside class="main-side">
         <DaoRestraintHint />
         <DaoUsageToggle v-if="actor === 'main'" />
-        <el-card v-if="logEntries.length" shadow="never">
+        <el-card v-if="gameLogStore.entries.length" shadow="never">
           <template #header>
             <el-text tag="b" size="small">本页日志</el-text>
           </template>
-          <div v-for="e in logEntries.slice(-8)" :key="e.id" class="log-line">
+          <div v-for="e in gameLogStore.entries.slice(-8)" :key="e.id" class="log-line">
             <el-text size="small">{{ e.message }}</el-text>
           </div>
         </el-card>

@@ -24,7 +24,7 @@ from app.domain.craft_rules import (
     read_craft_levels,
     roll_fail,
 )
-from app.domain.craft_quality import roll_craft_quality
+from app.domain.craft_quality import normalize_craft_quality, roll_craft_quality
 from app.domain.reincarnation_rules import parse_growth_attrs
 from app.constants.character import CRAFT_BRANCH_LEVEL_LABEL_ZH, CRAFT_WORKSHOP_BRANCHES
 from app.constants.craft import (
@@ -547,10 +547,12 @@ class CraftService:
         )
         level_delta = crafter_level - int(recipe.required_craft_level or 0)
         cfg = get_game_config().craft_recipes
-        quality = roll_craft_quality(
-            level_delta,
-            cfg.quality_by_level_delta,
-            rng=rng,
+        quality = normalize_craft_quality(
+            roll_craft_quality(
+                level_delta,
+                cfg.quality_by_level_delta,
+                rng=rng,
+            ),
         )
         unit_result["quality"] = quality
         grant_lv = int(recipe.grant_craft_level or 0) if grant_craft_level else 0

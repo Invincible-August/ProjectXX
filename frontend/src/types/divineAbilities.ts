@@ -11,6 +11,7 @@ export interface DivineAbilityElementChip {
 export interface DivineAbilityItem {
   id: string
   name: string
+  icon?: string | null
   source?: string
   source_label_zh?: string
   help_zh?: string
@@ -23,6 +24,7 @@ export interface DivineAbilitySlotView {
   label_zh?: string
   ability_id: string | null
   name?: string
+  icon?: string | null
   source?: string
   source_label_zh?: string
   help_zh?: string

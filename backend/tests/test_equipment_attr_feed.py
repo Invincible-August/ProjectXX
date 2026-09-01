@@ -126,6 +126,9 @@ def test_equipment_attr_feed(tmp_path: Path) -> None:
                 )
                 assert "weapon_1" in sword_bag["compatible_slots"]
                 assert "weapon_2" in sword_bag["compatible_slots"]
+                assert sword_bag.get("rarity") == "white"
+                assert sword_bag.get("rarity_label_zh") == "普通"
+                assert sword_bag.get("icon") == "iron_sword_t1"
                 await EquipmentService(session).equip_item(
                     char,
                     slot="weapon_1",
@@ -139,6 +142,59 @@ def test_equipment_attr_feed(tmp_path: Path) -> None:
                 assert eq_row.get("label_zh") == "装备"
                 assert float(eq_row.get("phys_atk") or 0) >= 3.0
                 assert int(packed["combat"]["final"]["phys_atk"]) >= 3
+                worn = await EquipmentService(session).get_slots_state(char)
+                w1 = next(s for s in worn["slots"] if s["slot"] == "weapon_1")
+                assert w1.get("rarity") == "white"
+                assert w1.get("rarity_label_zh") == "普通"
+                assert w1.get("icon") == "iron_sword_t1"
+
+    _run(_body())
+
+
+def test_equipment_slot_rarity_from_craft_quality(tmp_path: Path) -> None:
+    """Craft meta quality surfaces as rarity + Chinese label for UI (§0.0.3)."""
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "eq_rarity.db") as factory:
+            async with factory() as session:
+                from sqlalchemy import select
+
+                from app.db.models.inventory_item import InventoryItem
+
+                _, item_uid = await _prepare(session, "eqr@test.com", "品质甲")
+                user = (
+                    await session.execute(select(User).where(User.email == "eqr@test.com"))
+                ).scalar_one()
+                char = await character_service.get_character_by_user_id(session, user.id)
+                assert char is not None
+                row = (
+                    await session.execute(
+                        select(InventoryItem).where(InventoryItem.item_uid == item_uid),
+                    )
+                ).scalar_one()
+                row.meta_json = '{"quality": "superb"}'
+                await session.commit()
+                state = await EquipmentService(session).get_slots_state(char)
+                bag = next(i for i in state["bag_equipment"] if i["item_uid"] == item_uid)
+                assert bag["rarity"] == "purple"
+                assert bag["rarity_label_zh"] == "史诗"
+                await EquipmentService(session).equip_item(
+                    char,
+                    slot="weapon_1",
+                    item_uid=item_uid,
+                )
+                await session.commit()
+                worn = await EquipmentService(session).get_slots_state(char)
+                w1 = next(s for s in worn["slots"] if s["slot"] == "weapon_1")
+                assert w1["rarity"] == "purple"
+                assert w1["rarity_label_zh"] == "史诗"
+
+                row.meta_json = '{"quality": "orange"}'
+                await session.commit()
+                worn2 = await EquipmentService(session).get_slots_state(char)
+                w1b = next(s for s in worn2["slots"] if s["slot"] == "weapon_1")
+                assert w1b["rarity"] == "orange"
+                assert w1b["rarity_label_zh"] == "传说"
 
     _run(_body())
 

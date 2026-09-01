@@ -8,17 +8,18 @@ main_crafting_bonus: 1.25
 # 同一角色同时进行的工坊任务上限（已废弃：顺序排队不设上限；保留键兼容后台/旧客户端）
 max_jobs_per_actor: 99
 
-# 领取品质：按 (制作者等级 - required_craft_level) 取最高已达档
-# 高等级制造低门槛已学图纸时，高品质权重大幅提高
+# 领取品阶：按 (制作者等级 - required_craft_level) 取最高已达档
+# 与 §0.0.3 物品稀有度同键：gray/white/green/blue/purple/orange/red（粗糙～太古）
+# 高等级制造低门槛已学图纸时，高品阶权重大幅提高
 quality_by_level_delta:
   - min_delta: 0
-    weights: { common: 80, fine: 18, rare: 2 }
+    weights: { gray: 20, white: 55, green: 22, blue: 3 }
   - min_delta: 1
-    weights: { common: 45, fine: 40, rare: 15 }
+    weights: { gray: 8, white: 32, green: 40, blue: 16, purple: 4 }
   - min_delta: 3
-    weights: { common: 15, fine: 45, rare: 35, superb: 5 }
+    weights: { gray: 2, white: 10, green: 28, blue: 36, purple: 18, orange: 5, red: 1 }
   - min_delta: 5
-    weights: { common: 4, fine: 26, rare: 50, superb: 20 }
+    weights: { gray: 1, white: 4, green: 16, blue: 34, purple: 28, orange: 12, red: 5 }
 
 # 配方表；后续配方字段同第一条
 # branch / name / duration_seconds / fail_chance / spirit_stone_cost / stamina_cost

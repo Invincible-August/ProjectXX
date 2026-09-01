@@ -1,18 +1,40 @@
 <script setup lang="ts">
 /**
- * Shared hover card: name + corner, element chips, optional inspect, stats, help.
+ * Shared hover card: name + corner, optional rarity badge, elements, stats, help.
+ * When rarity is set, apply §0.0.3 light panel (left accent bar + RarityBadge).
  */
+import { computed } from 'vue'
 import type { ItemHoverModel } from '../../types/itemHover'
+import { rarityPanelStyle } from '../../utils/rarityDisplay'
+import RarityBadge from '../common/RarityBadge.vue'
 
-defineProps<{
+const props = defineProps<{
   model: ItemHoverModel
 }>()
+
+const panelStyle = computed(() =>
+  props.model.rarity ? rarityPanelStyle(props.model.rarity) : undefined,
+)
 </script>
 
 <template>
-  <div class="item-hover-card" :class="{ 'has-inspect': Boolean(model.inspect) }">
+  <div
+    class="item-hover-card"
+    :class="{
+      'has-inspect': Boolean(model.inspect),
+      'has-rarity': Boolean(model.rarity),
+    }"
+    :style="panelStyle"
+  >
     <div class="item-hover-head">
-      <span>{{ model.name }}</span>
+      <div class="item-hover-title-row">
+        <RarityBadge
+          v-if="model.rarity"
+          :rarity="model.rarity"
+          :label="model.rarityLabelZh"
+        />
+        <span class="item-hover-name">{{ model.name }}</span>
+      </div>
       <span v-if="model.cornerZh" class="item-hover-corner">{{ model.cornerZh }}</span>
     </div>
     <div v-if="model.subtitle" class="item-hover-sub">{{ model.subtitle }}</div>

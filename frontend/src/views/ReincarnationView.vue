@@ -15,7 +15,7 @@ import ReincarnationPreviewPanel from '../components/reincarnation/Reincarnation
 import StoryFlagsReadonly from '../components/reincarnation/StoryFlagsReadonly.vue'
 import { useCharacterStore } from '../stores/character'
 import { useFerryStore } from '../stores/ferry'
-import { createLogEntry, type GameLogEntry } from '../types/gameLog'
+import { useGameLogPush } from '../composables/useGameLogPush'
 
 type Mode = 'ferry' | 'altar' | 'logs' | 'newborn'
 
@@ -25,7 +25,7 @@ const characterStore = useCharacterStore()
 const ferryStore = useFerryStore()
 
 const loadError = ref('')
-const logEntries = ref<GameLogEntry[]>([])
+const { pushLog } = useGameLogPush()
 const navigating = ref(false)
 
 const reincarnating = computed(
@@ -43,10 +43,6 @@ const mode = computed<Mode>(() => {
   if (awaitingFerry.value) return 'ferry'
   return 'altar'
 })
-
-function pushLog(message: string, level: GameLogEntry['level'] = 'info'): void {
-  logEntries.value = [...logEntries.value.slice(-49), createLogEntry(message, level)]
-}
 
 function setMode(next: string | number | boolean | undefined): void {
   if (reincarnating.value) {

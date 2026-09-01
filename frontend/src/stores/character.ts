@@ -209,6 +209,8 @@ export const useCharacterStore = defineStore('character', () => {
   ): void {
     character.value = mergeStaleAvatarIdle(ch)
     useAuthStore().setHasCharacter(true)
+    // 按角色恢复/切换本地事件日志（刷新后可见）
+    useGameLogStore().bindCharacter(ch.id)
     if (ch.offline_pending || !isEitherThreadBusy(ch)) {
       nextTickAt.value = null
     } else {
@@ -317,6 +319,7 @@ export const useCharacterStore = defineStore('character', () => {
       if (envelope.code === 40005) {
         character.value = null
         nextTickAt.value = null
+        useGameLogStore().bindCharacter(null)
         useAuthStore().setHasCharacter(false)
         return false
       }
@@ -625,6 +628,7 @@ export const useCharacterStore = defineStore('character', () => {
     onSettledCb = null
     character.value = null
     nextTickAt.value = null
+    useGameLogStore().clear()
   }
 
   return {

@@ -27,12 +27,19 @@ techniques:
   # elements          属性（metal/wood/water/fire/earth/wind/thunder）
   # learn_requires    学习条件占位（本版不执行）
   # skills.as_main / as_art  装备为主功法或技法时展示的技能占位
-  # cost_per_level    每级升级消耗（灵石等，按下标 0=升到 1 级）
+  # cost_per_level    可修炼：下标=当前层（1→2 用 [1]…）；下标 0 兼容旧 0→1
+  # cultivable        是否可经资源分配修炼层数（默认 false）
+  # perfection_cost   10 层→大圆满消耗
+  # milestone_tier5 / milestone_perfection  固定奖励 id（level_bonus_catalog）
   # dice_mods         按等级的骰子上下限修正（下标 0=1 级）；见 骰子系统设计.md
   basic_qi_art:
     name: 基础吐纳诀
     track: spirit
     max_level: 10
+    cultivable: true
+    perfection_cost: 1200
+    milestone_tier5: tb_atk_gray
+    milestone_perfection: pf_atk_blue
     env_tags: [common_art]
     elements: [wood, water]
     help_zh: 吐纳入门，可作主功法或技法。
@@ -64,6 +71,10 @@ techniques:
     name: 铁皮锻体功
     track: body
     max_level: 10
+    cultivable: true
+    perfection_cost: 1200
+    milestone_tier5: tb_hp_white
+    milestone_perfection: pf_hp_green
     env_tags: [common_art]
     elements: [earth, metal]
     help_zh: 炼体入门，可作主功法或技法。

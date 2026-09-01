@@ -18,6 +18,8 @@ export interface InventoryItem {
   item_type: string
   item_id: string
   name: string
+  /** §0.0.4 icon key */
+  icon?: string | null
   quantity: number
   bag_kind?: BagKind | string
   meta?: Record<string, unknown> | null
