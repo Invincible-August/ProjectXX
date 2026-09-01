@@ -140,14 +140,14 @@ watch(mode, () => {
       class="page-alert"
     />
 
-    <div class="main-grid">
+    <div class="main-grid" :class="{ 'main-grid-wide': mode === 'technique' }">
       <div class="main-left">
         <TechniqueResearchPanel v-if="mode === 'technique'" @log="pushLog" />
         <FormationResearchPanel v-else-if="mode === 'formation'" @log="pushLog" />
         <TalismanResearchPanel v-else @log="pushLog" />
-        <ResearchMineList />
+        <ResearchMineList v-if="mode !== 'technique'" :kind="mode" />
       </div>
-      <aside class="main-side">
+      <aside v-if="mode !== 'technique'" class="main-side">
         <el-card v-if="logEntries.length" shadow="never">
           <template #header>
             <el-text tag="b" size="small">本页日志</el-text>
@@ -163,6 +163,23 @@ watch(mode, () => {
         </el-card>
       </aside>
     </div>
+    <el-card
+      v-if="mode === 'technique' && logEntries.length"
+      shadow="never"
+      class="tech-log"
+    >
+      <template #header>
+        <el-text tag="b" size="small">本页日志</el-text>
+      </template>
+      <el-text
+        v-for="e in logEntries.slice(-12)"
+        :key="e.id"
+        size="small"
+        class="log-line"
+      >
+        {{ e.message }}
+      </el-text>
+    </el-card>
   </div>
 </template>
 
@@ -182,12 +199,18 @@ watch(mode, () => {
   gap: 0.75rem;
   margin-top: 0.75rem;
 }
+.main-grid-wide {
+  grid-template-columns: 1fr;
+}
 .main-left,
 .main-side {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
   min-width: 0;
+}
+.tech-log {
+  margin-top: 0.75rem;
 }
 .log-line {
   display: block;

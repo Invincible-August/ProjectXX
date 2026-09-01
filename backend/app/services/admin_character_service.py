@@ -662,6 +662,68 @@ class AdminCharacterService:
         await self._session.flush()
         return await self.get_detail(admin, character.id)
 
+    async def grant_technique_craft_test_cards(
+        self,
+        admin: AdminUser,
+        character_id: int,
+        *,
+        note: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        直接入包发放功法自研联调卡：无限属性正式卡 + 无限效能正式卡各一张。
+
+        不走邮件（正式卡须带 meta）；镶嵌时不消耗。供管理后台「角色管理」使用。
+
+        Args:
+            admin: 当前后台账号。
+            character_id: 目标角色 id。
+            note: 可选审计备注。
+
+        Returns:
+            dict[str, Any]: 角色详情。
+
+        Raises:
+            AppError: 角色不存在或无权。
+        """
+        from app.constants.technique_craft import (
+            CARD_FORMAL_EFFICACY_INF_ID,
+            CARD_FORMAL_ELEMENT_INF_ID,
+            INF_EFFICACY_CARD_META,
+            INF_ELEMENT_CARD_META,
+        )
+        from app.services.inventory_service import InventoryService
+
+        self.assert_can_ops(admin)
+        character = await self._get_character(character_id)
+        if not bool(getattr(character, "is_active", True)):
+            raise AppError(code=40000, message="角色已删除", http_status=400)
+        inv = InventoryService(self._session)
+        await inv.add_item(
+            character.id,
+            item_type="consumable",
+            item_id=CARD_FORMAL_ELEMENT_INF_ID,
+            quantity=1,
+            meta=dict(INF_ELEMENT_CARD_META),
+        )
+        await inv.add_item(
+            character.id,
+            item_type="consumable",
+            item_id=CARD_FORMAL_EFFICACY_INF_ID,
+            quantity=1,
+            meta=dict(INF_EFFICACY_CARD_META),
+        )
+        await self._audit(
+            admin,
+            action="ops.character.grant_technique_craft_test_cards",
+            character_id=character.id,
+            detail={
+                "note": note,
+                "items": [CARD_FORMAL_ELEMENT_INF_ID, CARD_FORMAL_EFFICACY_INF_ID],
+            },
+        )
+        await self._session.flush()
+        return await self.get_detail(admin, character.id)
+
     async def update_base_attrs(
         self,
         admin: AdminUser,

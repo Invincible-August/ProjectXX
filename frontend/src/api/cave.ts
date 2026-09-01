@@ -331,3 +331,16 @@ export async function printTechniqueManualApi(
     return envelopeFromAxiosError<Record<string, unknown>>(error)
   }
 }
+
+export async function abolishTechniqueApi(
+  techniqueId: string,
+): Promise<ApiResponse<{ technique_id: string; abolished: boolean }>> {
+  try {
+    const response = await http.post<ApiResponse<{ technique_id: string; abolished: boolean }>>(
+      `${TECH}/techniques/${techniqueId}/abolish`,
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<{ technique_id: string; abolished: boolean }>(error)
+  }
+}

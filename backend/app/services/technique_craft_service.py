@@ -2,12 +2,15 @@
 Technique self-research drafts (功法自研 P1).
 
 Create / list / abandon / embed / conditions / affix roll-choose-reroll / finalize /
-cultivate (base upgrade, affix upgrade, breakthrough) / print manual.
-Creating a draft does not consume cards. Embed always consumes the formal card.
-Finalize writes PrivateTechnique + CharacterTechnique and leaves the draft list.
+cultivate (base upgrade, affix upgrade, breakthrough) / print manual / abolish.
+Creating a draft does not consume cards. Embed consumes formal cards unless they are
+infinite test cards. Finalize writes PrivateTechnique + CharacterTechnique at the
+lowest rank (body_tempering) and leaves the draft list.
 Cultivate mutates PrivateTechnique.payload_json, not the draft row.
 Print copies the current payload into an unstacked inventory manual.
 Learn copies a frozen snapshot onto the reader (source=chance) then consumes the book.
+Abolish deletes only the author's CharacterTechnique + PrivateTechnique after unequip;
+manual / scripture / disciple copies remain.
 """
 
 from __future__ import annotations
@@ -39,15 +42,20 @@ from app.constants.technique_craft import (
     CARD_FORMAL_EFFICACY_ID,
     CARD_FORMAL_ELEMENT_ID,
     CARD_MANUAL_ID,
+    CRAFT_INITIAL_RANK,
     DRAFT_PHASE_ABANDONED,
     DRAFT_PHASE_EMBEDDING,
     DRAFT_PHASE_FINALIZED,
+    ERR_CRAFT_ABOLISH,
     ERR_CRAFT_CARD,
     ERR_CRAFT_CULTIVATE,
     ERR_CRAFT_EMBED,
     ERR_CRAFT_FINALIZE,
     ERR_CRAFT_LEARN,
     ERR_CRAFT_MANUAL,
+    FORMAL_EFFICACY_CARD_IDS,
+    FORMAL_ELEMENT_CARD_IDS,
+    INFINITE_FORMAL_CARD_IDS,
     SPELL_EFFICACIES,
     WEAPON_LIMITS,
 )
@@ -59,15 +67,19 @@ from app.db.models.technique import CharacterTechnique
 from app.db.models.technique_craft import TechniqueResearchDraft
 from app.domain.research_schema import is_valid_zh_label
 from app.domain.technique_craft import (
+    affix_upgrade_cost_multiplier,
     can_breakthrough,
+    enrich_affix_slots_public,
     filter_affixes,
     learner_meets_manual_rank,
+    major_rank_label_zh,
     next_rank_id,
     payload_attr_grants,
+    resolve_affix_rarity,
     roll_affix_upgrade_success,
     roll_breakthrough_success,
     roll_embed_success,
-    roll_three,
+    roll_three_weighted,
     upgrade_points_for_affix_level,
     upgrade_points_for_base_level,
 )
@@ -106,7 +118,7 @@ class TechniqueCraftService:
             base_json="{}",
             affixes_json="[]",
             upgrade_points=0,
-            major_rank=str(character.major_realm or "body_tempering"),
+            major_rank=CRAFT_INITIAL_RANK,
             conditions_confirmed=False,
         )
         self._session.add(row)
@@ -191,12 +203,12 @@ class TechniqueCraftService:
         item_id = str(card.item_id)
         meta = InventoryService._parse_row_meta(card) or {}
 
-        if item_id == CARD_FORMAL_ELEMENT_ID:
+        if item_id in FORMAL_ELEMENT_CARD_IDS:
             elements = self._formal_elements(meta)
             if self._draft_elements(row):
                 raise AppError(ERR_CRAFT_EMBED, "属性槽已锁定", http_status=400)
             payload: dict[str, Any] = {"kind": "elements", "elements": elements}
-        elif item_id == CARD_FORMAL_EFFICACY_ID:
+        elif item_id in FORMAL_EFFICACY_CARD_IDS:
             efficacy = self._formal_efficacy(meta)
             if row.efficacy:
                 raise AppError(ERR_CRAFT_EMBED, "效能槽已锁定", http_status=400)
@@ -205,7 +217,9 @@ class TechniqueCraftService:
             raise AppError(ERR_CRAFT_CARD, "该物品不是可镶嵌的正式卡", http_status=400)
 
         inv = InventoryService(self._session)
-        await inv.remove_one_by_uid(character.id, item_uid)
+        infinite = item_id in INFINITE_FORMAL_CARD_IDS or bool(meta.get("infinite_use"))
+        if not infinite:
+            await inv.remove_one_by_uid(character.id, item_uid)
 
         fail_rate = float(get_game_config().research.technique_craft.embed_fail_rate)
         ok = bool(roll_embed_success(fail_rate))
@@ -217,11 +231,12 @@ class TechniqueCraftService:
             await self._session.flush()
 
         logger.info(
-            "technique craft embed character_id=%s draft_id=%s item_id=%s success=%s",
+            "technique craft embed character_id=%s draft_id=%s item_id=%s success=%s infinite=%s",
             character.id,
             row.id,
             item_id,
             ok,
+            infinite,
         )
         return self._draft_public(row)
 
@@ -303,8 +318,21 @@ class TechniqueCraftService:
         pool = self._affix_pool_ids(row)
         if not pool:
             raise AppError(ERR_CRAFT_EMBED, "无可用词条", http_status=400)
-        cell["options"] = roll_three(pool)
+        craft = get_game_config().research.technique_craft
+        weights = {
+            aid: float(
+                getattr(
+                    craft.affix_rarities.get(resolve_affix_rarity(aid)),
+                    "weight",
+                    1.0,
+                )
+                or 1.0
+            )
+            for aid in pool
+        }
+        cell["options"] = roll_three_weighted(pool, weights)
         cell["chosen_id"] = None
+        cell["chosen_rarity"] = None
         cell["chosen_level"] = 0
         cell["upgrade_count"] = 0
         row.affixes_json = json.dumps(slots, ensure_ascii=False)
@@ -349,6 +377,7 @@ class TechniqueCraftService:
         if pick not in options:
             raise AppError(ERR_RESEARCH_AFFIX_SLOTS, "词条不在候选中", http_status=400)
         cell["chosen_id"] = pick
+        cell["chosen_rarity"] = resolve_affix_rarity(pick)
         row.affixes_json = json.dumps(slots, ensure_ascii=False)
         await self._session.flush()
         logger.info(
@@ -397,8 +426,21 @@ class TechniqueCraftService:
         n = int(cell.get("reroll_count") or 0)
         cost = int(costs[min(n, len(costs) - 1)]) if costs else 0
         self._deduct_reroll_cost(character, str(row.efficacy), cost)
-        cell["options"] = roll_three(pool)
+        craft = get_game_config().research.technique_craft
+        weights = {
+            aid: float(
+                getattr(
+                    craft.affix_rarities.get(resolve_affix_rarity(aid)),
+                    "weight",
+                    1.0,
+                )
+                or 1.0
+            )
+            for aid in pool
+        }
+        cell["options"] = roll_three_weighted(pool, weights)
         cell["chosen_id"] = None
+        cell["chosen_rarity"] = None
         cell["chosen_level"] = 0
         cell["upgrade_count"] = 0
         cell["reroll_count"] = n + 1
@@ -419,6 +461,7 @@ class TechniqueCraftService:
         return {
             "options": [],
             "chosen_id": None,
+            "chosen_rarity": None,
             "chosen_level": 0,
             "upgrade_count": 0,
             "reroll_count": 0,
@@ -538,6 +581,13 @@ class TechniqueCraftService:
             raise AppError(ERR_CRAFT_FINALIZE, "词条与当前效能或发动条件不符", http_status=400)
         if not is_valid_zh_label(label_zh):
             raise AppError(ERR_CRAFT_FINALIZE, "请使用二至十六字中文名称", http_status=400)
+        name = label_zh.strip()
+        await self._assert_unique_technique_label(name)
+
+        for cell in slots:
+            cid = str(cell.get("chosen_id") or "").strip()
+            if cid and not str(cell.get("chosen_rarity") or "").strip():
+                cell["chosen_rarity"] = resolve_affix_rarity(cid)
 
         cfg = get_game_config()
         base_raw = json.loads(row.base_json or "{}")
@@ -554,16 +604,18 @@ class TechniqueCraftService:
         slug = secrets.token_hex(4)
         technique_id = f"{PRIVATE_ID_PREFIX}:technique:{character.id}:{slug}"
         efficacy = str(row.efficacy)
+        # 定稿一律从最低阶起，须逐步突破；草稿里若曾写入人物境界也强制覆盖
+        row.major_rank = CRAFT_INITIAL_RANK
         private = PrivateTechnique(
             character_id=character.id,
             technique_id=technique_id,
-            label_zh=label_zh.strip(),
+            label_zh=name,
             revision=1,
             schema_version=cfg.research.schema_version,
             affix_ids_json=json.dumps(chosen_ids, ensure_ascii=False),
             stats_json=json.dumps(stats, ensure_ascii=False),
             payload_json=json.dumps(payload, ensure_ascii=False),
-            major_rank=str(row.major_rank or "body_tempering"),
+            major_rank=CRAFT_INITIAL_RANK,
             author_character_id=int(character.id),
             track="spirit" if efficacy in SPELL_EFFICACIES else "body",
             max_level=int(cfg.research.technique.max_level),
@@ -588,7 +640,7 @@ class TechniqueCraftService:
                 )
             )
         row.phase = DRAFT_PHASE_FINALIZED
-        row.label_zh = label_zh.strip()
+        row.label_zh = name
         await self._session.flush()
         logger.info(
             "technique craft finalized character_id=%s draft_id=%s technique_id=%s",
@@ -602,6 +654,28 @@ class TechniqueCraftService:
         out["private"] = ResearchService._private_public(private)
         out["technique_id"] = technique_id
         return out
+
+    async def _assert_unique_technique_label(self, label_zh: str) -> None:
+        """
+        Reject if the Chinese name is already used by a private or official technique.
+
+        Args:
+            label_zh: Trimmed player-chosen name.
+
+        Raises:
+            AppError: 40222 when the name is taken.
+        """
+        taken = await self._session.execute(
+            select(PrivateTechnique.id)
+            .where(PrivateTechnique.label_zh == label_zh)
+            .limit(1)
+        )
+        if taken.scalar_one_or_none() is not None:
+            raise AppError(ERR_CRAFT_FINALIZE, "功法名称已被占用，请重新输入", http_status=400)
+        for tech in get_game_config().techniques.values():
+            official = str(getattr(tech, "name", "") or "").strip()
+            if official and official == label_zh:
+                raise AppError(ERR_CRAFT_FINALIZE, "功法名称已被占用，请重新输入", http_status=400)
 
     async def upgrade_base(
         self,
@@ -690,13 +764,22 @@ class TechniqueCraftService:
             raise AppError(ERR_CRAFT_CULTIVATE, "该栏尚未确认词条", http_status=400)
         craft = get_game_config().research.technique_craft
         level = int(cell.get("chosen_level") or 0)
-        cost = self._table_cost(craft.affix_upgrade_cost, level)
+        rarity = str(cell.get("chosen_rarity") or "").strip() or resolve_affix_rarity(
+            str(cell.get("chosen_id") or "")
+        )
+        cost = int(
+            round(
+                self._table_cost(craft.affix_upgrade_cost, level)
+                * affix_upgrade_cost_multiplier(rarity)
+            )
+        )
         efficacy = str(payload.get("efficacy") or "")
         self._deduct_reroll_cost(character, efficacy, cost)
         ok = bool(roll_affix_upgrade_success(float(craft.affix_upgrade_fail_rate)))
         if ok:
             new_level = level + 1
             cell["chosen_level"] = new_level
+            cell["chosen_rarity"] = rarity
             cell["upgrade_count"] = int(cell.get("upgrade_count") or 0) + 1
             payload["upgrade_points"] = int(payload.get("upgrade_points") or 0) + (
                 upgrade_points_for_affix_level(new_level)
@@ -828,6 +911,90 @@ class TechniqueCraftService:
             cost,
         )
         return {"item_id": CARD_MANUAL_ID, "snapshot": snapshot}
+
+    async def abolish_technique(
+        self,
+        character: Character,
+        technique_id: str,
+    ) -> dict[str, Any]:
+        """
+        Permanently remove the author's original technique from their learned list.
+
+        Requires the technique to be unequipped on both main and avatar loadouts.
+        Manual / scripture / disciple copies keep their own PrivateTechnique rows
+        and ``origin_technique_id`` snapshots; they are not deleted.
+
+        Args:
+            character: Original author.
+            technique_id: Author's private technique id.
+
+        Returns:
+            dict[str, Any]: ``{technique_id, abolished: true}``.
+
+        Raises:
+            AppError: 40228 if not owner, equipped, or not an original research technique.
+        """
+        from sqlalchemy import delete
+
+        from app.db.models.avatar import Avatar
+        from app.db.models.avatar_loadout import AvatarTechniqueSlot
+        from app.db.models.technique import CharacterTechniqueSlot
+
+        tid = str(technique_id or "").strip()
+        if not tid:
+            raise AppError(ERR_CRAFT_ABOLISH, "功法不存在", http_status=404)
+
+        try:
+            private, _payload = await self._require_cultivable(character, tid)
+        except AppError as exc:
+            if exc.code in (ERR_CRAFT_CULTIVATE, ERR_RESEARCH_SESSION):
+                raise AppError(ERR_CRAFT_ABOLISH, "仅可废除自己的原创功法", http_status=400) from exc
+            raise
+
+        equipped = await self._session.execute(
+            select(CharacterTechniqueSlot.id)
+            .where(
+                CharacterTechniqueSlot.character_id == character.id,
+                CharacterTechniqueSlot.technique_id == tid,
+            )
+            .limit(1)
+        )
+        if equipped.scalar_one_or_none() is not None:
+            raise AppError(ERR_CRAFT_ABOLISH, "请先卸下装备中的该功法", http_status=400)
+
+        avatar_ids = list(
+            (
+                await self._session.execute(
+                    select(Avatar.id).where(Avatar.character_id == character.id)
+                )
+            ).scalars().all()
+        )
+        if avatar_ids:
+            avatar_eq = await self._session.execute(
+                select(AvatarTechniqueSlot.id)
+                .where(
+                    AvatarTechniqueSlot.avatar_id.in_(avatar_ids),
+                    AvatarTechniqueSlot.technique_id == tid,
+                )
+                .limit(1)
+            )
+            if avatar_eq.scalar_one_or_none() is not None:
+                raise AppError(ERR_CRAFT_ABOLISH, "请先卸下化身装备中的该功法", http_status=400)
+
+        await self._session.execute(
+            delete(CharacterTechnique).where(
+                CharacterTechnique.character_id == character.id,
+                CharacterTechnique.technique_id == tid,
+            )
+        )
+        await self._session.delete(private)
+        await self._session.flush()
+        logger.info(
+            "technique craft abolished character_id=%s technique_id=%s",
+            character.id,
+            tid,
+        )
+        return {"technique_id": tid, "abolished": True}
 
     async def learn_from_manual_meta(
         self,
@@ -1083,14 +1250,26 @@ class TechniqueCraftService:
         """Public cultivate result for HTTP / tests."""
         base_raw = payload.get("base") or {}
         base = dict(base_raw) if isinstance(base_raw, dict) else {}
-        affixes = list(payload.get("affixes") or [])
+        affixes = enrich_affix_slots_public(list(payload.get("affixes") or []))
+        major_rank = str(private.major_rank or "")
+        nxt = next_rank_id(major_rank)
+        craft = get_game_config().research.technique_craft
+        breakthrough_points_required: int | None = None
+        if nxt and nxt in craft.ranks:
+            breakthrough_points_required = int(
+                getattr(craft.ranks[nxt], "upgrade_points_required", 0) or 0
+            )
         return {
             "technique_id": private.technique_id,
-            "major_rank": str(private.major_rank or ""),
+            "major_rank": major_rank,
+            "major_rank_label_zh": major_rank_label_zh(major_rank),
             "upgrade_points": int(payload.get("upgrade_points") or 0),
             "base": base,
             "affixes": affixes,
             "stats": payload_attr_grants(payload),
+            "next_rank": nxt,
+            "next_rank_label_zh": major_rank_label_zh(nxt) if nxt else None,
+            "breakthrough_points_required": breakthrough_points_required,
         }
 
     async def _load_embed_card(
@@ -1188,5 +1367,5 @@ class TechniqueCraftService:
             weapon_limit=row.weapon_limit or None,
             upgrade_points=int(row.upgrade_points or 0),
             base=base,
-            affixes=affixes,
+            affixes=enrich_affix_slots_public(affixes),
         ).model_dump()

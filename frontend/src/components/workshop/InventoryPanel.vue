@@ -1,22 +1,50 @@
 <script setup lang="ts">
 /**
- * 背包：普通储物袋 / 轮回袋分栏与移动。
+ * 背包：普通储物袋 / 轮回袋；空白卡·类型卡·功法秘籍可在此使用。
  */
 import { ElMessage } from 'element-plus'
 import { useInventoryStore } from '../../stores/inventory'
 import { useResearchStore } from '../../stores/research'
+import { useCharacterStore } from '../../stores/character'
 import type { InventoryItem } from '../../types/inventory'
+import {
+  TECH_CARD_USEABLE_IDS,
+  TECH_MANUAL_ID,
+  elementLabelZh,
+  efficacyLabelZh,
+} from '../../types/techniqueCraft'
 
 const inventoryStore = useInventoryStore()
+const characterStore = useCharacterStore()
 
 function isTechniqueManual(item: InventoryItem): boolean {
   if (item.item_type !== 'manual') return false
-  if (item.item_id === 'tech_manual') return true
+  if (item.item_id === TECH_MANUAL_ID) return true
   return item.meta?.manual_kind === 'technique'
+}
+
+function isOpenableTechCard(item: InventoryItem): boolean {
+  return TECH_CARD_USEABLE_IDS.includes(item.item_id)
+}
+
+function canUse(item: InventoryItem): boolean {
+  return isTechniqueManual(item) || isOpenableTechCard(item)
 }
 
 function isOccupied(item: InventoryItem): boolean {
   return Boolean(item.occupancy && item.occupancy !== 'none')
+}
+
+function cardExtra(item: InventoryItem): string {
+  const meta = item.meta || {}
+  const elements = meta.elements
+  if (Array.isArray(elements) && elements.length) {
+    return elements.map((x) => elementLabelZh(String(x))).join('、')
+  }
+  if (typeof meta.efficacy === 'string' && meta.efficacy) {
+    return efficacyLabelZh(meta.efficacy)
+  }
+  return ''
 }
 
 async function onMove(item: InventoryItem, target: 'normal' | 'reincarnation'): Promise<void> {
@@ -28,24 +56,28 @@ async function onMove(item: InventoryItem, target: 'normal' | 'reincarnation'): 
   ElMessage.success(target === 'reincarnation' ? '已移入轮回袋' : '已移入普通袋')
 }
 
-async function onUseManual(item: InventoryItem): Promise<void> {
+async function onUse(item: InventoryItem): Promise<void> {
   const err = await inventoryStore.use(item.item_uid)
   if (err) {
     ElMessage.error(err)
     return
   }
   ElMessage.success(`已使用${item.name}`)
-  await useResearchStore().loadMine()
+  if (isTechniqueManual(item)) {
+    await useResearchStore().loadMine()
+    await characterStore.fetchMe()
+  }
 }
 </script>
 
 <template>
   <el-card shadow="never" v-loading="inventoryStore.loading">
     <template #header>
-      <el-text tag="b">
-        背包（{{ inventoryStore.items.length }}）
-      </el-text>
+      <el-text tag="b" size="small">洞府储物</el-text>
     </template>
+    <el-text size="small" type="info" class="hint">
+      空白卡 / 类型卡 / 功法秘籍在此使用；正式卡（含【测】无限卡）到研究室点镶嵌格选入。【测】卡由运营后台「角色管理 → 发放自研测试卡」直发入包。
+    </el-text>
 
     <el-divider content-position="left">普通储物袋</el-divider>
     <el-empty
@@ -56,17 +88,18 @@ async function onUseManual(item: InventoryItem): Promise<void> {
     <div v-for="item in inventoryStore.normalItems" :key="item.item_uid" class="inv-row">
       <el-text size="small">{{ item.name }}</el-text>
       <el-tag size="small" type="info">×{{ item.quantity }}</el-tag>
+      <el-tag v-if="cardExtra(item)" size="small">{{ cardExtra(item) }}</el-tag>
       <el-tag v-if="item.bag_tab_label_zh" size="small">{{ item.bag_tab_label_zh }}</el-tag>
       <el-tag v-if="item.occupancy_label_zh" size="small" type="warning">
         {{ item.occupancy_label_zh }}
       </el-tag>
       <el-button
-        v-if="isTechniqueManual(item)"
+        v-if="canUse(item)"
         link
         type="primary"
         size="small"
         :disabled="isOccupied(item)"
-        @click="onUseManual(item)"
+        @click="onUse(item)"
       >
         使用
       </el-button>
@@ -129,5 +162,6 @@ async function onUseManual(item: InventoryItem): Promise<void> {
 .hint {
   display: block;
   margin-bottom: 0.5rem;
+  line-height: 1.45;
 }
 </style>

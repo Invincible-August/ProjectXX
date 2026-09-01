@@ -222,6 +222,24 @@ async def grant_item(
     )
 
 
+@router.post("/{character_id}/grant-technique-craft-test-cards", response_model=None)
+async def grant_technique_craft_test_cards(
+    character_id: int,
+    body: NoteRequest | None = None,
+    admin: AdminUser = Depends(get_current_admin),
+    svc: AdminCharacterService = Depends(get_admin_character_service),
+) -> dict:
+    """直发功法自研无限测试卡（属性+效能各一张）。权限：publisher/admin。"""
+    payload = body or NoteRequest()
+    return success(
+        await svc.grant_technique_craft_test_cards(
+            admin,
+            character_id,
+            note=payload.note,
+        ),
+    )
+
+
 @router.post("/{character_id}/base-attrs", response_model=None)
 async def update_base_attrs(
     character_id: int,

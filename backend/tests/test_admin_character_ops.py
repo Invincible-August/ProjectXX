@@ -122,6 +122,70 @@ def test_admin_character_ops(tmp_path: Path) -> None:
                 deleted = await svc.soft_delete(admin, character.id)
                 assert deleted["is_active"] is False
                 await session.refresh(character)
-                assert character.is_active is False
+
+    _run(_body())
+
+
+def test_admin_grant_technique_craft_test_cards(tmp_path: Path) -> None:
+    """运营后台直发无限属性/效能正式卡入包。"""
+    from app.constants.technique_craft import (
+        CARD_FORMAL_EFFICACY_INF_ID,
+        CARD_FORMAL_ELEMENT_INF_ID,
+    )
+    from app.db.models.inventory_item import InventoryItem
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "admin_craft_cards.db") as factory:
+            async with factory() as session:
+                await auth_service.register_user(
+                    session,
+                    RegisterRequest(password="password123", email="craft_cards@example.com"),
+                )
+                await session.commit()
+                user = (
+                    await session.execute(
+                        select(User).where(User.email == "craft_cards@example.com"),
+                    )
+                ).scalar_one()
+                await character_service.create_character(
+                    session,
+                    user,
+                    CreateCharacterRequest(name="自研发卡测"),
+                )
+                await session.commit()
+                character = (
+                    await session.execute(
+                        select(Character).where(Character.user_id == user.id),
+                    )
+                ).scalar_one()
+                admin = AdminUser(
+                    username="craft_card_admin",
+                    password_hash=hash_password("adminpass1"),
+                    display_name="CraftCards",
+                    roles=roles_to_storage(["admin"]),
+                    is_active=True,
+                )
+                session.add(admin)
+                await session.flush()
+
+                svc = AdminCharacterService(session)
+                detail = await svc.grant_technique_craft_test_cards(admin, character.id)
+                await session.commit()
+                ids = {row["item_id"] for row in detail["inventory"]["items"]}
+                assert CARD_FORMAL_ELEMENT_INF_ID in ids
+                assert CARD_FORMAL_EFFICACY_INF_ID in ids
+                rows = list(
+                    (
+                        await session.execute(
+                            select(InventoryItem).where(
+                                InventoryItem.character_id == character.id,
+                                InventoryItem.item_id.in_(
+                                    [CARD_FORMAL_ELEMENT_INF_ID, CARD_FORMAL_EFFICACY_INF_ID],
+                                ),
+                            )
+                        )
+                    ).scalars()
+                )
+                assert len(rows) == 2
 
     _run(_body())

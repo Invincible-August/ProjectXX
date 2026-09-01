@@ -195,6 +195,15 @@
               炼体突破
             </el-button>
             <el-button size="small" type="success" plain @click="openGrant(detail)">给予</el-button>
+            <el-button
+              size="small"
+              type="warning"
+              plain
+              :loading="acting"
+              @click="doGrantCraftTestCards(detail)"
+            >
+              发放自研测试卡
+            </el-button>
           </div>
         </template>
       </div>
@@ -414,6 +423,7 @@ import {
   forgetRecipe,
   forgetTechnique,
   grantCharacterItem,
+  grantTechniqueCraftTestCards,
   killCharacter,
   learnRecipe,
   learnTechnique,
@@ -576,6 +586,20 @@ async function submitGrant() {
     await load()
   } catch (err) {
     ElMessage.error(err instanceof Error ? err.message : '给予失败')
+  } finally {
+    acting.value = false
+  }
+}
+
+async function doGrantCraftTestCards(row: CharacterListRow | CharacterDetail) {
+  acting.value = true
+  try {
+    const d = await grantTechniqueCraftTestCards(row.id)
+    ElMessage.success('已直发【测】属性/效能无限正式卡各一张到背包')
+    if (detail.value?.id === d.id) detail.value = d
+    await load()
+  } catch (err) {
+    ElMessage.error(err instanceof Error ? err.message : '发放失败')
   } finally {
     acting.value = false
   }

@@ -95,7 +95,7 @@ affixes:
 
 # 功法卡片自研（P1）：空白卡→类型/正式卡→镶嵌草稿；数值均为占位，禁止在代码 if 分支写死。
 technique_craft:
-  help_zh: 用空白卡生成属性/效能正式卡，镶入草稿后选发动条件与词条，定稿后可培养。
+  help_zh: 于洞府储物开出属性/效能正式卡，点镶嵌格选卡入雏形，确认发动条件与词条后定稿可培养。
   blank_to_type_p_element: 0.5
   efficacy_weights:
     spell_attack: 1
@@ -119,6 +119,7 @@ technique_craft:
   print_manual_cost_body: 500
   affix_level_mult: 0.2
   base_stat_per_click: 1
+  # 各阶 upgrade_points_required = 突破「进入该阶」所需累计升级点（后台域 research 可改）
   ranks:
     body_tempering:
       affix_slots: 1
@@ -128,6 +129,26 @@ technique_craft:
       affix_slots: 2
       base_upgrade_cap: 6
       upgrade_points_required: 100
+    foundation:
+      affix_slots: 2
+      base_upgrade_cap: 9
+      upgrade_points_required: 200
+    jindan:
+      affix_slots: 3
+      base_upgrade_cap: 12
+      upgrade_points_required: 350
+    yuanying:
+      affix_slots: 3
+      base_upgrade_cap: 15
+      upgrade_points_required: 500
+    huashen:
+      affix_slots: 4
+      base_upgrade_cap: 18
+      upgrade_points_required: 800
+    true_immortal:
+      affix_slots: 4
+      base_upgrade_cap: 21
+      upgrade_points_required: 1200
   weapon_bonus:
     sword: { phys_atk: 2 }
     saber: { phys_atk: 2 }
@@ -136,34 +157,317 @@ technique_craft:
     bow: { phys_atk: 2 }
     puppet: { phys_atk: 2 }
     avatar: { magic_atk: 2 }
+  # 属性限制加成：栏位预留，后续后台可配；当前为空
+  element_bonus: {}
+  # 词条稀有度：权重控制三选出现率；base/upgrade/cost_mult 控初始值、升级加成、升级消耗
+  # 后台域 research 可改（口子已留）
+  affix_rarities:
+    gray:
+      label_zh: 灰
+      weight: 10
+      base_mult: 0.7
+      upgrade_mult: 0.7
+      cost_mult: 0.75
+      color: "#9e9e9e"
+    white:
+      label_zh: 白
+      weight: 28
+      base_mult: 1.0
+      upgrade_mult: 1.0
+      cost_mult: 1.0
+      color: "#eceff1"
+    green:
+      label_zh: 绿
+      weight: 26
+      base_mult: 1.2
+      upgrade_mult: 1.2
+      cost_mult: 1.25
+      color: "#67c23a"
+    blue:
+      label_zh: 蓝
+      weight: 24
+      base_mult: 1.4
+      upgrade_mult: 1.4
+      cost_mult: 1.5
+      color: "#409eff"
+    purple:
+      label_zh: 紫
+      weight: 8
+      base_mult: 1.7
+      upgrade_mult: 1.7
+      cost_mult: 1.9
+      color: "#a855f7"
+    orange:
+      label_zh: 橙
+      weight: 3
+      base_mult: 2.1
+      upgrade_mult: 2.1
+      cost_mult: 2.5
+      color: "#e6a23c"
+    red:
+      label_zh: 红
+      weight: 1
+      base_mult: 2.8
+      upgrade_mult: 2.8
+      cost_mult: 3.4
+      color: "#f56c6c"
+  # stats 为白品基准值；实际初始 = stats × 稀有度 base_mult（后台可增改目录）
   affixes:
+    # —— 法术攻击 ——
+    sa_dust:
+      label_zh: 余烬
+      rarity: gray
+      efficacy_allow: [spell_attack]
+      role: attack
+      stats: { magic_atk: 1 }
     sa_edge:
       label_zh: 法锋
+      rarity: white
       efficacy_allow: [spell_attack]
       role: attack
       stats: { magic_atk: 3 }
+    sa_bolt:
+      label_zh: 法霆
+      rarity: green
+      efficacy_allow: [spell_attack]
+      role: attack
+      stats: { magic_atk: 3 }
+    sa_pierce:
+      label_zh: 法破
+      rarity: blue
+      efficacy_allow: [spell_attack]
+      role: attack
+      stats: { magic_atk: 4 }
+    sa_flare:
+      label_zh: 炎芒
+      rarity: purple
+      efficacy_allow: [spell_attack]
+      role: attack
+      stats: { magic_atk: 5 }
+    sa_void:
+      label_zh: 虚噬
+      rarity: orange
+      efficacy_allow: [spell_attack]
+      role: attack
+      stats: { magic_atk: 6 }
+    sa_doom:
+      label_zh: 灭法
+      rarity: red
+      efficacy_allow: [spell_attack]
+      role: attack
+      stats: { magic_atk: 8 }
+    # —— 法术增益 ——
+    sb_haze:
+      label_zh: 薄雾
+      rarity: gray
+      efficacy_allow: [spell_buff]
+      role: buff
+      stats: { magic_def: 1 }
     sb_ward:
       label_zh: 法盾
+      rarity: white
       efficacy_allow: [spell_buff]
       role: buff
       stats: { magic_def: 3 }
+    sb_veil:
+      label_zh: 法幕
+      rarity: green
+      efficacy_allow: [spell_buff]
+      role: buff
+      stats: { magic_def: 3 }
+    sb_bless:
+      label_zh: 法佑
+      rarity: blue
+      efficacy_allow: [spell_buff]
+      role: buff
+      stats: { magic_def: 4 }
+    sb_aegis:
+      label_zh: 灵铠
+      rarity: purple
+      efficacy_allow: [spell_buff]
+      role: buff
+      stats: { magic_def: 5 }
+    sb_mirror:
+      label_zh: 玄镜
+      rarity: orange
+      efficacy_allow: [spell_buff]
+      role: buff
+      stats: { magic_def: 6 }
+    sb_immortal:
+      label_zh: 不灭障
+      rarity: red
+      efficacy_allow: [spell_buff]
+      role: buff
+      stats: { magic_def: 8 }
+    # —— 武技攻击 ——
+    ma_chip:
+      label_zh: 碎刃
+      rarity: gray
+      efficacy_allow: [martial_attack]
+      role: attack
+      stats: { phys_atk: 1 }
     ma_edge:
       label_zh: 武锋
+      rarity: white
       efficacy_allow: [martial_attack]
       role: attack
       stats: { phys_atk: 3 }
+    ma_crush:
+      label_zh: 武摧
+      rarity: green
+      efficacy_allow: [martial_attack]
+      role: attack
+      stats: { phys_atk: 3 }
+    ma_slash:
+      label_zh: 武斩
+      rarity: blue
+      efficacy_allow: [martial_attack]
+      role: attack
+      stats: { phys_atk: 4 }
+    ma_break:
+      label_zh: 破军
+      rarity: purple
+      efficacy_allow: [martial_attack]
+      role: attack
+      stats: { phys_atk: 5 }
+    ma_quake:
+      label_zh: 震岳
+      rarity: orange
+      efficacy_allow: [martial_attack]
+      role: attack
+      stats: { phys_atk: 6 }
+    ma_kill:
+      label_zh: 杀劫
+      rarity: red
+      efficacy_allow: [martial_attack]
+      role: attack
+      stats: { phys_atk: 8 }
+    # —— 武技增益 ——
+    mb_hide:
+      label_zh: 皮护
+      rarity: gray
+      efficacy_allow: [martial_buff]
+      role: buff
+      stats: { phys_def: 1 }
     mb_ward:
       label_zh: 武御
+      rarity: white
       efficacy_allow: [martial_buff]
       role: buff
       stats: { phys_def: 3 }
-    is_flow:
-      label_zh: 周天
+    mb_guard:
+      label_zh: 武壁
+      rarity: green
+      efficacy_allow: [martial_buff]
+      role: buff
+      stats: { phys_def: 3 }
+    mb_iron:
+      label_zh: 武罡
+      rarity: blue
+      efficacy_allow: [martial_buff]
+      role: buff
+      stats: { phys_def: 4 }
+    mb_plate:
+      label_zh: 玄甲
+      rarity: purple
+      efficacy_allow: [martial_buff]
+      role: buff
+      stats: { phys_def: 5 }
+    mb_mountain:
+      label_zh: 镇山
+      rarity: orange
+      efficacy_allow: [martial_buff]
+      role: buff
+      stats: { phys_def: 6 }
+    mb_diamond:
+      label_zh: 金刚体
+      rarity: red
+      efficacy_allow: [martial_buff]
+      role: buff
+      stats: { phys_def: 8 }
+    # —— 修为修炼 ——
+    is_dust:
+      label_zh: 散息
+      rarity: gray
       efficacy_allow: [idle_spirit]
       role: idle
       stats: { magic_atk: 1 }
-    ib_bone:
-      label_zh: 锻骨
+    is_flow:
+      label_zh: 周天
+      rarity: white
+      efficacy_allow: [idle_spirit]
+      role: idle
+      stats: { magic_atk: 2 }
+    is_tide:
+      label_zh: 潮汐
+      rarity: green
+      efficacy_allow: [idle_spirit]
+      role: idle
+      stats: { magic_atk: 2 }
+    is_cycle:
+      label_zh: 归元
+      rarity: blue
+      efficacy_allow: [idle_spirit]
+      role: idle
+      stats: { magic_def: 2 }
+    is_pulse:
+      label_zh: 脉息
+      rarity: purple
+      efficacy_allow: [idle_spirit]
+      role: idle
+      stats: { magic_atk: 3, magic_def: 1 }
+    is_star:
+      label_zh: 星河
+      rarity: orange
+      efficacy_allow: [idle_spirit]
+      role: idle
+      stats: { magic_atk: 4 }
+    is_dao:
+      label_zh: 道韵
+      rarity: red
+      efficacy_allow: [idle_spirit]
+      role: idle
+      stats: { magic_atk: 5, magic_def: 2 }
+    # —— 炼体修炼 ——
+    ib_scratch:
+      label_zh: 皮糙
+      rarity: gray
       efficacy_allow: [idle_body]
       role: idle
       stats: { phys_atk: 1 }
+    ib_bone:
+      label_zh: 锻骨
+      rarity: white
+      efficacy_allow: [idle_body]
+      role: idle
+      stats: { phys_atk: 2 }
+    ib_marrow:
+      label_zh: 淬髓
+      rarity: green
+      efficacy_allow: [idle_body]
+      role: idle
+      stats: { phys_atk: 2 }
+    ib_tendon:
+      label_zh: 易筋
+      rarity: blue
+      efficacy_allow: [idle_body]
+      role: idle
+      stats: { phys_def: 2 }
+    ib_blood:
+      label_zh: 换血
+      rarity: purple
+      efficacy_allow: [idle_body]
+      role: idle
+      stats: { phys_atk: 3, phys_def: 1 }
+    ib_jade:
+      label_zh: 玉髓
+      rarity: orange
+      efficacy_allow: [idle_body]
+      role: idle
+      stats: { phys_atk: 4 }
+    ib_dao:
+      label_zh: 道体胚
+      rarity: red
+      efficacy_allow: [idle_body]
+      role: idle
+      stats: { phys_atk: 5, phys_def: 2 }

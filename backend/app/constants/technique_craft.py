@@ -22,10 +22,33 @@ ERR_CRAFT_EQUIP_ROLE: Final[int] = 40224
 ERR_CRAFT_MANUAL: Final[int] = 40225
 ERR_CRAFT_LEARN: Final[int] = 40226
 ERR_SCRIPTURE_DONATE: Final[int] = 40227
+ERR_CRAFT_ABOLISH: Final[int] = 40228
 
 DRAFT_PHASE_EMBEDDING: Final[str] = "embedding"
 DRAFT_PHASE_ABANDONED: Final[str] = "abandoned"
 DRAFT_PHASE_FINALIZED: Final[str] = "finalized"
+
+# 自研功法初始阶：一律最低阶，须逐步突破；不与人物当前大境界对齐
+CRAFT_INITIAL_RANK: Final[str] = "body_tempering"
+
+# 词条稀有度：灰→红；权重/倍率在 research.yaml technique_craft.affix_rarities（后台域 research）
+AFFIX_RARITY_GRAY: Final[str] = "gray"
+AFFIX_RARITY_WHITE: Final[str] = "white"
+AFFIX_RARITY_GREEN: Final[str] = "green"
+AFFIX_RARITY_BLUE: Final[str] = "blue"
+AFFIX_RARITY_PURPLE: Final[str] = "purple"
+AFFIX_RARITY_ORANGE: Final[str] = "orange"
+AFFIX_RARITY_RED: Final[str] = "red"
+AFFIX_RARITY_IDS: Final[tuple[str, ...]] = (
+    AFFIX_RARITY_GRAY,
+    AFFIX_RARITY_WHITE,
+    AFFIX_RARITY_GREEN,
+    AFFIX_RARITY_BLUE,
+    AFFIX_RARITY_PURPLE,
+    AFFIX_RARITY_ORANGE,
+    AFFIX_RARITY_RED,
+)
+AFFIX_RARITY_DEFAULT: Final[str] = AFFIX_RARITY_WHITE
 
 EFFICACY_SPELL_ATTACK: Final[str] = "spell_attack"
 EFFICACY_SPELL_BUFF: Final[str] = "spell_buff"
@@ -63,7 +86,38 @@ CARD_TYPE_ELEMENT_ID: Final[str] = "tech_card_type_element"
 CARD_TYPE_EFFICACY_ID: Final[str] = "tech_card_type_efficacy"
 CARD_FORMAL_ELEMENT_ID: Final[str] = "tech_card_formal_element"
 CARD_FORMAL_EFFICACY_ID: Final[str] = "tech_card_formal_efficacy"
+# 运营后台发放：镶嵌不消耗，固定内容
+CARD_FORMAL_ELEMENT_INF_ID: Final[str] = "tech_card_formal_element_inf"
+CARD_FORMAL_EFFICACY_INF_ID: Final[str] = "tech_card_formal_efficacy_inf"
 CARD_MANUAL_ID: Final[str] = "tech_manual"
+
+FORMAL_ELEMENT_CARD_IDS: Final[frozenset[str]] = frozenset(
+    {CARD_FORMAL_ELEMENT_ID, CARD_FORMAL_ELEMENT_INF_ID},
+)
+FORMAL_EFFICACY_CARD_IDS: Final[frozenset[str]] = frozenset(
+    {CARD_FORMAL_EFFICACY_ID, CARD_FORMAL_EFFICACY_INF_ID},
+)
+INFINITE_FORMAL_CARD_IDS: Final[frozenset[str]] = frozenset(
+    {CARD_FORMAL_ELEMENT_INF_ID, CARD_FORMAL_EFFICACY_INF_ID},
+)
+
+# 管理后台「发放自研测试卡」默认内容（镶嵌不消耗）
+INF_ELEMENT_CARD_META: Final[dict[str, object]] = {
+    "elements": [
+        ELEMENT_METAL,
+        ELEMENT_WOOD,
+        ELEMENT_WATER,
+        ELEMENT_FIRE,
+        ELEMENT_EARTH,
+        ELEMENT_WIND,
+        ELEMENT_THUNDER,
+    ],
+    "infinite_use": True,
+}
+INF_EFFICACY_CARD_META: Final[dict[str, object]] = {
+    "efficacy": EFFICACY_IDLE_SPIRIT,
+    "infinite_use": True,
+}
 
 WEAPON_LIMITS: Final[tuple[str, ...]] = (
     "sword",

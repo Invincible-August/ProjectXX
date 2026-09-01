@@ -58,7 +58,12 @@ from app.domain.formation_blueprint import (
     validate_blueprint,
 )
 from app.domain.research_schema import is_valid_zh_label
-from app.domain.technique_craft import payload_attr_grants
+from app.domain.technique_craft import (
+    enrich_affix_slots_public,
+    major_rank_label_zh,
+    next_rank_id,
+    payload_attr_grants,
+)
 from app.schemas.common import AppError
 from app.services.inventory_service import InventoryService
 from app.services.realm_config import get_game_config
@@ -142,6 +147,32 @@ class ResearchService:
                 ],
             },
             "affixes": affixes,
+            "technique_craft": {
+                "help_zh": cfg.research.technique_craft.help_zh,
+                "affix_rarities": [
+                    {
+                        "id": rid,
+                        "label_zh": rare.label_zh,
+                        "weight": rare.weight,
+                        "base_mult": rare.base_mult,
+                        "upgrade_mult": rare.upgrade_mult,
+                        "cost_mult": rare.cost_mult,
+                        "color": rare.color,
+                    }
+                    for rid, rare in cfg.research.technique_craft.affix_rarities.items()
+                ],
+                "affixes": [
+                    {
+                        "id": aid,
+                        "label_zh": body.label_zh,
+                        "rarity": body.rarity,
+                        "efficacy_allow": list(body.efficacy_allow),
+                        "role": body.role,
+                        "stats": dict(body.stats),
+                    }
+                    for aid, body in cfg.research.technique_craft.affixes.items()
+                ],
+            },
         }
 
     async def list_mine(self, character: Character) -> list[dict[str, Any]]:
@@ -739,6 +770,43 @@ class ResearchService:
             stats = payload_attr_grants(payload)
         else:
             stats = json.loads(row.stats_json or "{}")
+        craft = get_game_config().research.technique_craft
+        major_rank = str(getattr(row, "major_rank", None) or "body_tempering")
+        upgrade_points = int(payload.get("upgrade_points") or 0)
+        base_raw = payload.get("base") or {}
+        base = dict(base_raw) if isinstance(base_raw, dict) else {}
+        affix_raw = payload.get("affixes") or []
+        affixes = list(affix_raw) if isinstance(affix_raw, list) else []
+        elements_raw = payload.get("elements") or []
+        elements = list(elements_raw) if isinstance(elements_raw, list) else []
+        element_limit = payload.get("element_limit") or None
+        weapon_limit = payload.get("weapon_limit") or None
+        if element_limit is not None:
+            element_limit = str(element_limit) or None
+        if weapon_limit is not None:
+            weapon_limit = str(weapon_limit) or None
+
+        next_rank = next_rank_id(major_rank)
+        breakthrough_points_required: int | None = None
+        if next_rank and next_rank in craft.ranks:
+            rank_body = craft.ranks[next_rank]
+            breakthrough_points_required = int(
+                getattr(rank_body, "upgrade_points_required", 0) or 0
+            )
+
+        # 发动条件加成预览（现读 weapon_bonus；属性限制加成/词条目录后续走后台）
+        condition_bonus: dict[str, Any] = {
+            "element_limit": element_limit,
+            "weapon_limit": weapon_limit,
+            "weapon_bonus": {},
+            "element_bonus": {},
+            "help_zh": "发动条件满足时可获得配置加成；可用词条/加成/属性后续由运营后台配置。",
+        }
+        if weapon_limit and weapon_limit in craft.weapon_bonus:
+            condition_bonus["weapon_bonus"] = {
+                str(k): float(v) for k, v in craft.weapon_bonus[weapon_limit].items()
+            }
+
         return {
             "id": row.technique_id,
             "source": row.source,
@@ -752,7 +820,20 @@ class ResearchService:
             "efficacy": payload.get("efficacy") or None,
             "author_character_id": int(author_id) if author_id is not None else None,
             "cultivable": int(author_id or 0) == int(row.character_id),
-            "major_rank": getattr(row, "major_rank", None),
+            "major_rank": major_rank,
+            "major_rank_label_zh": major_rank_label_zh(major_rank),
+            "upgrade_points": upgrade_points,
+            "base": base,
+            "affixes": enrich_affix_slots_public(
+                list(affixes) if isinstance(affixes, list) else []
+            ),
+            "elements": elements,
+            "element_limit": element_limit,
+            "weapon_limit": weapon_limit,
+            "next_rank": next_rank,
+            "next_rank_label_zh": major_rank_label_zh(next_rank) if next_rank else None,
+            "breakthrough_points_required": breakthrough_points_required,
+            "condition_bonus": condition_bonus,
         }
 
     @staticmethod

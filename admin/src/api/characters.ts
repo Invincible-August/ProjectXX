@@ -165,6 +165,15 @@ export async function grantCharacterItem(
   return unwrap<CharacterDetail>(http.post(`/ops/characters/${id}/grant-item`, body))
 }
 
+/** 直发功法自研无限测试卡（属性+效能正式卡各一张，入包）。 */
+export async function grantTechniqueCraftTestCards(id: number, note?: string) {
+  return unwrap<CharacterDetail>(
+    http.post(`/ops/characters/${id}/grant-technique-craft-test-cards`, {
+      note: note || null,
+    }),
+  )
+}
+
 export async function updateCharacterBaseAttrs(id: number, attrs: Record<string, number>) {
   return unwrap<CharacterDetail>(http.post(`/ops/characters/${id}/base-attrs`, { attrs }))
 }

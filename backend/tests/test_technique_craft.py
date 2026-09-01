@@ -18,6 +18,8 @@ from app.constants.technique_craft import (
     CARD_MANUAL_ID,
     CARD_TYPE_EFFICACY_ID,
     CARD_TYPE_ELEMENT_ID,
+    CRAFT_INITIAL_RANK,
+    ERR_CRAFT_ABOLISH,
     ERR_CRAFT_CARD,
     ERR_CRAFT_CULTIVATE,
     ERR_CRAFT_EMBED,
@@ -70,7 +72,22 @@ def test_technique_craft_config_loads() -> None:
     assert "spell_attack" in craft.efficacy_weights
     assert craft.embed_fail_rate >= 0
     assert "body_tempering" in craft.ranks
-    assert len(craft.affixes) >= 6
+    assert "true_immortal" in craft.ranks
+    assert int(craft.ranks["qi_refining"].upgrade_points_required) == 100
+    assert int(craft.ranks["true_immortal"].upgrade_points_required) == 1200
+    assert len(craft.affixes) >= 40
+    assert "red" in craft.affix_rarities
+    assert craft.affixes["is_dao"].rarity == "red"
+
+
+def test_major_rank_label_zh_never_exposes_english_id() -> None:
+    from app.domain.technique_craft import major_rank_label_zh
+
+    clear_game_config_cache()
+    assert major_rank_label_zh("true_immortal") == "真仙"
+    assert major_rank_label_zh("body_tempering") == "锻体"
+    assert major_rank_label_zh("not_a_real_rank") == "未知阶"
+    assert major_rank_label_zh(None) == "未知阶"
 
 
 def test_technique_manual_catalog_and_print_cost_load() -> None:
@@ -517,9 +534,56 @@ def test_filter_hides_martial_affix_from_spell() -> None:
     got = filter_affixes(craft.affixes, efficacy="spell_attack")
     ids = {str(getattr(item, "affix_id", item)) for item in got}
     assert "sa_edge" in ids
+    assert "sa_bolt" in ids
     assert "ma_edge" not in ids
     assert "mb_ward" not in ids
     assert "ib_bone" not in ids
+
+
+def test_each_efficacy_has_at_least_three_affixes() -> None:
+    """Three-choice needs ≥3 catalog entries per efficacy (no forced 周天×3)."""
+    clear_game_config_cache()
+    craft = get_game_config().research.technique_craft
+    for efficacy in (
+        "spell_attack",
+        "spell_buff",
+        "martial_attack",
+        "martial_buff",
+        "idle_spirit",
+        "idle_body",
+    ):
+        got = filter_affixes(craft.affixes, efficacy=efficacy)
+        ids = {str(getattr(item, "affix_id", "") or "") for item in got}
+        ids.discard("")
+        assert len(ids) >= 3, f"{efficacy} pool={ids}"
+    from app.domain.technique_craft import resolve_affix_rarity, roll_three_weighted
+
+    pool = [
+        str(getattr(item, "affix_id", "") or "")
+        for item in filter_affixes(craft.affixes, efficacy="idle_spirit")
+    ]
+    weights = {
+        aid: float(craft.affix_rarities[resolve_affix_rarity(aid)].weight)
+        for aid in pool
+    }
+    rolled = roll_three_weighted(pool, weights)
+    assert len(rolled) == 3
+    assert len(set(rolled)) == 3
+
+
+def test_affix_rarity_scales_stats_and_upgrade_cost() -> None:
+    from app.domain.technique_craft import (
+        affix_upgrade_cost_multiplier,
+        effective_affix_stats,
+    )
+
+    clear_game_config_cache()
+    white = effective_affix_stats("is_flow", level=0)
+    red = effective_affix_stats("is_dao", level=0)
+    assert white["magic_atk"] < red["magic_atk"]
+    assert affix_upgrade_cost_multiplier("red") > affix_upgrade_cost_multiplier("white")
+    leveled = effective_affix_stats("is_dao", level=2, rarity="red")
+    assert leveled["magic_atk"] > red["magic_atk"]
 
 
 def test_affix_roll_three_duplicates_when_pool_has_one() -> None:
@@ -749,6 +813,7 @@ def test_finalize_enters_learn_list(
                     )
                 ).scalar_one()
                 assert int(private.author_character_id) == int(char.id)
+                assert str(private.major_rank) == CRAFT_INITIAL_RANK == "body_tempering"
                 payload = json.loads(private.payload_json or "{}")
                 assert payload.get("efficacy") == "spell_attack"
 
@@ -777,6 +842,91 @@ def test_finalize_enters_learn_list(
                 assert mine_tech["author_character_id"] == char.id
                 assert mine_tech["cultivable"] is True
                 assert pick in (mine_tech.get("affix_ids") or [])
+
+    _run(_body())
+
+
+def test_finalize_rejects_duplicate_label(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "fin_dup.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "findup@test.com", "定稿重名测")
+                svc = TechniqueCraftService(session)
+                draft_a, _ = await _ready_chosen_draft(
+                    session, char, svc, elements=["metal"], efficacy="spell_attack"
+                )
+                await svc.finalize_draft(char, draft_a, label_zh="重名试炼诀")
+                await session.commit()
+
+                draft_b, _ = await _ready_chosen_draft(
+                    session, char, svc, elements=["fire"], efficacy="spell_buff"
+                )
+                with pytest.raises(AppError) as exc:
+                    await svc.finalize_draft(char, draft_b, label_zh="重名试炼诀")
+                assert exc.value.code == ERR_CRAFT_FINALIZE
+                assert "占用" in str(exc.value.message)
+
+                with pytest.raises(AppError) as exc2:
+                    await svc.finalize_draft(char, draft_b, label_zh="基础吐纳诀")
+                assert exc2.value.code == ERR_CRAFT_FINALIZE
+
+    _run(_body())
+
+
+def test_embed_infinite_card_not_consumed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.constants.technique_craft import CARD_FORMAL_ELEMENT_INF_ID
+
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "embed_inf.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "embedinf@test.com", "无限卡测")
+                inv = InventoryService(session)
+                await inv.add_item(
+                    char.id,
+                    item_type="consumable",
+                    item_id=CARD_FORMAL_ELEMENT_INF_ID,
+                    quantity=1,
+                    meta={"elements": ["metal", "wood"], "infinite_use": True},
+                )
+                await session.commit()
+                uid = (
+                    await session.execute(
+                        select(InventoryItem.item_uid).where(
+                            InventoryItem.character_id == char.id,
+                            InventoryItem.item_id == CARD_FORMAL_ELEMENT_INF_ID,
+                        )
+                    )
+                ).scalar_one()
+                svc = TechniqueCraftService(session)
+                draft = await svc.create_draft(char)
+                out = await svc.embed_card(char, int(draft["id"]), str(uid))
+                await session.commit()
+                assert out["elements"] == ["metal", "wood"]
+                left = (
+                    await session.execute(
+                        select(InventoryItem).where(
+                            InventoryItem.character_id == char.id,
+                            InventoryItem.item_id == CARD_FORMAL_ELEMENT_INF_ID,
+                        )
+                    )
+                ).scalar_one()
+                assert int(left.quantity) == 1
 
     _run(_body())
 
@@ -965,6 +1115,18 @@ def test_two_attack_upgrades_second_costs_more(
                 )
                 assert first["base"]["attack"] == 1
                 assert second["base"]["attack"] == 2
+                assert second.get("breakthrough_points_required") is not None
+
+                mine = await ResearchService(session).list_mine(char)
+                mine_tech = next((t for t in mine if t["id"] == tech_id), None)
+                assert mine_tech is not None
+                assert int(mine_tech.get("upgrade_points") or 0) == expected_pts
+                assert int((mine_tech.get("base") or {}).get("attack") or 0) == 2
+                assert isinstance(mine_tech.get("affixes"), list)
+                assert mine_tech.get("condition_bonus") is not None
+                assert mine_tech.get("breakthrough_points_required") == second.get(
+                    "breakthrough_points_required"
+                )
 
     _run(_body())
 
@@ -1442,5 +1604,137 @@ def test_copied_technique_cannot_upgrade_or_print(
                 with pytest.raises(AppError) as print_exc:
                     await svc.print_manual(learner, str(copy_item["id"]))
                 assert print_exc.value.code == ERR_CRAFT_MANUAL
+
+    _run(_body())
+
+
+def test_finalize_always_starts_at_lowest_rank(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Even a high-realm author finalizes at body_tempering, not character realm."""
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "fin_rank.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "finrank@test.com", "高境定稿")
+                char.major_realm = "foundation"
+                await session.commit()
+                svc = TechniqueCraftService(session)
+                tech_id = await _finalize_spell_attack(session, char, svc)
+                private = await _load_private(session, tech_id)
+                assert str(private.major_rank) == CRAFT_INITIAL_RANK
+                draft = await svc.create_draft(char)
+                assert draft["major_rank"] == CRAFT_INITIAL_RANK
+
+    _run(_body())
+
+
+def test_abolish_rejects_when_equipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "abolish_eq.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "abolish_eq@test.com", "废除装备拒")
+                svc = TechniqueCraftService(session)
+                tech_id = await _finalize_spell_attack(session, char, svc)
+                await TechniqueService(session).equip_technique(
+                    char,
+                    technique_id=tech_id,
+                    slot_type=TECHNIQUE_SLOT_ART,
+                    slot_index=0,
+                )
+                await session.commit()
+                with pytest.raises(AppError) as exc:
+                    await svc.abolish_technique(char, tech_id)
+                assert exc.value.code == ERR_CRAFT_ABOLISH
+                assert "卸下" in exc.value.message
+
+    _run(_body())
+
+
+def test_abolish_removes_author_keeps_learner_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Author original is deleted; printed-manual learner copy remains."""
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "abolish_ok.db") as factory:
+            async with factory() as session:
+                author = await _prepare_researcher(session, "abolish_a@test.com", "废除甲")
+                learner = await _prepare_researcher(session, "abolish_b@test.com", "废除乙")
+                svc = TechniqueCraftService(session)
+                tech_id = await _finalize_spell_attack(session, author, svc)
+                craft = get_game_config().research.technique_craft
+                author.cultivation_points = int(craft.print_manual_cost_cultivation) * 2
+                await session.commit()
+                printed = await svc.print_manual(author, tech_id)
+                await session.commit()
+                snapshot = printed["snapshot"]
+                learner.major_realm = str(snapshot.get("major_rank") or "body_tempering")
+                uid = await _grant_manual(session, learner.id, snapshot)
+                await session.commit()
+                await InventoryService(session).use_item(learner, item_uid=uid)
+                await session.commit()
+
+                copies = [
+                    row
+                    for row in await TechniqueService(session).list_my_techniques(learner)
+                    if row.get("cultivable") is False
+                    and str(row.get("author_character_id") or 0) == str(author.id)
+                ]
+                assert len(copies) == 1
+                copy_id = str(copies[0]["id"])
+
+                out = await svc.abolish_technique(author, tech_id)
+                await session.commit()
+                assert out["abolished"] is True
+
+                author_ct = (
+                    await session.execute(
+                        select(CharacterTechnique).where(
+                            CharacterTechnique.character_id == author.id,
+                            CharacterTechnique.technique_id == tech_id,
+                        )
+                    )
+                ).scalar_one_or_none()
+                assert author_ct is None
+                author_priv = (
+                    await session.execute(
+                        select(PrivateTechnique).where(
+                            PrivateTechnique.technique_id == tech_id,
+                        )
+                    )
+                ).scalar_one_or_none()
+                assert author_priv is None
+
+                copy_priv = await _load_private(session, copy_id)
+                assert int(copy_priv.character_id) == int(learner.id)
+                assert int(copy_priv.author_character_id) == int(author.id)
+                learner_ct = (
+                    await session.execute(
+                        select(CharacterTechnique).where(
+                            CharacterTechnique.character_id == learner.id,
+                            CharacterTechnique.technique_id == copy_id,
+                        )
+                    )
+                ).scalar_one()
+                assert learner_ct.source == "chance"
 
     _run(_body())

@@ -45,7 +45,7 @@ const petsCount = computed(() => character.value?.pets_count ?? 0)
         <el-badge :value="craftReady" :hidden="craftReady <= 0" type="success">
           <el-button type="warning" size="small">工坊</el-button>
         </el-badge>
-        <el-text size="small" type="info">配方队列 · 领取 · 背包</el-text>
+        <el-text size="small" type="info">配方队列 · 领取</el-text>
       </div>
 
       <div class="gate-card" @click="router.push('/pets')">

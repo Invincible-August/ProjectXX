@@ -362,3 +362,16 @@ async def technique_print_manual(
     character = await _prepare_research_write(gate, current_user)
     data = await service.print_manual(character, technique_id)
     return success(data)
+
+
+@router.post("/technique/techniques/{technique_id}/abolish", response_model=None)
+async def technique_abolish(
+    technique_id: str,
+    gate: PlayGate = Depends(get_play_gate),
+    service: TechniqueCraftService = Depends(get_technique_craft_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Abolish an original technique (must unequip first; copies remain)."""
+    character = await _prepare_research_write(gate, current_user)
+    data = await service.abolish_technique(character, technique_id)
+    return success(data)

@@ -152,7 +152,8 @@ def build_character_ops_schema() -> dict[str, Any]:
         "description_zh": (
             "运行时角色干预（非配置 Overlay）。"
             "通用：删除(软删)/死亡(待引渡)/轮回/修为突破/炼体突破/给予；"
-            "独立：属性/状态/背包/功法/境界/制造业/货币/体质。"
+            "独立：属性/状态/背包/功法/境界/制造业/货币/体质；"
+            "联调：发放自研无限测试卡（直入包）。"
             "仙缘在账号管理派发，本页不改。"
         ),
         "page_sizes": list(CHARACTER_PAGE_SIZES),

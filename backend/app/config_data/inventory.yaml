@@ -462,7 +462,7 @@ items:
     tradable: false
     bound: true
     inspect:
-      help_zh: 镶入研究室草稿，不可直接使用。
+      help_zh: 在研究室点属性镶嵌格选入心法雏形，不可直接使用。
   tech_card_formal_efficacy:
     name: 功法效能正式卡
     item_type: consumable
@@ -471,7 +471,26 @@ items:
     tradable: false
     bound: true
     inspect:
-      help_zh: 镶入研究室草稿，不可直接使用。
+      help_zh: 在研究室点效能镶嵌格选入心法雏形，不可直接使用。
+  # DEV 联调：镶嵌不消耗；固定 meta 由 GM 发放写入
+  tech_card_formal_element_inf:
+    name: 【测】属性正式卡（无限）
+    item_type: consumable
+    max_stack: 1
+    bag_allowed: [normal]
+    tradable: false
+    bound: true
+    inspect:
+      help_zh: 测试卡：镶嵌不消耗。默认金木水火土风雷全属性。
+  tech_card_formal_efficacy_inf:
+    name: 【测】效能正式卡（无限）
+    item_type: consumable
+    max_stack: 1
+    bag_allowed: [normal]
+    tradable: false
+    bound: true
+    inspect:
+      help_zh: 测试卡：镶嵌不消耗。默认修为修炼效能。
   tech_manual:
     name: 功法秘籍
     item_type: manual

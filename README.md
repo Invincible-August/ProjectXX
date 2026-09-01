@@ -46,7 +46,7 @@
 | [双轨整改与配置兼容方案.md](./双轨整改与配置兼容方案.md) | **双轨 v1.0**：存量整改 / 增量规范；ContentStore（测试 YAML / 正式可 DB）（2026-08-14） |
 | [玩家在线状态设计.md](./玩家在线状态设计.md) | **Presence**：WS 鉴权在线 / grace / 组队·面交·助战门闸；**v1.0**（2026-08-12） |
 | [核验与超级密码设计](./docs/superpowers/specs/2026-07-28-verification-super-password-design.md) | 注册核验 / verification API / 超级密码（**已实现**，2026-07-28） |
-| [功法自研（卡片创造与培养）](./docs/superpowers/specs/2026-08-27-technique-research-design.md) | 研究室功法自研：三步卡、多草稿、定稿后培养、秘籍、藏经阁；**P1+P2+P3 已实现**（2026-08-29）；P4 师徒未做 |
+| [功法自研（卡片创造与培养）](./docs/superpowers/specs/2026-08-27-technique-research-design.md) | 研究室功法自研：三步卡、心法雏形、定稿后培养、秘籍、藏经阁；**P1+P2+P3 已实现**（2026-08-29）；UI 心法雏形双栏 + 洞府储物开卡（2026-08-31）；P4 师徒未做 |
 | [功法自研 P1 实现计划](./docs/superpowers/plans/2026-08-27-technique-research-p1.md) | 卡片创造 + 定稿培养；不含秘籍/藏经阁/师徒 |
 | [功法自研 P2 实现计划](./docs/superpowers/plans/2026-08-27-technique-research-p2.md) | 秘籍印制与学习；不含藏经阁/师徒 |
 | [功法自研 P3 实现计划](./docs/superpowers/plans/2026-08-29-technique-scripture-p3.md) | 藏经阁：秘籍上缴审核、条目贡献学习；不含师徒 |
@@ -55,6 +55,12 @@
 
 ## 当前进度
 
+- **研究室已定稿分栏（2026-09-01）**：功法/阵法/符箓分表；功法点「升级功法」再进培养页。
+- **功法词条稀有度（2026-08-31）**：灰→红七档；白/绿/蓝常见；稀有度影响初始值、升级加成与消耗；后台域 research 可改权重与目录。
+- **功法词条三选（2026-08-31）**：每效能 ≥3 条测试词条；选中只高亮一项；位名称「词条甲/乙」。
+- **功法阶展示与突破门槛（2026-08-31）**：阶名用中文（真仙等）；培养区显示「升级点 当前/下一阶所需」；门槛在 `research.yaml` technique_craft.ranks，后台域 research 可改。
+- **功法自研初始阶与废除（2026-08-31）**：定稿从锻体起逐步突破；可废除（须卸装，只删作者本门，流通副本保留）。
+- **功法自研 UI（2026-08-31）**：研究室「心法雏形」双栏；定稿名唯一；培养态重登不丢；突破显示所需升级点；【测】无限正式卡由运营后台角色管理发放。
 - **功法自研 P3（2026-08-29）**：藏经阁已实现（秘籍上缴审核 / 贡献学习）；师徒仍为 P4。
 - **工坊逐件制造（2026-08-30）**：`×N` 一件件入包并显示剩余；取消排队不打断当前制造进度。
 - **工坊队列直入包（2026-08-30）**：入队冻资源、数量×耗时顺序排、完成直入背包、可取消退冻；体力按配方数值。
@@ -165,13 +171,14 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 - **CORS**：玩家端 `5173`（见 `backend/.env.example`）；运营后台与 API **同端口**，走 `/management`，一般无需再开 5174
 - **ADM 环境变量**（可选）：`ADMIN_JWT_SECRET_KEY`、`ADMIN_BOOTSTRAP_USERNAME`/`PASSWORD`（默认 `admin`/`admin123`）
+- 密码哈希用 `bcrypt` 库直调（不再经 passlib）；已有库内哈希仍可验签
 - 健康检查：`GET http://127.0.0.1:8000/api/v1/server/health`（或兼容路径 `GET /health`）；`data.db` 应为 `ok`；并看 `database_dialect` / `database_target`（须指向 `backend/xiuxian.db` 或正式 PG）与 `content_store_mode`
 - **运行时库**：测试账号/角色在 `backend/xiuxian.db`（`DATABASE_URL`）；设定在 YAML/`CONTENT_STORE_MODE`。正式只改 `DATABASE_URL=postgresql+asyncpg://...`，ORM 与后台账号管理同一套代码。勿使用仓库根目录误生成的旧 `xiuxian.db`
 - 后台登录页：`http://127.0.0.1:8000/management/`（须先 `cd admin && npm run build`）
 - 后台 API：`POST http://127.0.0.1:8000/admin/auth/login` Body `{"username":"admin","password":"admin123"}`
 - **后台整改（进行中）**：侧栏 **玩家管理 → 账号管理 / 角色管理**
   - 账号：`/management/players/accounts`；道号可跳转角色管理
-  - 角色：`/management/players/characters`；软删/死亡/轮回/突破/给予；属性·状态·背包·功法·境界·制造业·货币
+  - 角色：`/management/players/characters`；软删/死亡/轮回/突破/给予；属性·状态·背包·功法·境界·制造业·货币；**发放自研测试卡**（无限属性/效能正式卡直入包）
   - 网格列（账号）：数据库ID、user_id（`M/P/T/G`+7位）、邮箱、手机号、剩余仙缘、总打赏金额、状态、GM、道号
   - 顶栏批量（勾选）：封号/解封、重置密码（`12345678`）、修改联系方式、派发仙缘、删除账号（软删 `is_active=false`）、设为/取消GM（功能暂未开放）
   - 行内：记录打赏、查看打赏、仙缘派发记录、广告观看记录（不再折叠「更多」）

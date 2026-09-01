@@ -1,7 +1,8 @@
 """
 密码哈希与 JWT 编解码工具（M0 鉴权）。
 
-密码只存 bcrypt 哈希；access / refresh 均为 HS256 JWT，claims 见 M0 §5.3。
+密码只存 bcrypt 哈希（直接调用 ``bcrypt`` 库，不经 passlib）；
+access / refresh 均为 HS256 JWT，claims 见 M0 §5.3。
 """
 
 from __future__ import annotations
@@ -9,15 +10,21 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
+import bcrypt
 import jwt
-from passlib.context import CryptContext
 
 from app.core.config import get_settings
 
-# 通过 passlib 使用 bcrypt；明文密码禁止入库
-_password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 TokenType = Literal["access", "refresh"]
+
+# bcrypt 只吃前 72 字节；与旧 passlib 行为对齐，避免超长密码炸验签
+_BCRYPT_MAX_BYTES = 72
+
+
+def _password_bytes(plain_password: str) -> bytes:
+    """Encode and truncate a password for bcrypt."""
+    raw = plain_password.encode("utf-8")
+    return raw[:_BCRYPT_MAX_BYTES]
 
 
 def hash_password(plain_password: str) -> str:
@@ -28,9 +35,10 @@ def hash_password(plain_password: str) -> str:
         plain_password: 用户提交的明文密码。
 
     Returns:
-        str: 不可逆的密码哈希。
+        str: 不可逆的密码哈希（``$2b$`` 字符串）。
     """
-    return _password_context.hash(plain_password)
+    digest = bcrypt.hashpw(_password_bytes(plain_password), bcrypt.gensalt())
+    return digest.decode("utf-8")
 
 
 def verify_password(plain_password: str, password_hash: str) -> bool:
@@ -42,9 +50,17 @@ def verify_password(plain_password: str, password_hash: str) -> bool:
         password_hash: 此前写入数据库的哈希。
 
     Returns:
-        bool: 匹配则为 True。
+        bool: 匹配则为 True；哈希损坏时返回 False。
     """
-    return _password_context.verify(plain_password, password_hash)
+    try:
+        return bool(
+            bcrypt.checkpw(
+                _password_bytes(plain_password),
+                password_hash.encode("utf-8"),
+            )
+        )
+    except (ValueError, TypeError):
+        return False
 
 
 def create_token(

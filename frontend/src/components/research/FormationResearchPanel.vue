@@ -334,7 +334,7 @@ async function onFinalize(): Promise<void> {
         </el-check-tag>
         <el-text v-if="!materials.length" size="small" type="info">暂无可用材料配置</el-text>
         <el-text v-else-if="!anyMaterialHeld" size="small" type="warning">
-          背包暂无自研材料，可回大厅用 GM「发材料」或去工坊炼制
+          背包暂无自研材料，可去工坊炼制或由运营后台发放
         </el-text>
       </div>
       <div class="row">

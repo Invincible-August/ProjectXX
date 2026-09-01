@@ -8,6 +8,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from app.constants.technique_craft import (
+    AFFIX_RARITY_DEFAULT,
     AFFIX_ROLE_DEFENSE,
     ATTACK_EFFICACIES,
     MARTIAL_EFFICACIES,
@@ -211,6 +212,140 @@ def roll_three(pool: Sequence[str], rng: Any = None) -> list[str]:
     return chosen
 
 
+def roll_three_weighted(
+    pool: Sequence[str],
+    weights: Mapping[str, float],
+    rng: Any = None,
+) -> list[str]:
+    """
+    Weighted pick of three affix ids (prefer unique when pool allows).
+
+    Weights come from rarity tables. Non-positive / missing weights fall back to 1.
+
+    Args:
+        pool: Candidate affix ids.
+        weights: affix_id → relative weight.
+        rng: Optional random source with ``random``.
+
+    Returns:
+        list[str]: Exactly three ids.
+
+    Raises:
+        ValueError: if ``pool`` is empty.
+    """
+    items = [str(x) for x in pool if str(x)]
+    if not items:
+        raise ValueError("affix pool is empty")
+    picker = rng if rng is not None else random.Random()
+
+    def _weight(aid: str) -> float:
+        raw = float(weights.get(aid, 1.0) or 0.0)
+        return raw if raw > 0 else 1.0
+
+    def _pick_one(candidates: list[str]) -> str:
+        total = sum(_weight(a) for a in candidates)
+        if total <= 0:
+            return candidates[0]
+        target = float(picker.random()) * total
+        acc = 0.0
+        for aid in candidates:
+            acc += _weight(aid)
+            if target <= acc:
+                return aid
+        return candidates[-1]
+
+    remaining = list(items)
+    chosen: list[str] = []
+    while len(chosen) < 3 and remaining:
+        pick = _pick_one(remaining)
+        chosen.append(pick)
+        remaining = [x for x in remaining if x != pick]
+    while len(chosen) < 3:
+        chosen.append(_pick_one(items))
+    return chosen
+
+
+def resolve_affix_rarity(affix_id: str, *, fallback: str | None = None) -> str:
+    """Catalog rarity for an affix id, defaulting to white."""
+    craft = get_game_config().research.technique_craft
+    body = craft.affixes.get(str(affix_id or ""))
+    rarity = str(getattr(body, "rarity", "") or "").strip()
+    if rarity and rarity in craft.affix_rarities:
+        return rarity
+    fb = str(fallback or AFFIX_RARITY_DEFAULT)
+    return fb if fb in craft.affix_rarities else AFFIX_RARITY_DEFAULT
+
+
+def affix_rarity_def(rarity_id: str | None) -> Any:
+    """Return rarity config row; white when unknown."""
+    craft = get_game_config().research.technique_craft
+    key = str(rarity_id or AFFIX_RARITY_DEFAULT)
+    return craft.affix_rarities.get(key) or craft.affix_rarities.get(AFFIX_RARITY_DEFAULT)
+
+
+def effective_affix_stats(
+    affix_id: str,
+    *,
+    level: int = 0,
+    rarity: str | None = None,
+) -> dict[str, float]:
+    """
+    Initial (and leveled) ATTR for a catalog affix.
+
+    ``stats`` in YAML are white-baseline; multiplied by rarity ``base_mult``,
+    then by ``1 + affix_level_mult * upgrade_mult * level``.
+    """
+    craft = get_game_config().research.technique_craft
+    body = craft.affixes.get(str(affix_id or ""))
+    if body is None:
+        return {}
+    rid = str(rarity or getattr(body, "rarity", "") or AFFIX_RARITY_DEFAULT)
+    rare = affix_rarity_def(rid)
+    base_mult = float(getattr(rare, "base_mult", 1.0) or 1.0)
+    upgrade_mult = float(getattr(rare, "upgrade_mult", 1.0) or 1.0)
+    level_mult = float(craft.affix_level_mult)
+    scale = base_mult * (1.0 + level_mult * upgrade_mult * max(0, int(level)))
+    out: dict[str, float] = {}
+    for key, raw in (getattr(body, "stats", None) or {}).items():
+        val = float(raw or 0) * scale
+        if abs(val) > 1e-12:
+            out[str(key)] = val
+    return out
+
+
+def affix_public_view(
+    affix_id: str,
+    *,
+    level: int = 0,
+    rarity: str | None = None,
+) -> dict[str, Any]:
+    """Player-facing affix card: label, rarity, color, effective stats."""
+    craft = get_game_config().research.technique_craft
+    body = craft.affixes.get(str(affix_id or ""))
+    rid = resolve_affix_rarity(affix_id, fallback=rarity)
+    if rarity and str(rarity) in craft.affix_rarities:
+        rid = str(rarity)
+    rare = affix_rarity_def(rid)
+    return {
+        "id": str(affix_id or ""),
+        "label_zh": str(getattr(body, "label_zh", None) or affix_id or "未知词条"),
+        "rarity": rid,
+        "rarity_label_zh": str(getattr(rare, "label_zh", None) or rid),
+        "color": str(getattr(rare, "color", None) or "#ffffff"),
+        "stats": effective_affix_stats(affix_id, level=level, rarity=rid),
+        "base_stats": {
+            str(k): float(v)
+            for k, v in (getattr(body, "stats", None) or {}).items()
+        },
+    }
+
+
+def affix_upgrade_cost_multiplier(rarity: str | None) -> float:
+    """Multiply table upgrade cost by rarity ``cost_mult``."""
+    rare = affix_rarity_def(rarity)
+    return float(getattr(rare, "cost_mult", 1.0) or 1.0)
+
+
 def roll_affix_upgrade_success(fail_rate: float, rng: Any = None) -> bool:
     """Whether an affix upgrade succeeds. Same draw rules as embed."""
     return roll_embed_success(fail_rate, rng)
@@ -273,6 +408,27 @@ def next_rank_id(current_rank: str) -> str | None:
     return str(nxt) if nxt else None
 
 
+def major_rank_label_zh(rank_id: str | None) -> str:
+    """
+    Chinese display name for a technique major rank.
+
+    Uses ``realms.yaml`` ``name``; never returns the raw English id.
+
+    Args:
+        rank_id: Major realm / craft rank id (e.g. ``true_immortal``).
+
+    Returns:
+        str: e.g. ``真仙``, or ``未知阶`` when missing.
+    """
+    key = str(rank_id or "").strip()
+    if not key:
+        return "未知阶"
+    major = get_game_config().realms.get(key)
+    name = getattr(major, "name", None) if major is not None else None
+    label = str(name or "").strip()
+    return label or "未知阶"
+
+
 def rank_cap(character_major: str, rank_ids: Iterable[str]) -> str:
     """
     Highest configured craft rank whose height ≤ the character's major realm.
@@ -320,16 +476,53 @@ def can_breakthrough(
     return int(upgrade_points) >= required
 
 
+def enrich_affix_slots_public(slots: Sequence[Any]) -> list[dict[str, Any]]:
+    """
+    Attach option_views / chosen_view / next_upgrade_cost for player UI.
+
+    Args:
+        slots: Raw affix slot dicts from draft or payload.
+
+    Returns:
+        list[dict[str, Any]]: Enriched copies (does not mutate input items).
+    """
+    craft = get_game_config().research.technique_craft
+    costs = tuple(int(x) for x in craft.affix_upgrade_cost)
+    out: list[dict[str, Any]] = []
+    for raw in slots:
+        if not isinstance(raw, Mapping):
+            continue
+        cell = dict(raw)
+        options = [str(x) for x in (cell.get("options") or [])]
+        cell["option_views"] = [affix_public_view(aid, level=0) for aid in options]
+        chosen = str(cell.get("chosen_id") or "").strip()
+        rarity = str(cell.get("chosen_rarity") or "").strip() or None
+        if chosen:
+            if not rarity:
+                rarity = resolve_affix_rarity(chosen)
+                cell["chosen_rarity"] = rarity
+            level = int(cell.get("chosen_level") or 0)
+            cell["chosen_view"] = affix_public_view(chosen, level=level, rarity=rarity)
+            table_cost = int(costs[min(max(level, 0), len(costs) - 1)]) if costs else 0
+            cell["next_upgrade_cost"] = int(
+                round(table_cost * affix_upgrade_cost_multiplier(rarity))
+            )
+        else:
+            cell["chosen_view"] = None
+            cell["next_upgrade_cost"] = None
+        out.append(cell)
+    return out
+
+
 def payload_attr_grants(payload: Mapping[str, Any]) -> dict[str, float]:
     """
     Combat ATTR from cultivated payload: base clicks mapped by efficacy, plus scaled affixes.
 
-    Base attack/defense/speed map to magic_* for ``SPELL_EFFICACIES`` and phys_* for
-    ``MARTIAL_EFFICACIES``. Affix catalog stats scale by ``1 + affix_level_mult * chosen_level``.
+    Affix YAML ``stats`` are white-baseline; rarity ``base_mult`` / ``upgrade_mult``
+    and ``affix_level_mult`` scale the final grants.
     """
     craft = get_game_config().research.technique_craft
     per_click = float(craft.base_stat_per_click)
-    level_mult = float(craft.affix_level_mult)
     efficacy = str(payload.get("efficacy") or "")
     if efficacy in SPELL_EFFICACIES:
         atk_key, def_key = "magic_atk", "magic_def"
@@ -348,7 +541,6 @@ def payload_attr_grants(payload: Mapping[str, Any]) -> dict[str, float]:
     _add(def_key, int(base.get("defense") or 0) * per_click)
     _add("speed", int(base.get("speed") or 0) * per_click)
 
-    catalog = craft.affixes
     slots = payload.get("affixes") or []
     if isinstance(slots, Sequence) and not isinstance(slots, (str, bytes)):
         for cell in slots:
@@ -357,12 +549,12 @@ def payload_attr_grants(payload: Mapping[str, Any]) -> dict[str, float]:
             aid = str(cell.get("chosen_id") or "").strip()
             if not aid:
                 continue
-            body = catalog.get(aid)
-            stats = getattr(body, "stats", None) if body is not None else None
-            if not stats:
-                continue
-            scale = 1.0 + level_mult * int(cell.get("chosen_level") or 0)
-            for key, raw in stats.items():
-                _add(str(key), float(raw or 0) * scale)
+            rarity = str(cell.get("chosen_rarity") or "").strip() or None
+            for key, amount in effective_affix_stats(
+                aid,
+                level=int(cell.get("chosen_level") or 0),
+                rarity=rarity,
+            ).items():
+                _add(str(key), float(amount))
     return totals
 

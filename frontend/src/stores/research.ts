@@ -71,7 +71,7 @@ export const useResearchStore = defineStore('research', () => {
 
   async function create(payload: ResearchCreateRequest): Promise<string | null> {
     if (payload.kind === 'technique') {
-      return '请改用功法自研草稿接口'
+      return '请改用功法自研雏形接口'
     }
     loading.value = true
     try {

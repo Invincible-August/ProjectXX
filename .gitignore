@@ -1,0 +1,26 @@
+# ── Agent / local scratch (not product) ──
+.superpowers/
+.pytest_cache/
+**/__pycache__/
+*.py[cod]
+
+# ── Secrets & runtime ──
+.env
+.env.*
+!.env.example
+*.db
+xiuxian.db
+logs/
+*.log
+
+# ── IDE ──
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# ── Frontend/tooling (also covered under package dirs) ──
+node_modules/
+dist-ssr/
+*.local

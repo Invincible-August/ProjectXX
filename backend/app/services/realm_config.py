@@ -1480,11 +1480,25 @@ class TechniqueCraftRankConfig:
 
 
 @dataclass(frozen=True)
+class TechniqueCraftAffixRarityDef:
+    """Rarity tier for technique-craft affixes (weights + stat/cost multipliers)."""
+
+    rarity_id: str
+    label_zh: str
+    weight: float
+    base_mult: float
+    upgrade_mult: float
+    cost_mult: float
+    color: str
+
+
+@dataclass(frozen=True)
 class TechniqueCraftAffixDef:
     """Technique-craft affix filtered by efficacy."""
 
     affix_id: str
     label_zh: str
+    rarity: str
     efficacy_allow: tuple[str, ...]
     role: str
     stats: dict[str, float]
@@ -1514,6 +1528,7 @@ class TechniqueCraftConfig:
     base_stat_per_click: float
     ranks: dict[str, TechniqueCraftRankConfig]
     weapon_bonus: dict[str, dict[str, float]]
+    affix_rarities: dict[str, TechniqueCraftAffixRarityDef]
     affixes: dict[str, TechniqueCraftAffixDef]
 
 
@@ -4043,39 +4058,131 @@ def _parse_technique_craft(
     weapon_bonus: dict[str, dict[str, float]] = {}
     for weapon_id, bonus in weapon_src.items():
         weapon_bonus[str(weapon_id)] = {str(k): float(v) for k, v in (bonus or {}).items()}
+
+    from app.constants.technique_craft import AFFIX_RARITY_DEFAULT, AFFIX_RARITY_IDS
+
+    rarities_src = body.get("affix_rarities") or {
+        "gray": {
+            "label_zh": "灰",
+            "weight": 10,
+            "base_mult": 0.7,
+            "upgrade_mult": 0.7,
+            "cost_mult": 0.75,
+            "color": "#9e9e9e",
+        },
+        "white": {
+            "label_zh": "白",
+            "weight": 28,
+            "base_mult": 1.0,
+            "upgrade_mult": 1.0,
+            "cost_mult": 1.0,
+            "color": "#eceff1",
+        },
+        "green": {
+            "label_zh": "绿",
+            "weight": 26,
+            "base_mult": 1.2,
+            "upgrade_mult": 1.2,
+            "cost_mult": 1.25,
+            "color": "#67c23a",
+        },
+        "blue": {
+            "label_zh": "蓝",
+            "weight": 24,
+            "base_mult": 1.4,
+            "upgrade_mult": 1.4,
+            "cost_mult": 1.5,
+            "color": "#409eff",
+        },
+        "purple": {
+            "label_zh": "紫",
+            "weight": 8,
+            "base_mult": 1.7,
+            "upgrade_mult": 1.7,
+            "cost_mult": 1.9,
+            "color": "#a855f7",
+        },
+        "orange": {
+            "label_zh": "橙",
+            "weight": 3,
+            "base_mult": 2.1,
+            "upgrade_mult": 2.1,
+            "cost_mult": 2.5,
+            "color": "#e6a23c",
+        },
+        "red": {
+            "label_zh": "红",
+            "weight": 1,
+            "base_mult": 2.8,
+            "upgrade_mult": 2.8,
+            "cost_mult": 3.4,
+            "color": "#f56c6c",
+        },
+    }
+    affix_rarities: dict[str, TechniqueCraftAffixRarityDef] = {}
+    for rid, rbody in rarities_src.items():
+        key = str(rid)
+        rb = rbody or {}
+        affix_rarities[key] = TechniqueCraftAffixRarityDef(
+            rarity_id=key,
+            label_zh=str(rb.get("label_zh") or key),
+            weight=float(rb.get("weight") or 0),
+            base_mult=float(rb.get("base_mult") or 1.0),
+            upgrade_mult=float(rb.get("upgrade_mult") or 1.0),
+            cost_mult=float(rb.get("cost_mult") or 1.0),
+            color=str(rb.get("color") or "#ffffff"),
+        )
+    for required in AFFIX_RARITY_IDS:
+        if required not in affix_rarities:
+            affix_rarities[required] = TechniqueCraftAffixRarityDef(
+                rarity_id=required,
+                label_zh=required,
+                weight=1.0 if required == AFFIX_RARITY_DEFAULT else 0.0,
+                base_mult=1.0,
+                upgrade_mult=1.0,
+                cost_mult=1.0,
+                color="#ffffff",
+            )
+
     affixes_src = body.get("affixes") or {
         "sa_edge": {
             "label_zh": "法锋",
+            "rarity": "white",
             "efficacy_allow": ["spell_attack"],
             "role": "attack",
             "stats": {"magic_atk": 3},
         },
         "sb_ward": {
             "label_zh": "法盾",
+            "rarity": "white",
             "efficacy_allow": ["spell_buff"],
             "role": "buff",
             "stats": {"magic_def": 3},
         },
         "ma_edge": {
             "label_zh": "武锋",
+            "rarity": "white",
             "efficacy_allow": ["martial_attack"],
             "role": "attack",
             "stats": {"phys_atk": 3},
         },
         "mb_ward": {
             "label_zh": "武御",
+            "rarity": "white",
             "efficacy_allow": ["martial_buff"],
             "role": "buff",
             "stats": {"phys_def": 3},
         },
         "is_flow": {
             "label_zh": "周天",
+            "rarity": "white",
             "efficacy_allow": ["idle_spirit"],
             "role": "idle",
             "stats": {"magic_atk": 1},
         },
         "ib_bone": {
             "label_zh": "锻骨",
+            "rarity": "white",
             "efficacy_allow": ["idle_body"],
             "role": "idle",
             "stats": {"phys_atk": 1},
@@ -4091,9 +4198,13 @@ def _parse_technique_craft(
             stats,
             attr_keys,
         )
+        rarity = str(ab.get("rarity") or AFFIX_RARITY_DEFAULT).strip() or AFFIX_RARITY_DEFAULT
+        if rarity not in affix_rarities:
+            rarity = AFFIX_RARITY_DEFAULT
         affixes[str(affix_id)] = TechniqueCraftAffixDef(
             affix_id=str(affix_id),
             label_zh=str(ab.get("label_zh") or affix_id),
+            rarity=rarity,
             efficacy_allow=tuple(str(x) for x in (ab.get("efficacy_allow") or [])),
             role=str(ab.get("role") or ""),
             stats=stats,
@@ -4140,8 +4251,11 @@ def _parse_technique_craft(
         ),
         ranks=ranks,
         weapon_bonus=weapon_bonus,
+        affix_rarities=affix_rarities,
         affixes=affixes,
     )
+
+
 
 
 def _parse_research(raw: dict[str, Any], *, combat_attrs: CombatAttrsConfig) -> ResearchConfig:
