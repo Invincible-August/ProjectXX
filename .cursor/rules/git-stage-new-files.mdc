@@ -1,0 +1,27 @@
+---
+description: 应提交的新文件必须立刻 git add（不擅自 commit）
+alwaysApply: true
+---
+
+# Git · 新文件即时暂存（§0.0.5）
+
+凡本会话 **新建** 且应当纳入版本管理的文件（源码、配置、单测、文档、应跟踪静态资源），**同回合**执行：
+
+```bash
+git add <path>
+```
+
+可与相关已改文件一并 `git add`。
+
+## 必须
+
+- 任务结束前 `git status`：本任务产生的应跟踪文件不得仍为 `??`
+- 对照 `.gitignore`；密钥 / 本地库 / 缓存 / `dist` / `logs` / IDE workspace **默认不 add**
+
+## 禁止
+
+- 以「等用户说提交」为由留下未跟踪源码
+- 用户未明确要求时执行 `git commit` / `git push`
+- 把 `.env`、`*.db`、`__pycache__`、`node_modules`、`admin/dist`、`logs/` 当应提交文件
+
+细则见 `开发计划.md` **§0.0.5**。
