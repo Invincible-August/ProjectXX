@@ -306,6 +306,52 @@ export async function upgradeTechniqueAffixApi(
   }
 }
 
+export async function rollCultivateAffixApi(
+  techniqueId: string,
+  slot: number,
+): Promise<ApiResponse<TechniqueCultivatePublic>> {
+  try {
+    const response = await http.post<ApiResponse<TechniqueCultivatePublic>>(
+      `${TECH}/techniques/${techniqueId}/affix/roll`,
+      { slot },
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<TechniqueCultivatePublic>(error)
+  }
+}
+
+export async function chooseCultivateAffixApi(
+  techniqueId: string,
+  slot: number,
+  affixId: string,
+): Promise<ApiResponse<TechniqueCultivatePublic>> {
+  try {
+    const response = await http.post<ApiResponse<TechniqueCultivatePublic>>(
+      `${TECH}/techniques/${techniqueId}/affix/choose`,
+      { slot, affix_id: affixId },
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<TechniqueCultivatePublic>(error)
+  }
+}
+
+export async function rerollCultivateAffixApi(
+  techniqueId: string,
+  slot: number,
+): Promise<ApiResponse<TechniqueCultivatePublic>> {
+  try {
+    const response = await http.post<ApiResponse<TechniqueCultivatePublic>>(
+      `${TECH}/techniques/${techniqueId}/affix/reroll`,
+      { slot },
+    )
+    return response.data
+  } catch (error: unknown) {
+    return envelopeFromAxiosError<TechniqueCultivatePublic>(error)
+  }
+}
+
 export async function breakthroughTechniqueApi(
   techniqueId: string,
 ): Promise<ApiResponse<TechniqueCultivatePublic>> {

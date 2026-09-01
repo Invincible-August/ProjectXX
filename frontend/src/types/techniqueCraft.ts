@@ -148,7 +148,7 @@ const ATTR_LABELS: Record<string, string> = {
 const AFFIX_SLOT_STEMS = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸']
 
 export const TECHNIQUE_CRAFT_HELP_ZH =
-  '于洞府储物开出属性/效能正式卡，点镶嵌格选卡入雏形，确认发动条件与词条后定稿；定稿起于锻体须逐步突破，可废除（须卸装，流通副本保留）。'
+  '于洞府储物开出属性/效能正式卡，点镶嵌格选卡入雏形，确认发动条件与词条后定稿；词条栏数按人物境界冻结，定稿起于锻体须逐步突破；突破可补位并强化已有词条，可废除（须卸装，流通副本保留）。'
 
 export interface TechniqueAffixView {
   id: string
@@ -169,6 +169,8 @@ export interface TechniqueAffixSlot {
   chosen_level: number
   upgrade_count: number
   reroll_count: number
+  /** Breakthrough stacks on pre-existing affixes; new pads stay 0. */
+  rank_boost?: number
   next_upgrade_cost?: number | null
 }
 
@@ -302,6 +304,7 @@ export function emptyAffixSlot(): TechniqueAffixSlot {
     chosen_level: 0,
     upgrade_count: 0,
     reroll_count: 0,
+    rank_boost: 0,
     next_upgrade_cost: null,
   }
 }
@@ -348,6 +351,7 @@ export function asAffixSlots(raw: unknown): TechniqueAffixSlot[] {
       chosen_level: Number(row.chosen_level || 0),
       upgrade_count: Number(row.upgrade_count || 0),
       reroll_count: Number(row.reroll_count || 0),
+      rank_boost: Number(row.rank_boost || 0),
       next_upgrade_cost:
         row.next_upgrade_cost == null ? null : Number(row.next_upgrade_cost),
     }
@@ -372,5 +376,6 @@ export function affixSlotsFromIds(ids: unknown): TechniqueAffixSlot[] {
     chosen_level: 0,
     upgrade_count: 0,
     reroll_count: 0,
+    rank_boost: 0,
   }))
 }

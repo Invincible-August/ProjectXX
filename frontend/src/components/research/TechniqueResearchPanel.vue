@@ -347,7 +347,7 @@ async function onRoll(slot: number): Promise<void> {
       fail(err)
       return
     }
-    emit('log', `${affixSlotLabelZh(slot)}已生成词条`, 'info')
+    emit('log', `${affixSlotLabelZh(slot)}已推演词条`, 'info')
   })
 }
 
@@ -369,7 +369,7 @@ async function onReroll(slot: number): Promise<void> {
       fail(err)
       return
     }
-    emit('log', `${affixSlotLabelZh(slot)}已重随`, 'info')
+    emit('log', `${affixSlotLabelZh(slot)}已重新推演`, 'info')
   })
 }
 
@@ -489,6 +489,39 @@ async function onAffixUpgrade(slot: number): Promise<void> {
     }
     ElMessage.success('词条升级成功')
     emit('log', '词条升级成功', 'success')
+  })
+}
+
+async function onCultivateRoll(slot: number): Promise<void> {
+  await runBusy(async () => {
+    const err = await craftStore.rollCultivateAffix(slot)
+    if (err) {
+      fail(err)
+      return
+    }
+    emit('log', `${affixSlotLabelZh(slot)}已推演词条`, 'info')
+  })
+}
+
+async function onCultivateChoose(slot: number, affixId: string): Promise<void> {
+  await runBusy(async () => {
+    const err = await craftStore.chooseCultivateAffix(slot, affixId)
+    if (err) {
+      fail(err)
+      return
+    }
+    emit('log', `已选择词条「${affixLabelZh(affixId)}」`, 'success')
+  })
+}
+
+async function onCultivateReroll(slot: number): Promise<void> {
+  await runBusy(async () => {
+    const err = await craftStore.rerollCultivateAffix(slot)
+    if (err) {
+      fail(err)
+      return
+    }
+    emit('log', `${affixSlotLabelZh(slot)}已重新推演`, 'info')
   })
 }
 
@@ -716,6 +749,9 @@ onMounted(() => {
         </el-form>
 
         <el-divider content-position="left">词条</el-divider>
+        <el-text size="small" type="info" class="help">
+          词条栏数按创建时人物境界冻结（锻体 1、炼气/筑基 2、金丹/元婴 3、化神/真仙 4）。功法仍从锻体起突破；突破后若功法阶栏数更高会补空位，已有词条数值加强，新位无加强。
+        </el-text>
         <div
           v-for="(slot, index) in affixSlots"
           :key="index"
@@ -729,7 +765,7 @@ onMounted(() => {
             :disabled="writeBlocked || !efficacyFilled"
             @click="onRoll(index)"
           >
-            生成三选
+            推演词条
           </el-button>
           <template v-else>
             <div class="chip-row affix-options">
@@ -759,7 +795,7 @@ onMounted(() => {
               :disabled="writeBlocked"
               @click="onReroll(index)"
             >
-              重随
+              重新推演
             </el-button>
           </template>
         </div>
@@ -870,49 +906,90 @@ onMounted(() => {
               </el-button>
             </div>
 
-            <el-divider content-position="left">词条（皆可升级）</el-divider>
-            <div class="chip-row">
-              <el-button
-                v-for="(slot, index) in originalAffixSlots"
-                :key="`up-${index}`"
-                size="small"
-                :loading="busy"
-                :disabled="writeBlocked || !slot.chosen_id"
-                :style="
-                  slot.chosen_view
-                    ? {
-                        borderColor: slot.chosen_view.color,
-                        color: slot.chosen_view.color,
-                      }
-                    : undefined
-                "
-                @click="onAffixUpgrade(index)"
-              >
-                升级 ·
-                {{
-                  slot.chosen_view
-                    ? `[${slot.chosen_view.rarity_label_zh}] ${slot.chosen_view.label_zh}`
-                    : affixLabelZh(slot.chosen_id)
-                }}
-                Lv.{{ slot.chosen_level }}
-                <template v-if="slot.next_upgrade_cost != null">
-                  （耗 {{ slot.next_upgrade_cost }}）
-                </template>
-              </el-button>
-            </div>
-            <el-text
-              v-for="(slot, index) in originalAffixSlots"
-              :key="`st-${index}`"
-              size="small"
-              class="help"
-            >
-              {{ affixSlotLabelZh(index) }}：
-              {{
-                slot.chosen_view
-                  ? formatAffixStats(slot.chosen_view.stats)
-                  : '未选'
-              }}
+            <el-divider content-position="left">词条</el-divider>
+            <el-text size="small" type="info" class="help">
+              空位可在此推演补齐（突破补位）；已选词条可升级。突破成功会强化已有词条数值，新补空位不带强化。
             </el-text>
+            <div
+              v-for="(slot, index) in originalAffixSlots"
+              :key="`cult-affix-${index}`"
+              class="affix-block"
+            >
+              <el-text size="small" tag="b">{{ affixSlotLabelZh(index) }}</el-text>
+              <template v-if="slot.chosen_id">
+                <div class="chip-row">
+                  <el-button
+                    size="small"
+                    :loading="busy"
+                    :disabled="writeBlocked"
+                    :style="
+                      slot.chosen_view
+                        ? {
+                            borderColor: slot.chosen_view.color,
+                            color: slot.chosen_view.color,
+                          }
+                        : undefined
+                    "
+                    @click="onAffixUpgrade(index)"
+                  >
+                    升级 ·
+                    {{
+                      slot.chosen_view
+                        ? `[${slot.chosen_view.rarity_label_zh}] ${slot.chosen_view.label_zh}`
+                        : affixLabelZh(slot.chosen_id)
+                    }}
+                    Lv.{{ slot.chosen_level }}
+                    <template v-if="(slot.rank_boost || 0) > 0">
+                      · 阶强{{ slot.rank_boost }}
+                    </template>
+                    <template v-if="slot.next_upgrade_cost != null">
+                      （耗 {{ slot.next_upgrade_cost }}）
+                    </template>
+                  </el-button>
+                </div>
+                <el-text size="small" class="help">
+                  {{
+                    slot.chosen_view
+                      ? formatAffixStats(slot.chosen_view.stats)
+                      : '已选'
+                  }}
+                </el-text>
+              </template>
+              <template v-else>
+                <el-button
+                  v-if="!slot.options.length"
+                  size="small"
+                  :loading="busy"
+                  :disabled="writeBlocked"
+                  @click="onCultivateRoll(index)"
+                >
+                  推演词条
+                </el-button>
+                <template v-else>
+                  <div class="chip-row affix-options">
+                    <el-button
+                      v-for="(opt, optIdx) in slot.options"
+                      :key="`cult-${index}-${optIdx}-${opt}`"
+                      size="small"
+                      :type="isAffixOptionChosen(slot, opt, optIdx) ? 'primary' : 'default'"
+                      :style="optionButtonStyle(slot, opt, optIdx)"
+                      :disabled="writeBlocked"
+                      @click="onCultivateChoose(index, opt)"
+                    >
+                      {{ optionButtonLabel(slot, opt, optIdx) }}
+                    </el-button>
+                  </div>
+                  <el-button
+                    size="small"
+                    :loading="busy"
+                    :disabled="writeBlocked"
+                    @click="onCultivateReroll(index)"
+                  >
+                    重新推演
+                  </el-button>
+                </template>
+              </template>
+            </div>
 
             <el-divider content-position="left">发动条件加成（预留）</el-divider>
             <el-text

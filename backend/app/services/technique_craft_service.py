@@ -43,6 +43,7 @@ from app.constants.technique_craft import (
     CARD_FORMAL_ELEMENT_ID,
     CARD_MANUAL_ID,
     CRAFT_INITIAL_RANK,
+    CREATE_AFFIX_SLOTS_KEY,
     DRAFT_PHASE_ABANDONED,
     DRAFT_PHASE_EMBEDDING,
     DRAFT_PHASE_FINALIZED,
@@ -101,12 +102,17 @@ class TechniqueCraftService:
         """
         Open a new empty draft. Does not deduct inventory cards.
 
+        Affix column count is frozen from the character's major realm
+        (``ranks[realm].affix_slots``), not the technique's starting rank.
+
         Args:
             character: Acting character.
 
         Returns:
             dict[str, Any]: Public draft payload (``can_finalize`` is false).
         """
+        create_slots = self._rank_affix_slots(str(character.major_realm or CRAFT_INITIAL_RANK))
+        slots = [self._empty_affix_slot() for _ in range(create_slots)]
         row = TechniqueResearchDraft(
             character_id=character.id,
             phase=DRAFT_PHASE_EMBEDDING,
@@ -115,8 +121,8 @@ class TechniqueCraftService:
             efficacy=None,
             element_limit=None,
             weapon_limit=None,
-            base_json="{}",
-            affixes_json="[]",
+            base_json=json.dumps({CREATE_AFFIX_SLOTS_KEY: create_slots}, ensure_ascii=False),
+            affixes_json=json.dumps(slots, ensure_ascii=False),
             upgrade_points=0,
             major_rank=CRAFT_INITIAL_RANK,
             conditions_confirmed=False,
@@ -124,9 +130,10 @@ class TechniqueCraftService:
         self._session.add(row)
         await self._session.flush()
         logger.info(
-            "technique craft draft created character_id=%s draft_id=%s",
+            "technique craft draft created character_id=%s draft_id=%s create_affix_slots=%s",
             character.id,
             row.id,
+            create_slots,
         )
         return self._draft_public(row)
 
@@ -318,19 +325,7 @@ class TechniqueCraftService:
         pool = self._affix_pool_ids(row)
         if not pool:
             raise AppError(ERR_CRAFT_EMBED, "无可用词条", http_status=400)
-        craft = get_game_config().research.technique_craft
-        weights = {
-            aid: float(
-                getattr(
-                    craft.affix_rarities.get(resolve_affix_rarity(aid)),
-                    "weight",
-                    1.0,
-                )
-                or 1.0
-            )
-            for aid in pool
-        }
-        cell["options"] = roll_three_weighted(pool, weights)
+        cell["options"] = self._weighted_affix_roll(pool)
         cell["chosen_id"] = None
         cell["chosen_rarity"] = None
         cell["chosen_level"] = 0
@@ -426,19 +421,7 @@ class TechniqueCraftService:
         n = int(cell.get("reroll_count") or 0)
         cost = int(costs[min(n, len(costs) - 1)]) if costs else 0
         self._deduct_reroll_cost(character, str(row.efficacy), cost)
-        craft = get_game_config().research.technique_craft
-        weights = {
-            aid: float(
-                getattr(
-                    craft.affix_rarities.get(resolve_affix_rarity(aid)),
-                    "weight",
-                    1.0,
-                )
-                or 1.0
-            )
-            for aid in pool
-        }
-        cell["options"] = roll_three_weighted(pool, weights)
+        cell["options"] = self._weighted_affix_roll(pool)
         cell["chosen_id"] = None
         cell["chosen_rarity"] = None
         cell["chosen_level"] = 0
@@ -465,6 +448,7 @@ class TechniqueCraftService:
             "chosen_level": 0,
             "upgrade_count": 0,
             "reroll_count": 0,
+            "rank_boost": 0,
         }
 
     @staticmethod
@@ -477,24 +461,54 @@ class TechniqueCraftService:
         return max(1, int(rank.affix_slots or 1))
 
     @staticmethod
-    def _affix_slot_count(row: TechniqueResearchDraft) -> int:
-        """Column count for a draft's current major rank."""
-        return TechniqueCraftService._rank_affix_slots(str(row.major_rank or "body_tempering"))
+    def _create_affix_slots_from_draft(row: TechniqueResearchDraft) -> int:
+        """Frozen create-time column count stored in draft ``base_json``."""
+        try:
+            base = json.loads(row.base_json or "{}")
+        except json.JSONDecodeError:
+            base = {}
+        if isinstance(base, dict) and base.get(CREATE_AFFIX_SLOTS_KEY) is not None:
+            return max(1, int(base[CREATE_AFFIX_SLOTS_KEY]))
+        return TechniqueCraftService._rank_affix_slots(str(row.major_rank or CRAFT_INITIAL_RANK))
 
-    def _load_affix_slots(self, row: TechniqueResearchDraft) -> list[dict[str, Any]]:
-        """Parse ``affixes_json`` and pad to the rank's column count."""
-        raw = json.loads(row.affixes_json or "[]")
+    @staticmethod
+    def _create_affix_slots_from_payload(payload: dict[str, Any]) -> int:
+        """Frozen create-time column count on a cultivated technique payload."""
+        raw = payload.get("create_affix_slots")
+        if raw is not None:
+            return max(1, int(raw))
+        return 0
+
+    @classmethod
+    def _affix_slot_count(cls, row: TechniqueResearchDraft) -> int:
+        """
+        Draft column count = max(create-time realm slots, current technique-rank slots).
+
+        Create freezes character-realm slots; breakthrough may raise the floor via
+        the technique's own rank ``affix_slots``.
+        """
+        create_n = cls._create_affix_slots_from_draft(row)
+        rank_n = cls._rank_affix_slots(str(row.major_rank or CRAFT_INITIAL_RANK))
+        return max(create_n, rank_n)
+
+    @classmethod
+    def _load_affix_slots(cls, row: TechniqueResearchDraft) -> list[dict[str, Any]]:
+        """Parse ``affixes_json`` and pad to the target column count (never shrink)."""
+        try:
+            raw = json.loads(row.affixes_json or "[]")
+        except json.JSONDecodeError:
+            raw = []
         slots: list[dict[str, Any]] = []
         if isinstance(raw, list):
             for item in raw:
                 if isinstance(item, dict):
-                    cell = dict(self._empty_affix_slot())
+                    cell = dict(cls._empty_affix_slot())
                     cell.update(item)
                     slots.append(cell)
-        n = self._affix_slot_count(row)
+        n = max(cls._affix_slot_count(row), len(slots))
         while len(slots) < n:
-            slots.append(self._empty_affix_slot())
-        return slots[:n]
+            slots.append(cls._empty_affix_slot())
+        return slots
 
     @staticmethod
     def _require_slot(slots: list[dict[str, Any]], slot: int) -> dict[str, Any]:
@@ -520,6 +534,45 @@ class TechniqueCraftService:
             if aid:
                 ids.append(aid)
         return ids
+
+    def _payload_affix_pool_ids(self, payload: dict[str, Any]) -> list[str]:
+        """Filtered catalog ids for a cultivated technique payload."""
+        craft = get_game_config().research.technique_craft
+        elements_raw = payload.get("elements") or []
+        elements = [str(x) for x in elements_raw] if isinstance(elements_raw, list) else []
+        filtered = filter_affixes(
+            craft.affixes,
+            efficacy=str(payload.get("efficacy") or ""),
+            elements=elements,
+            element_limit=(
+                str(payload.get("element_limit") or "").strip() or None
+            ),
+            weapon_limit=(
+                str(payload.get("weapon_limit") or "").strip() or None
+            ),
+        )
+        ids: list[str] = []
+        for item in filtered:
+            aid = str(getattr(item, "affix_id", "") or "")
+            if aid:
+                ids.append(aid)
+        return ids
+
+    def _weighted_affix_roll(self, pool: list[str]) -> list[str]:
+        """Draw three weighted options from a pool."""
+        craft = get_game_config().research.technique_craft
+        weights = {
+            aid: float(
+                getattr(
+                    craft.affix_rarities.get(resolve_affix_rarity(aid)),
+                    "weight",
+                    1.0,
+                )
+                or 1.0
+            )
+            for aid in pool
+        }
+        return roll_three_weighted(pool, weights)
 
     @staticmethod
     def _deduct_reroll_cost(character: Character, efficacy: str, cost: int) -> None:
@@ -591,14 +644,18 @@ class TechniqueCraftService:
 
         cfg = get_game_config()
         base_raw = json.loads(row.base_json or "{}")
+        base = dict(base_raw) if isinstance(base_raw, dict) else {}
+        create_slots = self._create_affix_slots_from_draft(row)
+        base.pop(CREATE_AFFIX_SLOTS_KEY, None)
         payload = {
             "elements": elements,
             "efficacy": str(row.efficacy),
             "element_limit": row.element_limit,
             "weapon_limit": row.weapon_limit,
-            "base": dict(base_raw) if isinstance(base_raw, dict) else {},
+            "base": base,
             "affixes": slots,
             "upgrade_points": int(row.upgrade_points or 0),
+            "create_affix_slots": create_slots,
         }
         stats = payload_attr_grants(payload)
         slug = secrets.token_hex(4)
@@ -838,6 +895,11 @@ class TechniqueCraftService:
         ok = bool(roll_breakthrough_success(float(craft.breakthrough_fail_rate)))
         if ok:
             private.major_rank = nxt
+            slots = self._payload_affix_slots(payload, current)
+            for cell in slots:
+                if str(cell.get("chosen_id") or "").strip():
+                    cell["rank_boost"] = int(cell.get("rank_boost") or 0) + 1
+            payload["affixes"] = slots
             payload["affixes"] = self._payload_affix_slots(payload, nxt)
         self._persist_payload(private, payload)
         await self._session.flush()
@@ -847,6 +909,148 @@ class TechniqueCraftService:
             technique_id,
             ok,
             nxt,
+        )
+        return self._cultivate_public(private, payload)
+
+    async def roll_cultivate_affix(
+        self,
+        character: Character,
+        technique_id: str,
+        slot: int,
+    ) -> dict[str, Any]:
+        """
+        Roll three options for an empty cultivate slot (breakthrough pad / unfilled).
+
+        Only empty columns (no ``chosen_id``) may be filled here.
+
+        Args:
+            character: Acting original author.
+            technique_id: Learned custom technique id.
+            slot: 0-based affix column.
+
+        Returns:
+            dict[str, Any]: Cultivated public payload.
+        """
+        private, payload = await self._require_cultivable(character, technique_id)
+        slots = self._payload_affix_slots(payload, str(private.major_rank or CRAFT_INITIAL_RANK))
+        cell = self._require_slot(slots, slot)
+        if str(cell.get("chosen_id") or "").strip():
+            raise AppError(ERR_CRAFT_CULTIVATE, "该栏已有词条，请使用升级", http_status=400)
+        if cell.get("options"):
+            raise AppError(ERR_CRAFT_CULTIVATE, "该栏已生成词条", http_status=400)
+        pool = self._payload_affix_pool_ids(payload)
+        if not pool:
+            raise AppError(ERR_CRAFT_CULTIVATE, "无可用词条", http_status=400)
+        cell["options"] = self._weighted_affix_roll(pool)
+        cell["chosen_id"] = None
+        cell["chosen_rarity"] = None
+        cell["chosen_level"] = 0
+        cell["upgrade_count"] = 0
+        cell["rank_boost"] = 0
+        payload["affixes"] = slots
+        self._persist_payload(private, payload)
+        await self._session.flush()
+        logger.info(
+            "technique craft cultivate affix roll character_id=%s technique_id=%s slot=%s",
+            character.id,
+            technique_id,
+            slot,
+        )
+        return self._cultivate_public(private, payload)
+
+    async def choose_cultivate_affix(
+        self,
+        character: Character,
+        technique_id: str,
+        slot: int,
+        affix_id: str,
+    ) -> dict[str, Any]:
+        """
+        Lock one rolled option onto an empty cultivate slot.
+
+        Args:
+            character: Acting original author.
+            technique_id: Learned custom technique id.
+            slot: 0-based affix column.
+            affix_id: Must be in that slot's ``options``.
+
+        Returns:
+            dict[str, Any]: Cultivated public payload.
+        """
+        private, payload = await self._require_cultivable(character, technique_id)
+        slots = self._payload_affix_slots(payload, str(private.major_rank or CRAFT_INITIAL_RANK))
+        cell = self._require_slot(slots, slot)
+        if str(cell.get("chosen_id") or "").strip():
+            raise AppError(ERR_CRAFT_CULTIVATE, "该栏已有词条，请使用升级", http_status=400)
+        options = [str(x) for x in (cell.get("options") or [])]
+        pick = str(affix_id or "").strip()
+        if not options:
+            raise AppError(ERR_CRAFT_CULTIVATE, "该栏尚未生成词条", http_status=400)
+        if pick not in options:
+            raise AppError(ERR_RESEARCH_AFFIX_SLOTS, "词条不在候选中", http_status=400)
+        cell["chosen_id"] = pick
+        cell["chosen_rarity"] = resolve_affix_rarity(pick)
+        cell["rank_boost"] = 0
+        payload["affixes"] = slots
+        self._persist_payload(private, payload)
+        await self._session.flush()
+        logger.info(
+            "technique craft cultivate affix choose character_id=%s technique_id=%s slot=%s affix_id=%s",
+            character.id,
+            technique_id,
+            slot,
+            pick,
+        )
+        return self._cultivate_public(private, payload)
+
+    async def reroll_cultivate_affix(
+        self,
+        character: Character,
+        technique_id: str,
+        slot: int,
+    ) -> dict[str, Any]:
+        """
+        Pay reroll cost and redraw options on an empty cultivate slot.
+
+        Refuses slots that already locked a chosen affix (use upgrade instead).
+
+        Args:
+            character: Acting original author.
+            technique_id: Learned custom technique id.
+            slot: 0-based affix column.
+
+        Returns:
+            dict[str, Any]: Cultivated public payload.
+        """
+        private, payload = await self._require_cultivable(character, technique_id)
+        slots = self._payload_affix_slots(payload, str(private.major_rank or CRAFT_INITIAL_RANK))
+        cell = self._require_slot(slots, slot)
+        if str(cell.get("chosen_id") or "").strip():
+            raise AppError(ERR_CRAFT_CULTIVATE, "该栏已有词条，请使用升级", http_status=400)
+        pool = self._payload_affix_pool_ids(payload)
+        if not pool:
+            raise AppError(ERR_CRAFT_CULTIVATE, "无可用词条", http_status=400)
+        costs = tuple(int(x) for x in get_game_config().research.technique_craft.affix_reroll_cost)
+        n = int(cell.get("reroll_count") or 0)
+        cost = int(costs[min(n, len(costs) - 1)]) if costs else 0
+        efficacy = str(payload.get("efficacy") or "")
+        self._deduct_reroll_cost(character, efficacy, cost)
+        cell["options"] = self._weighted_affix_roll(pool)
+        cell["chosen_id"] = None
+        cell["chosen_rarity"] = None
+        cell["chosen_level"] = 0
+        cell["upgrade_count"] = 0
+        cell["rank_boost"] = 0
+        cell["reroll_count"] = n + 1
+        payload["affixes"] = slots
+        self._persist_payload(private, payload)
+        await self._session.flush()
+        logger.info(
+            "technique craft cultivate affix reroll character_id=%s technique_id=%s slot=%s cost=%s",
+            character.id,
+            technique_id,
+            slot,
+            cost,
         )
         return self._cultivate_public(private, payload)
 
@@ -1216,19 +1420,27 @@ class TechniqueCraftService:
         payload = dict(raw) if isinstance(raw, dict) else {}
         return private, payload
 
-    def _payload_affix_slots(self, payload: dict[str, Any], major_rank: str) -> list[dict[str, Any]]:
-        """Parse payload affixes and pad empty columns when the rank gains slots."""
+    @classmethod
+    def _payload_affix_slots(cls, payload: dict[str, Any], major_rank: str) -> list[dict[str, Any]]:
+        """
+        Parse payload affixes and pad empty columns.
+
+        Target count = max(create_affix_slots, technique-rank affix_slots, existing).
+        Never shrinks columns that already exist.
+        """
         raw = payload.get("affixes") or []
         slots: list[dict[str, Any]] = []
         if isinstance(raw, list):
             for item in raw:
                 if isinstance(item, dict):
-                    cell = dict(self._empty_affix_slot())
+                    cell = dict(cls._empty_affix_slot())
                     cell.update(item)
                     slots.append(cell)
-        n = self._rank_affix_slots(major_rank)
+        create_n = cls._create_affix_slots_from_payload(payload)
+        rank_n = cls._rank_affix_slots(major_rank)
+        n = max(create_n, rank_n, len(slots))
         while len(slots) < n:
-            slots.append(self._empty_affix_slot())
+            slots.append(cls._empty_affix_slot())
         return slots
 
     @staticmethod
@@ -1241,17 +1453,25 @@ class TechniqueCraftService:
 
     @staticmethod
     def _persist_payload(private: PrivateTechnique, payload: dict[str, Any]) -> None:
-        """Write payload_json and recompute stats_json grants. Does not touch drafts."""
+        """Write payload_json and recompute stats_json / affix_ids. Does not touch drafts."""
         private.payload_json = json.dumps(payload, ensure_ascii=False)
         private.stats_json = json.dumps(payload_attr_grants(payload), ensure_ascii=False)
+        chosen_ids = [
+            str(cell.get("chosen_id") or "").strip()
+            for cell in (payload.get("affixes") or [])
+            if isinstance(cell, dict) and str(cell.get("chosen_id") or "").strip()
+        ]
+        private.affix_ids_json = json.dumps(chosen_ids, ensure_ascii=False)
 
     @staticmethod
     def _cultivate_public(private: PrivateTechnique, payload: dict[str, Any]) -> dict[str, Any]:
         """Public cultivate result for HTTP / tests."""
         base_raw = payload.get("base") or {}
         base = dict(base_raw) if isinstance(base_raw, dict) else {}
-        affixes = enrich_affix_slots_public(list(payload.get("affixes") or []))
         major_rank = str(private.major_rank or "")
+        affixes = enrich_affix_slots_public(
+            TechniqueCraftService._payload_affix_slots(payload, major_rank)
+        )
         nxt = next_rank_id(major_rank)
         craft = get_game_config().research.technique_craft
         breakthrough_points_required: int | None = None
@@ -1259,6 +1479,7 @@ class TechniqueCraftService:
             breakthrough_points_required = int(
                 getattr(craft.ranks[nxt], "upgrade_points_required", 0) or 0
             )
+        create_slots = payload.get("create_affix_slots")
         return {
             "technique_id": private.technique_id,
             "major_rank": major_rank,
@@ -1270,6 +1491,7 @@ class TechniqueCraftService:
             "next_rank": nxt,
             "next_rank_label_zh": major_rank_label_zh(nxt) if nxt else None,
             "breakthrough_points_required": breakthrough_points_required,
+            "create_affix_slots": int(create_slots) if create_slots is not None else None,
         }
 
     async def _load_embed_card(
@@ -1340,14 +1562,15 @@ class TechniqueCraftService:
     @staticmethod
     def _draft_public(row: TechniqueResearchDraft) -> dict[str, Any]:
         elements = TechniqueCraftService._draft_elements(row)
-        base_raw = json.loads(row.base_json or "{}")
+        try:
+            base_raw = json.loads(row.base_json or "{}")
+        except json.JSONDecodeError:
+            base_raw = {}
         base = dict(base_raw) if isinstance(base_raw, dict) else {}
-        affix_raw = json.loads(row.affixes_json or "[]")
-        affixes = list(affix_raw) if isinstance(affix_raw, list) else []
-        chosen = any(
-            isinstance(cell, dict) and str(cell.get("chosen_id") or "").strip()
-            for cell in affixes
-        )
+        base.pop(CREATE_AFFIX_SLOTS_KEY, None)
+        # Pad columns for UI without requiring a service instance.
+        affixes = TechniqueCraftService._load_affix_slots(row)
+        chosen = any(str(cell.get("chosen_id") or "").strip() for cell in affixes)
         can_finalize = bool(
             elements
             and str(row.efficacy or "").strip()

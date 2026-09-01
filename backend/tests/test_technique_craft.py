@@ -32,7 +32,12 @@ from app.constants.technique_craft import (
 from app.db.models.research import PrivateTechnique
 from app.db.models.technique import CharacterTechnique
 from app.services.technique_service import TechniqueService
-from app.domain.technique_craft import filter_affixes, roll_three
+from app.domain.technique_craft import (
+    affix_upgrade_cost_multiplier,
+    filter_affixes,
+    payload_attr_grants,
+    roll_three,
+)
 from app.core.config import get_settings
 from app.db.models.inventory_item import InventoryItem
 from app.db.models.research import ResearchSession
@@ -1107,11 +1112,8 @@ def test_two_attack_upgrades_second_costs_more(
                 listed = await TechniqueService(session).list_my_techniques(char)
                 custom = next((t for t in listed if t["id"] == tech_id), None)
                 assert custom is not None
-                per = float(craft.base_stat_per_click)
-                affix_stats = float(craft.affixes["sa_edge"].stats.get("magic_atk") or 0)
-                # chosen_level stays 0; ATTR = clicks * per + affix * (1 + mult * level)
                 assert custom["stats"].get("magic_atk") == pytest.approx(
-                    2 * per + affix_stats * (1.0 + float(craft.affix_level_mult) * 0)
+                    payload_attr_grants(payload).get("magic_atk")
                 )
                 assert first["base"]["attack"] == 1
                 assert second["base"]["attack"] == 2
@@ -1246,15 +1248,18 @@ def test_affix_upgrade_fail_keeps_level_still_charges(
                 tech_id = await _finalize_spell_attack(session, char, svc)
                 await session.refresh(char)
                 craft = get_game_config().research.technique_craft
-                cost = int(craft.affix_upgrade_cost[0])
-                before = int(char.cultivation_points)
                 private = await _load_private(session, tech_id)
-                level_before = int(
-                    (json.loads(private.payload_json or "{}").get("affixes") or [{}])[0].get(
-                        "chosen_level"
+                payload = json.loads(private.payload_json or "{}")
+                cell0 = (payload.get("affixes") or [{}])[0]
+                rarity = str(cell0.get("chosen_rarity") or "white")
+                cost = int(
+                    round(
+                        int(craft.affix_upgrade_cost[0])
+                        * affix_upgrade_cost_multiplier(rarity)
                     )
-                    or 0
                 )
+                before = int(char.cultivation_points)
+                level_before = int(cell0.get("chosen_level") or 0)
 
                 await svc.upgrade_affix(char, tech_id, slot=0)
                 await session.commit()
@@ -1736,5 +1741,120 @@ def test_abolish_removes_author_keeps_learner_copy(
                     )
                 ).scalar_one()
                 assert learner_ct.source == "chance"
+
+    _run(_body())
+
+
+def test_create_draft_affix_slots_follow_character_realm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Huashen author gets 4 create slots while technique rank stays body_tempering."""
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "create_slots.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "slots@test.com", "栏数测")
+                char.major_realm = "huashen"
+                await session.commit()
+                svc = TechniqueCraftService(session)
+                draft = await svc.create_draft(char)
+                await session.commit()
+                assert draft["major_rank"] == CRAFT_INITIAL_RANK
+                assert len(draft["affixes"]) == 4
+
+    _run(_body())
+
+
+def test_breakthrough_boosts_existing_and_pads_new_slots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Breakthrough raises rank_boost on chosen affixes and pads to next rank slots."""
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_breakthrough_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "bt_boost.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "btboost@test.com", "突破强化测")
+                svc = TechniqueCraftService(session)
+                tech_id = await _finalize_spell_attack(session, char, svc)
+                char.major_realm = "qi_refining"
+                private = await _load_private(session, tech_id)
+                payload = json.loads(private.payload_json or "{}")
+                payload["upgrade_points"] = 100
+                private.payload_json = json.dumps(payload, ensure_ascii=False)
+                await session.commit()
+                await session.refresh(char)
+
+                before = json.loads((await _load_private(session, tech_id)).payload_json or "{}")
+                assert len(before.get("affixes") or []) >= 1
+                assert int((before["affixes"][0]).get("rank_boost") or 0) == 0
+                aid = str(before["affixes"][0].get("chosen_id") or "")
+                craft = get_game_config().research.technique_craft
+                rarity = str(before["affixes"][0].get("chosen_rarity") or "white")
+                stats_before = payload_attr_grants(before)
+
+                out = await svc.breakthrough(char, tech_id)
+                await session.commit()
+                private = await _load_private(session, tech_id)
+                after = json.loads(private.payload_json or "{}")
+                assert str(private.major_rank) == "qi_refining"
+                assert len(after.get("affixes") or []) >= 2
+                assert int(after["affixes"][0].get("rank_boost") or 0) == 1
+                assert not str(after["affixes"][1].get("chosen_id") or "").strip()
+                assert int(after["affixes"][1].get("rank_boost") or 0) == 0
+                stats_after = payload_attr_grants(after)
+                # Existing affix gains breakthrough_affix_bonus; empty pad adds nothing.
+                base_val = float(craft.affixes[aid].stats.get("magic_atk") or 0)
+                rare = craft.affix_rarities.get(rarity) or craft.affix_rarities["white"]
+                expected = base_val * float(rare.base_mult) * (
+                    1.0 + float(craft.breakthrough_affix_bonus)
+                )
+                assert stats_after.get("magic_atk") == pytest.approx(expected)
+                assert (stats_after.get("magic_atk") or 0) > (stats_before.get("magic_atk") or 0)
+
+                rolled = await svc.roll_cultivate_affix(char, tech_id, slot=1)
+                assert len(rolled["affixes"][1]["options"]) == 3
+                pick = str(rolled["affixes"][1]["options"][0])
+                chosen = await svc.choose_cultivate_affix(char, tech_id, slot=1, affix_id=pick)
+                await session.commit()
+                assert chosen["affixes"][1]["chosen_id"] == pick
+                assert int(chosen["affixes"][1].get("rank_boost") or 0) == 0
+                assert out["major_rank"] == "qi_refining"
+
+    _run(_body())
+
+
+def test_finalize_freezes_create_affix_slots_from_high_realm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """High-realm create keeps 4 slots on a body_tempering technique after finalize."""
+    monkeypatch.setattr(
+        "app.services.technique_craft_service.roll_embed_success",
+        lambda *_a, **_k: True,
+        raising=False,
+    )
+
+    async def _body() -> None:
+        async with open_test_session_factory(tmp_path / "fin_slots.db") as factory:
+            async with factory() as session:
+                char = await _prepare_researcher(session, "finslots@test.com", "高境栏冻结")
+                char.major_realm = "huashen"
+                await session.commit()
+                svc = TechniqueCraftService(session)
+                tech_id = await _finalize_spell_attack(session, char, svc)
+                private = await _load_private(session, tech_id)
+                payload = json.loads(private.payload_json or "{}")
+                assert str(private.major_rank) == CRAFT_INITIAL_RANK
+                assert int(payload.get("create_affix_slots") or 0) == 4
+                assert len(payload.get("affixes") or []) == 4
 
     _run(_body())

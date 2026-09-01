@@ -7,13 +7,16 @@ import {
   abandonTechniqueDraftApi,
   abolishTechniqueApi,
   breakthroughTechniqueApi,
+  chooseCultivateAffixApi,
   chooseTechniqueAffixApi,
   createTechniqueDraftApi,
   embedTechniqueCardApi,
   fetchTechniqueDraftsApi,
   finalizeTechniqueDraftApi,
   printTechniqueManualApi,
+  rerollCultivateAffixApi,
   rerollTechniqueAffixApi,
+  rollCultivateAffixApi,
   rollTechniqueAffixApi,
   setTechniqueConditionsApi,
   upgradeTechniqueAffixApi,
@@ -458,6 +461,57 @@ export const useTechniqueCraftStore = defineStore('techniqueCraft', () => {
     }
   }
 
+  async function rollCultivateAffix(slot: number): Promise<string | null> {
+    if (!selectedOriginal.value) return '没有选中的原创功法'
+    loading.value = true
+    try {
+      const envelope = await rollCultivateAffixApi(selectedOriginal.value.technique_id, slot)
+      if (envelope.code !== 0 || !envelope.data) {
+        return envelope.message || '推演词条失败'
+      }
+      selectedOriginal.value = applyCultivate(selectedOriginal.value, envelope.data)
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function chooseCultivateAffix(slot: number, affixId: string): Promise<string | null> {
+    if (!selectedOriginal.value) return '没有选中的原创功法'
+    loading.value = true
+    try {
+      const envelope = await chooseCultivateAffixApi(
+        selectedOriginal.value.technique_id,
+        slot,
+        affixId,
+      )
+      if (envelope.code !== 0 || !envelope.data) {
+        return envelope.message || '选择词条失败'
+      }
+      selectedOriginal.value = applyCultivate(selectedOriginal.value, envelope.data)
+      await useResearchStore().loadMine()
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function rerollCultivateAffix(slot: number): Promise<string | null> {
+    if (!selectedOriginal.value) return '没有选中的原创功法'
+    loading.value = true
+    try {
+      const envelope = await rerollCultivateAffixApi(selectedOriginal.value.technique_id, slot)
+      if (envelope.code !== 0 || !envelope.data) {
+        return envelope.message || '重新推演失败'
+      }
+      selectedOriginal.value = applyCultivate(selectedOriginal.value, envelope.data)
+      await useCharacterStore().fetchMe()
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function breakthrough(): Promise<{ error: string | null; failed: boolean }> {
     if (!selectedOriginal.value) return { error: '没有选中的原创功法', failed: false }
     const beforeRank = selectedOriginal.value.major_rank
@@ -528,6 +582,9 @@ export const useTechniqueCraftStore = defineStore('techniqueCraft', () => {
     selectOriginalFromMine,
     upgradeBase,
     upgradeAffix,
+    rollCultivateAffix,
+    chooseCultivateAffix,
+    rerollCultivateAffix,
     breakthrough,
     printManual,
     abolish,

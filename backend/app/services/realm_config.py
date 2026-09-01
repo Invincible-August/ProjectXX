@@ -1525,6 +1525,7 @@ class TechniqueCraftConfig:
     print_manual_cost_cultivation: int
     print_manual_cost_body: int
     affix_level_mult: float
+    breakthrough_affix_bonus: float
     base_stat_per_click: float
     ranks: dict[str, TechniqueCraftRankConfig]
     weapon_bonus: dict[str, dict[str, float]]
@@ -4246,6 +4247,11 @@ def _parse_technique_craft(
             else body.get("print_manual_cost_body")
         ),
         affix_level_mult=0.2 if body.get("affix_level_mult") is None else float(body.get("affix_level_mult")),
+        breakthrough_affix_bonus=(
+            0.15
+            if body.get("breakthrough_affix_bonus") is None
+            else float(body.get("breakthrough_affix_bonus"))
+        ),
         base_stat_per_click=(
             1.0 if body.get("base_stat_per_click") is None else float(body.get("base_stat_per_click"))
         ),

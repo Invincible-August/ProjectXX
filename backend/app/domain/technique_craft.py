@@ -288,12 +288,15 @@ def effective_affix_stats(
     *,
     level: int = 0,
     rarity: str | None = None,
+    rank_boost: int = 0,
 ) -> dict[str, float]:
     """
     Initial (and leveled) ATTR for a catalog affix.
 
     ``stats`` in YAML are white-baseline; multiplied by rarity ``base_mult``,
-    then by ``1 + affix_level_mult * upgrade_mult * level``.
+    then by ``1 + affix_level_mult * upgrade_mult * level + breakthrough_affix_bonus * rank_boost``.
+    ``rank_boost`` stacks on breakthrough for affixes that already existed; new
+    empty slots start at 0.
     """
     craft = get_game_config().research.technique_craft
     body = craft.affixes.get(str(affix_id or ""))
@@ -304,7 +307,12 @@ def effective_affix_stats(
     base_mult = float(getattr(rare, "base_mult", 1.0) or 1.0)
     upgrade_mult = float(getattr(rare, "upgrade_mult", 1.0) or 1.0)
     level_mult = float(craft.affix_level_mult)
-    scale = base_mult * (1.0 + level_mult * upgrade_mult * max(0, int(level)))
+    bt_bonus = float(getattr(craft, "breakthrough_affix_bonus", 0.0) or 0.0)
+    scale = base_mult * (
+        1.0
+        + level_mult * upgrade_mult * max(0, int(level))
+        + bt_bonus * max(0, int(rank_boost))
+    )
     out: dict[str, float] = {}
     for key, raw in (getattr(body, "stats", None) or {}).items():
         val = float(raw or 0) * scale
@@ -318,6 +326,7 @@ def affix_public_view(
     *,
     level: int = 0,
     rarity: str | None = None,
+    rank_boost: int = 0,
 ) -> dict[str, Any]:
     """Player-facing affix card: label, rarity, color, effective stats."""
     craft = get_game_config().research.technique_craft
@@ -332,11 +341,14 @@ def affix_public_view(
         "rarity": rid,
         "rarity_label_zh": str(getattr(rare, "label_zh", None) or rid),
         "color": str(getattr(rare, "color", None) or "#ffffff"),
-        "stats": effective_affix_stats(affix_id, level=level, rarity=rid),
+        "stats": effective_affix_stats(
+            affix_id, level=level, rarity=rid, rank_boost=rank_boost
+        ),
         "base_stats": {
             str(k): float(v)
             for k, v in (getattr(body, "stats", None) or {}).items()
         },
+        "rank_boost": max(0, int(rank_boost)),
     }
 
 
@@ -494,15 +506,21 @@ def enrich_affix_slots_public(slots: Sequence[Any]) -> list[dict[str, Any]]:
             continue
         cell = dict(raw)
         options = [str(x) for x in (cell.get("options") or [])]
-        cell["option_views"] = [affix_public_view(aid, level=0) for aid in options]
+        cell["option_views"] = [
+            affix_public_view(aid, level=0, rank_boost=0) for aid in options
+        ]
         chosen = str(cell.get("chosen_id") or "").strip()
         rarity = str(cell.get("chosen_rarity") or "").strip() or None
+        rank_boost = max(0, int(cell.get("rank_boost") or 0))
+        cell["rank_boost"] = rank_boost
         if chosen:
             if not rarity:
                 rarity = resolve_affix_rarity(chosen)
                 cell["chosen_rarity"] = rarity
             level = int(cell.get("chosen_level") or 0)
-            cell["chosen_view"] = affix_public_view(chosen, level=level, rarity=rarity)
+            cell["chosen_view"] = affix_public_view(
+                chosen, level=level, rarity=rarity, rank_boost=rank_boost
+            )
             table_cost = int(costs[min(max(level, 0), len(costs) - 1)]) if costs else 0
             cell["next_upgrade_cost"] = int(
                 round(table_cost * affix_upgrade_cost_multiplier(rarity))
@@ -518,8 +536,9 @@ def payload_attr_grants(payload: Mapping[str, Any]) -> dict[str, float]:
     """
     Combat ATTR from cultivated payload: base clicks mapped by efficacy, plus scaled affixes.
 
-    Affix YAML ``stats`` are white-baseline; rarity ``base_mult`` / ``upgrade_mult``
-    and ``affix_level_mult`` scale the final grants.
+    Affix YAML ``stats`` are white-baseline; rarity ``base_mult`` / ``upgrade_mult``,
+    ``affix_level_mult``, and per-cell ``rank_boost`` × ``breakthrough_affix_bonus``
+    scale the final grants.
     """
     craft = get_game_config().research.technique_craft
     per_click = float(craft.base_stat_per_click)
@@ -554,6 +573,7 @@ def payload_attr_grants(payload: Mapping[str, Any]) -> dict[str, float]:
                 aid,
                 level=int(cell.get("chosen_level") or 0),
                 rarity=rarity,
+                rank_boost=int(cell.get("rank_boost") or 0),
             ).items():
                 _add(str(key), float(amount))
     return totals

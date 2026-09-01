@@ -31,6 +31,10 @@ DRAFT_PHASE_FINALIZED: Final[str] = "finalized"
 # 自研功法初始阶：一律最低阶，须逐步突破；不与人物当前大境界对齐
 CRAFT_INITIAL_RANK: Final[str] = "body_tempering"
 
+# 创建时词条栏数冻结键：草稿 base_json / 定稿 payload.create_affix_slots
+# 栏数取自人物大境界 ranks.*.affix_slots，与功法阶（锻体起）解耦
+CREATE_AFFIX_SLOTS_KEY: Final[str] = "__create_affix_slots"
+
 # 词条稀有度：灰→红；权重/倍率在 research.yaml technique_craft.affix_rarities（后台域 research）
 AFFIX_RARITY_GRAY: Final[str] = "gray"
 AFFIX_RARITY_WHITE: Final[str] = "white"

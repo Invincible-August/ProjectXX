@@ -775,8 +775,6 @@ class ResearchService:
         upgrade_points = int(payload.get("upgrade_points") or 0)
         base_raw = payload.get("base") or {}
         base = dict(base_raw) if isinstance(base_raw, dict) else {}
-        affix_raw = payload.get("affixes") or []
-        affixes = list(affix_raw) if isinstance(affix_raw, list) else []
         elements_raw = payload.get("elements") or []
         elements = list(elements_raw) if isinstance(elements_raw, list) else []
         element_limit = payload.get("element_limit") or None
@@ -807,6 +805,9 @@ class ResearchService:
                 str(k): float(v) for k, v in craft.weapon_bonus[weapon_limit].items()
             }
 
+        # Pad empty breakthrough slots the same way cultivate does.
+        from app.services.technique_craft_service import TechniqueCraftService
+
         return {
             "id": row.technique_id,
             "source": row.source,
@@ -825,7 +826,7 @@ class ResearchService:
             "upgrade_points": upgrade_points,
             "base": base,
             "affixes": enrich_affix_slots_public(
-                list(affixes) if isinstance(affixes, list) else []
+                TechniqueCraftService._payload_affix_slots(payload, major_rank)
             ),
             "elements": elements,
             "element_limit": element_limit,

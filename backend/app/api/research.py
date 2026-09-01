@@ -338,6 +338,53 @@ async def technique_upgrade_affix(
     return success(data)
 
 
+@router.post("/technique/techniques/{technique_id}/affix/roll", response_model=None)
+async def technique_cultivate_roll_affix(
+    technique_id: str,
+    payload: TechniqueAffixSlotRequest,
+    gate: PlayGate = Depends(get_play_gate),
+    service: TechniqueCraftService = Depends(get_technique_craft_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Roll three options for an empty cultivate affix slot (breakthrough pad)."""
+    character = await _prepare_research_write(gate, current_user)
+    data = await service.roll_cultivate_affix(character, technique_id, payload.slot)
+    return success(data)
+
+
+@router.post("/technique/techniques/{technique_id}/affix/choose", response_model=None)
+async def technique_cultivate_choose_affix(
+    technique_id: str,
+    payload: TechniqueAffixChooseRequest,
+    gate: PlayGate = Depends(get_play_gate),
+    service: TechniqueCraftService = Depends(get_technique_craft_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Lock one rolled option onto an empty cultivate affix slot."""
+    character = await _prepare_research_write(gate, current_user)
+    data = await service.choose_cultivate_affix(
+        character,
+        technique_id,
+        payload.slot,
+        payload.affix_id,
+    )
+    return success(data)
+
+
+@router.post("/technique/techniques/{technique_id}/affix/reroll", response_model=None)
+async def technique_cultivate_reroll_affix(
+    technique_id: str,
+    payload: TechniqueAffixSlotRequest,
+    gate: PlayGate = Depends(get_play_gate),
+    service: TechniqueCraftService = Depends(get_technique_craft_service),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    """Pay and redraw options on an empty cultivate affix slot."""
+    character = await _prepare_research_write(gate, current_user)
+    data = await service.reroll_cultivate_affix(character, technique_id, payload.slot)
+    return success(data)
+
+
 @router.post("/technique/techniques/{technique_id}/breakthrough", response_model=None)
 async def technique_breakthrough(
     technique_id: str,

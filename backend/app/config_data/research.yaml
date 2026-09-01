@@ -118,8 +118,11 @@ technique_craft:
   print_manual_cost_cultivation: 500
   print_manual_cost_body: 500
   affix_level_mult: 0.2
+  # 突破成功后，每个「已有」词条额外叠一层数值（新开空位不叠）；与稀有度 upgrade_mult 无关
+  breakthrough_affix_bonus: 0.15
   base_stat_per_click: 1
   # 各阶 upgrade_points_required = 突破「进入该阶」所需累计升级点（后台域 research 可改）
+  # affix_slots：创建时按人物境界取栏数；突破时若功法阶栏数更高则补空位
   ranks:
     body_tempering:
       affix_slots: 1
