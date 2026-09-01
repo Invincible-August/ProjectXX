@@ -320,27 +320,27 @@ export const useTechniqueCraftStore = defineStore('techniqueCraft', () => {
       drafts.value = drafts.value.filter((d) => d.id !== draft.id)
       selectedDraftId.value = drafts.value[0]?.id ?? null
       const techniqueId = envelope.data.technique_id || ''
-      const priv = (envelope.data.private || {}) as TechniqueMineFields
+      const priv = envelope.data.private
       selectedOriginal.value = {
         technique_id: techniqueId,
         label_zh: labelZh,
         efficacy: envelope.data.efficacy || draft.efficacy,
-        major_rank: priv.major_rank || envelope.data.major_rank || draft.major_rank,
-        major_rank_label_zh: priv.major_rank_label_zh ?? null,
-        upgrade_points: Number(priv.upgrade_points ?? envelope.data.upgrade_points ?? 0),
-        base: (priv.base as Record<string, number>) || envelope.data.base || draft.base || {},
+        major_rank: priv?.major_rank || envelope.data.major_rank || draft.major_rank,
+        major_rank_label_zh: priv?.major_rank_label_zh ?? null,
+        upgrade_points: Number(priv?.upgrade_points ?? envelope.data.upgrade_points ?? 0),
+        base: priv?.base || envelope.data.base || draft.base || {},
         affixes: asAffixSlots(
-          priv.affixes?.length
+          priv?.affixes?.length
             ? priv.affixes
             : envelope.data.affixes?.length
               ? envelope.data.affixes
               : draft.affixes,
         ),
-        stats: (priv.stats as Record<string, number>) || {},
-        next_rank: priv.next_rank ?? null,
-        next_rank_label_zh: priv.next_rank_label_zh ?? null,
+        stats: priv?.stats || {},
+        next_rank: priv?.next_rank ?? null,
+        next_rank_label_zh: priv?.next_rank_label_zh ?? null,
         breakthrough_points_required:
-          priv.breakthrough_points_required != null
+          priv?.breakthrough_points_required != null
             ? Number(priv.breakthrough_points_required)
             : null,
       }

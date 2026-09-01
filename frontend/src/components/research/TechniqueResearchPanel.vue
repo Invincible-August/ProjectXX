@@ -10,7 +10,6 @@ import ResearchMineList from './ResearchMineList.vue'
 import { usePlayWriteGate } from '../../composables/usePlayWriteGate'
 import { useTechniqueCraftStore } from '../../stores/techniqueCraft'
 import { useInventoryStore } from '../../stores/inventory'
-import { useResearchStore } from '../../stores/research'
 import { useCharacterStore } from '../../stores/character'
 import type { InventoryItem } from '../../types/inventory'
 import type { PoolCandidate } from '../../types/itemHover'
@@ -55,7 +54,6 @@ const emit = defineEmits<{
 
 const craftStore = useTechniqueCraftStore()
 const inventoryStore = useInventoryStore()
-const researchStore = useResearchStore()
 const characterStore = useCharacterStore()
 const { writeBlocked } = usePlayWriteGate()
 
@@ -608,7 +606,7 @@ onMounted(() => {
                 draft,
                 Math.max(
                   0,
-                  craftStore.drafts.findIndex((d) => d.id === draft.id),
+                  craftStore.drafts.findIndex((d) => d.id === draft!.id),
                 ),
               )
             }}</el-text>

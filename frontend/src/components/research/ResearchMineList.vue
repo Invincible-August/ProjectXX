@@ -67,7 +67,7 @@ function onCultivate(row: PrivateContentPublic): void {
   emit('cultivate-technique', asTechnique(row))
 }
 
-function onSecondary(row: PrivateContentPublic): void {
+function onSecondary(): void {
   if (props.kind === 'formation') {
     void router.push('/formation')
     return
@@ -109,7 +109,7 @@ function onSecondary(row: PrivateContentPublic): void {
             link
             type="primary"
             size="small"
-            @click="onSecondary(row)"
+            @click="onSecondary()"
           >
             去阵法
           </el-button>
@@ -118,7 +118,7 @@ function onSecondary(row: PrivateContentPublic): void {
             link
             type="primary"
             size="small"
-            @click="onSecondary(row)"
+            @click="onSecondary()"
           >
             去工坊
           </el-button>
@@ -127,7 +127,7 @@ function onSecondary(row: PrivateContentPublic): void {
             link
             type="primary"
             size="small"
-            @click="onSecondary(row)"
+            @click="onSecondary()"
           >
             去穿戴
           </el-button>

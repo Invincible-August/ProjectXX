@@ -186,6 +186,8 @@ export interface TechniqueDraftPublic {
   base: Record<string, number>
   affixes: TechniqueAffixSlot[]
   technique_id?: string
+  /** Present on finalize response only. */
+  private?: TechniqueMineFields
 }
 
 /** Mine-list extras returned by GET /cave/lab/mine for techniques. */
