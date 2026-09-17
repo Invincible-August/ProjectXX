@@ -1,0 +1,24 @@
+---
+description: 运营后台双写、中文字段、禁止 GM 冒充运营台
+globs: admin/**
+alwaysApply: false
+---
+
+# 运营后台
+
+权威：`设计文档/开发计划.md` §0.0.1 · `设计文档/后台管理系统开发计划.md`。
+
+## 必须
+
+- 同一内容域：**表格编辑 + JSON 覆盖** 双写；表格提交由后端 format 成约定 JSON
+- 每个可编辑字段：`label_zh` + `help_zh`（`admin_field_schema`）
+- 高危嵌套（境界 / 挂机速率 / 骰子矩阵）拆成运营表格，禁止只给 raw JSON
+- 写操作落 `admin_audit_logs`；写权限限制 publisher/admin
+- 独立 JWT（`aud=admin`），与玩家 JWT 分离
+
+## 禁止
+
+- 只丢一个 JSON 文本框、无中文列头
+- 对运营暴露旧「草稿/发布/回滚 YAML」文案
+- 玩家端塞 GM 面板冒充后台
+- 前端把枚举写死当内容源（须读注册表）

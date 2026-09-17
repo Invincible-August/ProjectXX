@@ -5,7 +5,7 @@
 | **日期** | 2026-08-27 |
 | **状态** | **P1+P2+P3 已实现**（P4 师徒未做）；计划见 [`docs/superpowers/plans/2026-08-27-technique-research-p1.md`](../plans/2026-08-27-technique-research-p1.md)、[`docs/superpowers/plans/2026-08-27-technique-research-p2.md`](../plans/2026-08-27-technique-research-p2.md)、[`docs/superpowers/plans/2026-08-29-technique-scripture-p3.md`](../plans/2026-08-29-technique-scripture-p3.md) |
 | **范围** | 仅功法自研。阵法/符箓自研不在本文。 |
-| **依据** | 连续问答确认；现行 M8 R2 会话定稿；[`功法系统设计.md`](../../../功法系统设计.md)；[`M8自研与内容管线设计.md`](../../../M8自研与内容管线设计.md) §4 |
+| **依据** | 连续问答确认；现行 M8 R2 会话定稿；[`设计文档/功法系统设计.md`](../../../功法系统设计.md)；[`设计文档/M8自研与内容管线设计.md`](../../../M8自研与内容管线设计.md) §4 |
 | **关系** | 本文**替换** M8 R2「选材料 → 预览词条 → 定稿」的功法流程。`private_techniques` / 已学列表 / 装备槽保留，改为承载本规则。 |
 
 ---

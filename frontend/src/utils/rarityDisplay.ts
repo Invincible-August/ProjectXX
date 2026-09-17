@@ -1,7 +1,7 @@
 /**
  * Shared rarity / 品阶 display helpers.
  *
- * Visual contract (see 开发计划.md §0.0.3):
+ * Visual contract (see 设计文档/开发计划.md §0.0.3):
  * - List chips: convey tier by color only (left bar + border); do not print 白/绿.
  * - Hover / detail: solid accent badge with Chinese name (粗糙…太古 or domain label_zh).
  * - Body text on light fill stays near-black for contrast.

@@ -1,0 +1,27 @@
+---
+description: 玩家前端中文展示、稀有度色阶、物品格图标回退
+globs: frontend/**
+alwaysApply: false
+---
+
+# 玩家前端展示
+
+权威：`设计文档/开发计划.md` §0.0.2 / §0.0.3 / §0.0.4。
+
+## 中文
+
+展示层只出中文。禁止把 `ev.resolved_full`、英文 rarity id、天气 id 当正文。优先服务端 `*_label_zh`。
+
+## 稀有度（§0.0.3）
+
+- 入口：`frontend/src/utils/rarityDisplay.ts` + `RarityBadge.vue`
+- 列表芯片：左边色条 + 描边；近黑字浅白底；**不写**「白/绿」或英文 id
+- 详情/悬停：实色徽章 + 中文名（物品七档：粗糙～太古）
+- 禁止各页自写配色；勿与突破品阶、灵宠养成 `grade` 混用同一套文案
+
+## 物品格（§0.0.4）
+
+- 有图标 → 格内以图为主；无图标 → 中文全名（可 ellipsis）
+- 组件：`ItemSlotVisual`；资源 `frontend/src/assets/items/{icon}.*`
+- DTO 预留 `icon`（缺省=定义 id）；不强制运营短名
+- 悬停/详情始终可看全名 + 品阶

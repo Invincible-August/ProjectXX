@@ -15,7 +15,7 @@
 - 注释与 docstring 使用**中文**；标识符英文。
 - 密钥 / `SUPER_PASSWORD` 只来自 `.env`，禁止硬编码。
 - 身份证不落明文；日志不打印完整证件号与正式环境验证码明文。
-- 每次功能变更同步 `README.md`、`CHANGELOG.md`、`M0前端目录与路由设计.md` §7。
+- 每次功能变更同步 `README.md`、`CHANGELOG.md`、`设计文档/M0前端目录与路由设计.md` §7。
 - **不要自动 git commit**，除非用户明确要求。
 - SQLite 开发库：扩展 `users` 列时若 `create_all` 无法 ALTER，文档说明可删 `xiuxian.db` 重建，或加轻量 `ALTER TABLE` 启动补丁。
 
@@ -268,7 +268,7 @@ Expected: PASS
 **Files:**
 - Modify: `README.md`
 - Modify: `CHANGELOG.md`
-- Modify: `M0前端目录与路由设计.md` §7（3.5 → 实现中/已完成）
+- Modify: `设计文档/M0前端目录与路由设计.md` §7（3.5 → 实现中/已完成）
 - Modify: `docs/superpowers/specs/2026-07-28-verification-super-password-design.md` 状态行
 
 - [ ] **Step 1: 写清新环境变量、联调步骤、第三方推荐摘要**

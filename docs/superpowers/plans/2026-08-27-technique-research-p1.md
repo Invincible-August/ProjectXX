@@ -548,7 +548,7 @@ UI（现行 1100px 玩法壳、`el-button size="small"`）：
 - Modify: `backend/app/services/gm_service.py`（`grant_craft_materials` 顺带 `add_item` 空白卡 10 张，或新开关 `grant_technique_cards`）
 - Modify: `backend/tests/test_research_technique_finalize.py`（删除非法材料会话用例或改为「technique kind 拒绝旧 create_session」）
 - Modify: `docs/superpowers/specs/2026-08-27-technique-research-design.md` 状态改为 P1 实现中/已实现
-- Modify: `README.md`、`CHANGELOG.md`、`M8自研与内容管线设计.md` 一句 P1 进度
+- Modify: `README.md`、`CHANGELOG.md`、`设计文档/M8自研与内容管线设计.md` 一句 P1 进度
 
 - [ ] **Step 1: GM 发 `tech_card_blank`**
 - [ ] **Step 2: 全量相关测**

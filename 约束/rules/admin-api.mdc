@@ -1,0 +1,23 @@
+---
+description: 后台 API 双写、schema 中文、审计与常量
+globs: backend/app/admin_api/**/*.py
+alwaysApply: false
+---
+
+# 后台 API
+
+权威：`设计文档/开发计划.md` §0.0.1 / §0.6.3 · `设计文档/后台管理系统开发计划.md`。
+
+## 必须
+
+- 新域先在后台计划内容域清单登记，再实现玩法
+- 表格→JSON 由后端 format；字段 schema 含 `label_zh` / `help_zh`
+- 协议魔数进 `app.constants`；配置经 OverlayStore → GameConfigBundle
+- 写操作审计；RBAC 限制 publisher/admin
+- 业务代码只依赖 SQLAlchemy 会话 + `ContentStore.load(domain)`，不写死 SQLite/PG 方言
+
+## 禁止
+
+- 只在前端拼装 JSON 当黑盒
+- 与玩家 JWT 共用 `aud`
+- 把 DEV `/gm` 当正式改数入口

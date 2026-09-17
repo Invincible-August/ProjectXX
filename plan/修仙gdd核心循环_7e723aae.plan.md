@@ -1,6 +1,6 @@
 ---
 name: 修仙GDD核心循环
-overview: 在 [project修仙.md](d:\ProjectXX\project修仙.md) 中，将「项目概述、境界/突破、挂机修炼、战斗骨架」四块从目录补全为可落地的框架级设计正文，作为后续各系统展开的基线。
+overview: 在 [project修仙.md](d:\ProjectXX\设计文档\project修仙.md) 中，将「项目概述、境界/突破、挂机修炼、战斗骨架」四块从目录补全为可落地的框架级设计正文，作为后续各系统展开的基线。
 todos:
   - id: sec1-overview
     content: 撰写 §1 项目概述（理念 + 核心循环）
@@ -27,7 +27,7 @@ isProject: false
 
 ## 目标与边界
 
-- **产出**：仅完善设计文档 [`project修仙.md`](d:\ProjectXX\project修仙.md)，不写代码。
+- **产出**：仅完善设计文档 [`设计文档/project修仙.md`](d:\ProjectXX\设计文档\project修仙.md)，不写代码。
 - **本批范围（对应大纲）**：
   - §1 项目概述
   - §2 境界体系（框架级总览 + 阶段划分 + 时间规划）
@@ -96,7 +96,7 @@ flowchart LR
 
 ## 执行方式
 
-直接在 [`project修仙.md`](d:\ProjectXX\project修仙.md) 目录后追加上述章节正文（中文），保留原目录锚点编号；文末追加简短 `E. 版本更新记录` 条目说明 v3.0→v3.1。
+直接在 [`设计文档/project修仙.md`](d:\ProjectXX\设计文档\project修仙.md) 目录后追加上述章节正文（中文），保留原目录锚点编号；文末追加简短 `E. 版本更新记录` 条目说明 v3.0→v3.1。
 
 ## 验收标准
 

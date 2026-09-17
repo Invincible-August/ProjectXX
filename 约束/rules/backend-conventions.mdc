@@ -1,0 +1,32 @@
+---
+description: 后端分层、协议常量、中文出口、禁止裸随机
+globs: backend/**/*.py
+alwaysApply: false
+---
+
+# 后端约定
+
+权威：`设计文档/开发计划.md` §0.6 / §0.6.1 / §0.6.3 / §0.8 / §0.9。
+
+## 分层
+
+```
+api/（薄路由，Depends）→ services/XxxService → domain/（无 IO）
+配置：YAML + OverlayStore → GameConfigBundle（须可后台）
+```
+
+跨玩法前置统一 `PlayGate`。无 DB 规则进 `domain/`。
+
+## 必须
+
+- 协议值、超时、side、枚举进 `backend/app/constants/`，公开名一行中文注释
+- 玩家 API/战报出口经 `domain/display_labels.py` 或配置 `label_zh`；缺译用 `未知(id)`
+- 检定/掷骰/权重抽一律 `DiceService` + `dice.yaml`（见 `设计文档/骰子系统设计.md`）
+- 新活动挂 `activity_mutex.py` + `PlayGate.assert_activity`，并暴露 `CharacterPublic.activity`
+
+## 禁止
+
+- 业务文件新增 `"main"` / `"puppet"` / 裸 `0`/`1` 等协议字面量
+- 裸 `randint` / `random()<rate` 另起一套随机
+- 每 tick 新建 Calendar/Weather 快照（挂机 settle 须切段缓存）
+- 模块顶层环状 import（跨服务 settle 用 lazy import）
